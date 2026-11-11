@@ -8,6 +8,7 @@
 import { CATALOG } from '../data/catalog.js';
 import { ATTRS, ROLE_TEMPLATES, FIRST, LAST_A, LAST_B, FORMATIONS } from '../engine/teams.js';
 import { Rng } from '../engine/rng.js';
+import { kitColors } from '../ui/crest.js';
 
 export const CLUBS = CATALOG.clubs;
 const BY_ID = new Map(CLUBS.map((c) => [c.id, c]));
@@ -133,12 +134,8 @@ function fakeName(rng, used) {
   return n;
 }
 
-const PALETTE = ['#1f6feb', '#c2410c', '#15803d', '#7c3aed', '#b91c1c', '#0e7490', '#a16207', '#be185d', '#334155', '#4d7c0f'];
-function colorsFor(id) {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return { primary: PALETTE[h % PALETTE.length], secondary: '#ffffff', text: '#ffffff' };
-}
+// Couleurs de maillot : couleurs réelles du club quand elles sont connues (src/data/club-colors.js)
+function colorsFor(id) { return kitColors(id); }
 
 function shortName(name) {
   const w = name.replace(/\b(FC|SC|AS|US|AC|RC|CS|ES|EA|OGC|LOSC|SCO|AJ|SM|HSC|AF|U17|U19|\d+)\b/g, '').trim().split(/[\s-]+/).filter(Boolean);
@@ -206,7 +203,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
   const name = teamName(club, stage, league);
   return {
     def: {
-      id: `${club.id}-${stage}`, name, short: shortName(name), formation: '4-3-3', colors: colorsFor(club.id),
+      id: `${club.id}-${stage}`, clubId: club.id, name, short: shortName(name), formation: '4-3-3', colors: colorsFor(club.id),
       tactics: { pressing: 'moyen', bloc: 'moyen', style: 'équilibré' }, mods: {}, level: 0,
       identity: realList ? 'Noms publiés par le club ; notes estimées par le jeu.' : 'Effectif fictif généré par le jeu.',
     },

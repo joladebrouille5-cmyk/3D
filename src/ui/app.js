@@ -7,6 +7,7 @@ import { SIM, INSTRUCTION_OPTIONS, INSTRUCTION_LABELS, ROLE_LABELS, DEFAULT_COMP
 import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
 import { Pad } from './pad.js';
+import { crestSVG } from './crest.js';
 import { pickTarget, canCross } from '../engine/control.js';
 import { matchRating } from '../career/career.js';
 
@@ -57,7 +58,7 @@ export function startMatch(cfg) {
   for (const i of [0, 1]) {
     const t = S.m.teams[i];
     const el = $(`#team${i}-name`);
-    el.textContent = `${t.short}`; el.title = t.name;
+    el.innerHTML = `${crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, 20)}<span>${esc(t.short)}</span>`; el.title = t.name;
     el.style.background = t.colors.primary; el.style.color = t.colors.text; el.style.borderColor = t.colors.secondary;
   }
   closeModal();

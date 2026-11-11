@@ -20,6 +20,7 @@ const URL = process.argv[2] || 'http://localhost:8000/index.html';
   await page.fill('#su-seed', '');
   await page.type('#su-seed', 'e 1 4 f');
   assert.equal(await page.inputValue('#su-seed'), 'e 1 4 f');
+  await page.selectOption('#su-length', 'reel'); // vitesses manuelles 1× à 8× pour cette recette
   await page.fill('#su-seed', 'ui-check');
   await page.click('#su-go');
   await page.waitForTimeout(1500);

@@ -722,7 +722,7 @@ export function acceptOffer(st, idx) {
 // Résumé lisible pour la liste des sauvegardes
 export function summary(st) {
   const club = clubById(st.clubId);
-  return { name: `${st.player.firstName} ${st.player.lastName}`, club: club.name, stage: STAGE_LABEL[st.stage], age: st.player.age, season: `${st.season}-${st.season + 1}`, week: st.week + 1, ca: pct(currentCA(st)) };
+  return { name: `${st.player.firstName} ${st.player.lastName}`, clubId: club.id, club: club.name, stage: STAGE_LABEL[st.stage], age: st.player.age, season: `${st.season}-${st.season + 1}`, week: st.week + 1, ca: pct(currentCA(st)) };
 }
 
 // Note de match à partir des statistiques du moteur (bornée)

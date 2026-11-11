@@ -5,6 +5,8 @@ import { listSaves, saveCareer, loadCareer, deleteSave, firstFreeSlot, hasSaves,
 import { createCareerMatch, extractResult } from '../career/play.js';
 import { CATALOG } from '../data/catalog.js';
 import { startMatch, showQuickMatchSetup, setHomeHandler } from './app.js';
+import { crestSVG, clubColors } from './crest.js';
+const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const root = () => document.getElementById('screen');
@@ -32,6 +34,7 @@ function show(html) {
   el.hidden = false;
   el.innerHTML = html;
   el.scrollTop = 0;
+  el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
   document.body.classList.add('in-screen');
   return el;
 }
@@ -39,6 +42,11 @@ function hideScreen() { root().hidden = true; document.body.classList.remove('in
 function persist() { if (G.slot && G.st) saveCareer(G.slot, G.st); }
 
 // ------------------------------------------------------------------ accueil
+function mosaic() {
+  const top = CATALOG.clubs.filter((c) => c.senior && c.senior.level <= 2).slice(0, 36);
+  return top.map((c, i) => `<span style="--d:${(i % 9) * 0.35}s">${crestSVG(c, 34)}</span>`).join('');
+}
+
 export function showHome() {
   G.st = null; G.slot = null; G.showReview = null;
   const nClubs = CATALOG.clubs.length;
@@ -46,14 +54,16 @@ export function showHome() {
   const last = saves[0];
   const el = show(`<div class="home">
     <div class="hero"><div class="hero-pitch"></div>
+      <div class="hero-crests" aria-hidden="true">${mosaic()}</div>
+      <div class="hero-badge">SAISON 2026-2027</div>
       <h1>Generation Football</h1>
       <p class="tagline">« Tu n'es pas le centre du monde. Tu essaies d'y trouver ta place, puis d'y laisser une trace. »</p>
     </div>
     <div class="home-actions">
-      ${last ? `<button class="primary big" id="h-continue">▶ Continuer<small>${esc(last.name)} · ${esc(last.club)} (${esc(last.stage)}) · ${last.age} ans</small></button>` : ''}
-      <button class="${last ? '' : 'primary '}big" id="h-new">Débuter la partie</button>
-      <button class="big" id="h-load" ${hasSaves() ? '' : 'disabled'}>Charger la partie</button>
-      <button id="h-quick">Match amical (moteur 2D)</button>
+      ${last ? `<button class="primary big cont" id="h-continue">${last.clubId ? crest(clubById(last.clubId), 34) : ''}<span>▶ Continuer<small>${esc(last.name)} · ${esc(last.club)} (${esc(last.stage)}) · ${last.age} ans</small></span></button>` : ''}
+      <button class="${last ? '' : 'primary '}big" id="h-new">⚽ Débuter la partie</button>
+      <button class="big" id="h-load" ${hasSaves() ? '' : 'disabled'}>📂 Charger la partie</button>
+      <button id="h-quick">🏟 Match amical</button>
     </div>
     <p class="note">${nClubs} clubs réels du catalogue V1 (saison 2026-2027). Les effectifs professionnels reprennent les noms publiés par les clubs ; les notes sont des estimations du jeu. Les coéquipiers du centre de formation sont fictifs.</p>
   </div>`);
@@ -145,7 +155,7 @@ function showClubPicker() {
   const renderList = () => {
     const rows = clubRows();
     list.innerHTML = rows.map((c) => `<li data-id="${c.id}" class="${G.pick === c.id ? 'sel' : ''}">
-      <span class="cn">${esc(c.name)}</span>
+      <span class="cr">${crestSVG(c, 26)}</span><span class="cn">${esc(c.name)}</span>
       <span class="cd">${esc(LEVEL_NAMES[clubLevel(c)])}</span>
       <span class="cs" title="Centre de formation">${stars(academyStars(c))}</span>
     </li>`).join('') || '<li class="muted">Aucun club.</li>';
@@ -158,7 +168,10 @@ function showClubPicker() {
     const q = academyQuality(c);
     const lg17 = leagueFor(c, 'U17'), lg19 = leagueFor(c, 'U19');
     const start = Math.round((youthCA(q, 'U17') - 0.03) * 100);
-    box.innerHTML = `<h2>${esc(c.name)}</h2>
+    const cc = clubColors(c.id);
+    const light = cc.text === '#111111';
+    box.style.setProperty('--club', light ? cc.secondary : cc.primary); box.style.setProperty('--club2', light ? cc.primary : cc.secondary);
+    box.innerHTML = `<div class="club-hero">${crestSVG(c, 76)}<h2>${esc(c.name)}</h2></div>
       <p>${c.senior ? `${esc(c.senior.competition.split(', ').pop())}${c.senior.group !== 'Unique' ? ` (groupe ${esc(c.senior.group)})` : ''}` : esc(LEVEL_NAMES[clubLevel(c)])}${c.reserve ? ` · réserve en ${esc(c.reserve.competition.split(', ').pop())}` : ''}</p>
       <p><strong>Centre de formation</strong> ${stars(academyStars(c))}</p>
       <p>U17 : ${esc(lg17.name)}<br>U19 : ${esc(lg19.name)}</p>
@@ -259,7 +272,11 @@ function weekCard(st) {
     const canPlay = inSquad && p.role !== 'GK';
     return `<section class="card week">${report}
       <h2>⚽ Jour de match — journée ${st.week + 1}/${n}</h2>
-      <div class="fixture-box"><span class="${md.home ? 'me' : ''}">${esc(md.home ? myName : opp)}</span><span class="vs">–</span><span class="${md.home ? '' : 'me'}">${esc(md.home ? opp : myName)}</span></div>
+      <div class="fixture-box">
+        <span class="fx ${md.home ? 'me' : ''}">${crest(clubById(md.home ? st.clubId : md.opponentId), 54)}<b>${esc(md.home ? myName : opp)}</b></span>
+        <span class="vs">VS</span>
+        <span class="fx ${md.home ? '' : 'me'}">${crest(clubById(md.home ? md.opponentId : st.clubId), 54)}<b>${esc(md.home ? opp : myName)}</b></span>
+      </div>
       <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? ` Concurrent direct : ${esc(md.rival.name)}.` : ''}</p>
       <div class="options">
         ${inSquad ? `<button class="primary cta" id="w-watch">${canPlay ? '🎮 Jouer le match' : '👁 Suivre le match (vue 2D)'}<small>${canPlay ? 'Tu pilotes ton joueur (ou tu délègues à l\'IA)' : 'Le gardien est piloté par l\'IA'}</small></button><button id="w-sim">⏩ Simuler le match</button>`
@@ -292,7 +309,7 @@ function leagueCard(st) {
   if (G.tab === 'classement') {
     const t = C.standings(st);
     body = `<p class="muted">${esc(st.league.name)}${st.league.simulated ? ' — composition simulée' : ''}</p>
-      <table class="table"><tr><th>#</th><th>Équipe</th><th>J</th><th>Pts</th><th>Diff.</th></tr>${t.map((x, i) => `<tr class="${x.id === st.clubId ? 'me' : ''}"><td>${i + 1}</td><td>${esc(x.name)}</td><td>${x.p}</td><td><strong>${x.pts}</strong></td><td>${x.gf - x.ga > 0 ? '+' : ''}${x.gf - x.ga}</td></tr>`).join('')}</table>
+      <table class="table"><tr><th>#</th><th>Équipe</th><th>J</th><th>Pts</th><th>Diff.</th></tr>${t.map((x, i) => `<tr class="${x.id === st.clubId ? 'me' : ''}"><td>${i + 1}</td><td class="tn">${crest(clubById(x.id), 18)}${esc(x.name)}</td><td>${x.p}</td><td><strong>${x.pts}</strong></td><td>${x.gf - x.ga > 0 ? '+' : ''}${x.gf - x.ga}</td></tr>`).join('')}</table>
       <p class="muted">Les rencontres où ton équipe joue passent par le moteur de match ; les autres par un modèle agrégé.</p>`;
   } else if (G.tab === 'resultats') {
     const mine = st.league.results.filter((r) => r.h === st.clubId || r.a === st.clubId);
@@ -375,9 +392,11 @@ export function renderHub() {
   const club = clubById(st.clubId);
   const n = C.seasonLength(st);
   const review = st.phase === 'month_review' ? st.monthReview : G.showReview;
-  const el = show(`<div class="hub">
+  const cc = clubColors(club.id);
+  const bg = cc.text === '#111111' ? cc.secondary : cc.primary, accent2 = cc.text === '#111111' ? cc.primary : cc.secondary;
+  const el = show(`<div class="hub" style="--club:${bg};--club2:${accent2};--clubtxt:#fff">
     <header class="hub-head">
-      <div class="hub-title"><span class="crest">${esc(club.name.replace(/\b(FC|SC|AS|US|AC|RC|OGC|LOSC|AJ|SM)\b/g, '').trim().slice(0, 2).toUpperCase())}</span>
+      <div class="hub-title">${crest(club, 46)}
         <div><strong>${esc(club.name)}</strong> · ${esc(STAGE_LABEL[st.stage])}<br><span class="muted">Saison ${st.season}-${st.season + 1} · semaine ${Math.min(st.week + 1, n)}/${n}</span></div></div>
       <div class="season-bar" title="Avancement de la saison"><i style="width:${(st.week / n) * 100}%"></i></div>
       <div class="row"><button id="hub-save">💾 Sauvegarder</button><button id="hub-home">Accueil</button></div>
@@ -476,7 +495,7 @@ function renderSeasonEnd() {
     <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
     <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li>
-      <span><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span></span>
+      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span></span>
       <button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button></li>`).join('')}</ul>
     ${st.offers.some((o) => o.own) ? '' : '<p class="note">Ton club ne te conserve pas. L\'échec ouvre d\'autres chemins : choisis où rebondir.</p>'}
   </div>`);

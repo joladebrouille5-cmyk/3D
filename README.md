@@ -133,35 +133,51 @@ Principes repris de la spécification :
 - **Règles** : hors-jeu au départ du ballon (drapeau avec erreur bornée), fautes, cartons, penalties, corners, touches, six-mètres, temps additionnel issu des interruptions, poste laissé vacant après une expulsion.
 - **Le rendu ne touche jamais l'état.** L'interpolation n'est pas réinjectée dans le moteur.
 
-## État de la calibration (à lire avant de juger le football produit)
+## État de la calibration
 
 Mesures sur 40 matchs entre équipes synthétiques (`npm run calibrate`), comparées aux ordres de grandeur du football professionnel :
 
 | Indicateur par match | Moteur actuel | Ordre de grandeur réel |
 |---|---:|---:|
-| Buts | ~7 | ~2,7 |
-| Tirs | ~44 | ~25 |
-| xG pré-tir total | ~8,4 | ~2,6 |
-| Réussite des passes | ~65 % | ~80 % |
-| Fautes | ~30 | ~22 |
-| Cartons jaunes | ~3,3 | ~4 |
-| Corners | ~3 | ~10 |
+| Buts | ~3,0 | ~2,7-2,9 |
+| Tirs | ~29 | ~25 |
+| Tirs cadrés | ~13 | ~9 |
+| xG pré-tir total | ~2,9 (≈ buts) | ~2,7 |
+| Corners | ~7 | ~9-10 |
+| Fautes | ~26 | ~22-24 |
+| Cartons jaunes | ~5 | ~4 |
+| Résultats domicile / nul / extérieur | 40 / 28 / 32 % | ≈ 45 / 27 / 28 % |
 
-Ce qui est cohérent :
+- **Corrections principales** :
+  - passes en profondeur réservées aux vrais appels ;
+  - frappes contrées dans la trajectoire ;
+  - parades et dégagements qui sortent en corner ;
+  - couverture défensive dans les duels ;
+  - deux défauts de parade qui renvoyaient le ballon dans le but.
+- **xG** : l'indicateur affiché est calibré sur la résolution réelle des tirs ; le joueur décide sur sa propre perception de l'occasion.
+- **Ligne haute** : une ligne défensive haute laisse de l'espace dans son dos, que les attaquants exploitent par leurs appels.
+- **Écarts restants** :
+  - un peu trop de tirs cadrés et pas assez de corners ;
+  - environ 1 250 passes par match, encore au-dessus de la réalité ;
+  - une tactique très agressive face à une équipe plus faible domine encore nettement.
 
-- les buts suivent les xG estimés, donc l'estimateur de danger et la résolution sont reliés ;
-- la résolution isolée des tirs est plausible : sans pression, environ 35 % de buts à 11 m, 10 % à 18 m et 6 % à 25 m ;
-- les styles produisent des matchs différents.
+### Durée d'un match
 
-Ce qui reste à calibrer :
+Le mode **Match court** est le mode par défaut. Le moteur simule toujours les 90 minutes, mais le rythme s'adapte pour que la rencontre regardée ou jouée dure **environ 4 min 30** :
+- le jeu accélère loin de l'action, jusqu'à ×80 environ ;
+- il revient à 1× pendant les temps forts : ballon près de ton joueur en pilotage manuel, ou action de but en observation ;
+- un budget de temps forts est réparti sur tout le match.
 
-- trop d'occasions de qualité sont créées ;
-- le style « pressing haut + bloc haut + direct » (FC Littoral Nord) domine trop nettement ;
-- les petits écarts de niveau ont un effet excessif ;
-- les passes sont trop souvent perdues ;
-- il y a trop peu de corners.
+Le mode **Temps réel** (vitesses 1× à 8×) reste disponible dans le menu du match et sur l'écran du match amical. La recette `npm run ui-check-pace` vérifie la durée.
 
-Ces écarts sont assumés pour un prototype. Le concept demande de mesurer avant d'affirmer quoi que ce soit, et aucun coefficient n'est présenté comme réaliste.
+### Écussons
+
+Les logos officiels des clubs sont des marques protégées et ne sont pas inclus. Chaque club reçoit un **écusson généré** :
+- forme, motif et initiales stables ;
+- **couleurs réelles** du club quand elles sont connues (`src/data/club-colors.js`), couleurs déterministes sinon ;
+- les mêmes couleurs servent pour les maillots en match.
+
+Pour utiliser tes propres images (sous ta responsabilité quant aux droits), ajoute-les dans `assets/crests/` et déclare-les dans `CREST_IMAGES` du même fichier.
 
 ## Hors de ce lot
 

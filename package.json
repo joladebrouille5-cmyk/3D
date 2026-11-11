@@ -11,6 +11,7 @@
     "apk": "bash tools/build-apk.sh",
     "ui-check": "node tools/ui-check.cjs",
     "catalog": "node tools/build-catalog.mjs",
-    "ui-check-career": "node tools/ui-check-career.cjs"
+    "ui-check-career": "node tools/ui-check-career.cjs",
+    "ui-check-pace": "node tools/ui-check-pace.cjs"
   }
 }
