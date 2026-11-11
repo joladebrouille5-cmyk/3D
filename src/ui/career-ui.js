@@ -39,7 +39,12 @@ function show(html) {
   return el;
 }
 function hideScreen() { root().hidden = true; document.body.classList.remove('in-screen'); }
-function persist() { if (G.slot && G.st) saveCareer(G.slot, G.st); }
+function persist() {
+  if (!G.slot || !G.st) return true;
+  const ok = saveCareer(G.slot, G.st);
+  if (!ok && !G.saveWarned) { G.saveWarned = true; flash('Sauvegarde impossible (stockage plein ou indisponible).'); }
+  return ok;
+}
 
 // ------------------------------------------------------------------ accueil
 function mosaic() {
@@ -408,7 +413,7 @@ export function renderHub() {
 
 function bindHub(el) {
   const st = G.st;
-  el.querySelector('#hub-save').addEventListener('click', () => { persist(); flash('Partie sauvegardée.'); });
+  el.querySelector('#hub-save').addEventListener('click', () => { if (persist()) flash('Partie sauvegardée.'); });
   el.querySelector('#hub-home').addEventListener('click', () => { persist(); showHome(); });
   el.querySelector('#hub-review')?.addEventListener('click', () => { G.showReview = st.lastMonthReview; renderHub(); });
   el.querySelector('#mr-close')?.addEventListener('click', () => {
