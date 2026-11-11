@@ -7,7 +7,7 @@ import { crestSVG, clubColors, initials } from '../src/ui/crest.js';
 test('chaque club du catalogue a un écusson SVG valide et stable', () => {
   for (const c of CLUBS) {
     const svg = crestSVG(c, 40);
-    assert.match(svg, /^<svg[\s\S]*<\/svg>$/);
+    assert.match(svg, /^<svg[\s\S]*<\/svg>$|^<img [^>]*src="assets\/crests(-l1)?\/[a-z0-9-]+\.png"/);
     assert.equal(svg, crestSVG(c, 40), `écusson stable pour ${c.id}`);
     assert.ok(initials(c.name).length >= 1);
   }
@@ -20,4 +20,14 @@ test('couleurs réelles des clubs connus, déterministes sinon', () => {
   const x = clubColors('club-inconnu');
   assert.deepEqual(x, clubColors('club-inconnu'));
   assert.equal(initials('Paris Saint-Germain'), 'PSG');
+});
+
+test('logos officiels disponibles pour les clubs de Ligue 1 (fichiers présents)', async () => {
+  const { CREST_LOCAL } = await import('../src/data/crest-local.js');
+  const { existsSync } = await import('node:fs');
+  assert.ok(Object.keys(CREST_LOCAL).length >= 18);
+  for (const [id, path] of Object.entries(CREST_LOCAL)) {
+    assert.ok(existsSync(path), `fichier manquant pour ${id}`);
+    assert.match(crestSVG({ id, name: id }, 30), /^<img /);
+  }
 });

@@ -4,6 +4,7 @@
 
 import { CLUB_COLORS, TEST_TEAM_COLORS, CREST_IMAGES } from '../data/club-colors.js';
 import { CREST_FILES } from '../data/crest-manifest.js';
+import { CREST_LOCAL } from '../data/crest-local.js';
 
 const PAIRS = [
   ['#1d4f9c', '#ffffff'], ['#d6182a', '#ffffff'], ['#0a8a3c', '#ffffff'], ['#111111', '#ffd200'],
@@ -78,7 +79,7 @@ export function crestSVG(club, size = 40) {
   const id = club.clubId ?? club.id;
   // logo officiel téléchargé (tools/fetch-crests.mjs) ou image fournie, sinon écusson généré
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  const img = CREST_IMAGES[base] ?? CREST_FILES[base];
+  const img = CREST_IMAGES[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base];
   if (img) return `<img class="crest-img" src="${img}" width="${size}" height="${size}" alt="" loading="lazy" decoding="async">`;
   const c = clubColors(id);
   const txt = initials(club.name ?? id);

@@ -279,7 +279,7 @@ function weekCard(st) {
       </div>
       <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? ` Concurrent direct : ${esc(md.rival.name)}.` : ''}</p>
       <div class="options">
-        ${inSquad ? `<button class="primary cta" id="w-watch">${canPlay ? '🎮 Jouer le match' : '👁 Suivre le match (vue 2D)'}<small>${canPlay ? 'Tu pilotes ton joueur (ou tu délègues à l\'IA)' : 'Le gardien est piloté par l\'IA'}</small></button><button id="w-sim">⏩ Simuler le match</button>`
+        ${inSquad ? `<button class="primary cta" id="w-watch">${canPlay ? '🎮 Jouer le match' : '👁 Suivre le match (vue 2D)'}<small>${canPlay ? 'Tu fais les choix de ton joueur aux moments clés' : 'Le gardien est piloté par l\'IA'}</small></button><button id="w-sim">⏩ Simuler le match</button>`
           : '<button class="primary cta" id="w-sim">Voir le résultat</button><button id="w-watch">👁 Regarder depuis la tribune</button>'}
       </div></section>`;
   }
