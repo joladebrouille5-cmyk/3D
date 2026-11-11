@@ -1,0 +1,79 @@
+// Coque Android : WebView qui embarque l'interface web (index.html, styles.css, src/).
+// Les fichiers web sont copiés à chaque build depuis la racine du dépôt : une seule source.
+plugins {
+    id 'com.android.application'
+}
+
+def repoRoot = rootProject.projectDir.parentFile
+def gitCount = { ->
+    try {
+        def p = ['git', 'rev-list', '--count', 'HEAD'].execute(null, repoRoot)
+        p.waitFor()
+        def n = p.text.trim()
+        return n ? n.toInteger() : 1
+    } catch (ignored) { return 1 }
+}
+def gitSha = { ->
+    try {
+        def p = ['git', 'rev-parse', '--short', 'HEAD'].execute(null, repoRoot)
+        p.waitFor()
+        return p.text.trim() ?: 'local'
+    } catch (ignored) { return 'local' }
+}
+def webOut = layout.buildDirectory.dir('generated/web')
+
+android {
+    namespace 'fr.generationfootball.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'fr.generationfootball.app'
+        minSdk 26
+        targetSdk 35
+        versionCode gitCount()
+        versionName "0.1.${gitCount()}-${gitSha()}"
+    }
+
+    // Clé de PROTOTYPE versionnée dans le dépôt : même signature pour chaque build
+    // (local ou CI), donc chaque nouvel APK s'installe par-dessus le précédent.
+    // Ce n'est pas une clé de publication sur un store.
+    signingConfigs {
+        prototype {
+            storeFile rootProject.file('keystore/prototype.jks')
+            storePassword 'generation-football'
+            keyAlias 'prototype'
+            keyPassword 'generation-football'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.prototype
+        }
+        debug {
+            signingConfig signingConfigs.prototype
+        }
+    }
+
+    sourceSets {
+        main.assets.srcDirs += webOut
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+def copyWeb = tasks.register('copyWeb', Copy) {
+    from(repoRoot) {
+        include 'index.html', 'styles.css', 'src/**'
+    }
+    into webOut.map { it.dir('www') }
+}
+tasks.named('preBuild') { dependsOn copyWeb }
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

@@ -1,0 +1,58 @@
+# Construit l'APK Android à chaque push et le publie :
+# - en artefact du run (onglet Actions)
+# - en pré-version GitHub « apk-<n° de build> » (téléchargeable depuis un téléphone)
+name: APK Android
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # versionCode = nombre de commits
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests du moteur
+        run: npm test
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Construire l'APK
+        id: build
+        run: |
+          OUT=$(bash tools/build-apk.sh | tail -1)
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.name }}
+          path: ${{ steps.build.outputs.apk }}
+
+      - name: Publier en pré-version
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-${{ github.run_number }}
+          name: APK ${{ steps.build.outputs.name }} (${{ github.ref_name }})
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: ${{ steps.build.outputs.apk }}
+          body: |
+            APK de prototype construit automatiquement depuis `${{ github.ref_name }}` (${{ github.sha }}).
+            Installation : ouvrir le fichier sur Android et autoriser l'installation depuis cette source.
+            Signé avec la clé de prototype du dépôt : chaque version s'installe par-dessus la précédente.

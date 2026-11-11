@@ -146,3 +146,36 @@ table.stats td:nth-child(2) { text-align: center; color: var(--muted); font-size
   #left, #right { border: 0; border-top: 1px solid var(--line); }
   .modal .grid2 { grid-template-columns: 1fr; }
 }
+
+.compact-only { display: none; }
+
+/* Téléphone en paysage (APK Android) : terrain prioritaire, panneaux en tiroirs */
+@media (max-height: 520px) {
+  #app {
+    grid-template-columns: 1fr; grid-template-rows: auto 1fr 26px;
+    grid-template-areas: "top" "center" "feed"; height: 100vh; min-height: 0;
+  }
+  .compact-only { display: inline-block; }
+  #topbar { padding: 3px 8px; gap: 6px; flex-wrap: nowrap; }
+  .tb-left { display: none; }
+  .tb-score { font-size: 0.85em; gap: 6px; }
+  #score { font-size: 1.15em; }
+  #clock { font-size: 0.85em; }
+  .tb-right { gap: 4px; flex-wrap: nowrap; }
+  .tb-right button { padding: 3px 7px; font-size: 0.78em; }
+  #btn-help { display: none; }
+  #left, #right {
+    position: fixed; top: 34px; bottom: 26px; width: min(340px, 46vw); z-index: 5;
+    transition: transform 0.18s ease; box-shadow: 0 0 24px rgba(0, 0, 0, 0.6);
+    grid-area: auto; display: block;
+  }
+  #left { left: 0; transform: translateX(-105%); }
+  #right { right: 0; transform: translateX(105%); }
+  body.show-left #left, body.show-right #right { transform: none; }
+  #feed-wrap { padding: 3px 10px; overflow: hidden; }
+  #feed li:not(:first-child) { display: none; }
+  #feed li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #replay-banner { font-size: 0.8em; padding: 2px 10px; top: 4px; }
+  .modal { padding: 12px 16px; }
+  .modal h1 { font-size: 1.1em; }
+}

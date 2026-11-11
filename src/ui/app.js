@@ -618,6 +618,7 @@ function onKeyDown(e) {
       return;
     case 'Escape':
       e.preventDefault();
+      if (document.body.classList.contains('show-left') || document.body.classList.contains('show-right')) { closeDrawers(); return; }
       if (S.replay) { closeReplay(); return; }
       if (S.selectedId != null) { S.selectedId = null; refreshUI(true); return; }
       if (S.subMode) { S.subMode = false; S.subDraft = { outId: null, inId: null }; refreshUI(true); return; }
@@ -641,6 +642,15 @@ function onKeyDown(e) {
   if (e.code === 'NumpadSubtract' || e.key === '-') { changeSpeed(-1); return; }
 }
 
+// Tiroirs (mise en page téléphone) : un seul ouvert à la fois
+function toggleDrawer(side) {
+  const cls = `show-${side}`, other = side === 'left' ? 'show-right' : 'show-left';
+  document.body.classList.remove(other);
+  document.body.classList.toggle(cls);
+  if (side === 'right') renderRight(); else renderLeft();
+}
+function closeDrawers() { document.body.classList.remove('show-left', 'show-right'); }
+
 function changeSpeed(d) {
   const speeds = [1, 2, 4, 8];
   const i = Math.max(0, Math.min(3, speeds.indexOf(S.speed) + d));
@@ -660,8 +670,11 @@ function bind() {
   $('#btn-help').addEventListener('click', (e) => { e.currentTarget.blur(); S.paused = true; refreshUI(true); showHelp(); });
   $('#btn-quick').addEventListener('click', (e) => { e.currentTarget.blur(); quickResult(); });
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => { S.tab = b.dataset.tab; renderRight(); }));
+  $('#btn-left').addEventListener('click', (e) => { e.currentTarget.blur(); toggleDrawer('left'); });
+  $('#btn-right').addEventListener('click', (e) => { e.currentTarget.blur(); toggleDrawer('right'); });
   $('#pitch').addEventListener('click', (e) => {
     if (!S.m) return;
+    if (document.body.classList.contains('show-left') || document.body.classList.contains('show-right')) { closeDrawers(); return; }
     const r = e.currentTarget.getBoundingClientRect();
     const w = S.renderer.toWorld(e.clientX - r.left, e.clientY - r.top);
     let best = null, bd = 2.2;
@@ -675,6 +688,9 @@ function bind() {
   });
   requestAnimationFrame(frame);
   showSetup();
+  // appelé par la coque Android quand l'application passe en arrière-plan
+  window.gfPause = () => { if (S.m && !S.paused) { S.paused = true; S.acc = 0; refreshUI(true); } };
+  document.addEventListener('visibilitychange', () => { if (document.hidden) window.gfPause(); });
 }
 
 bind();

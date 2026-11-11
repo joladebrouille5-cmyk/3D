@@ -19,6 +19,23 @@ npm run calibrate        # mesure de calibration sur 40 matchs simulés sans ren
 node tools/ui-check.cjs http://localhost:8000/index.html   # recette d'interface (Playwright)
 ```
 
+## APK Android
+
+Chaque push déclenche la GitHub Action `APK Android` (`.github/workflows/apk.yml`). Elle lance les tests, construit l'APK et le publie en **pré-version** `apk-<n° de build>`, téléchargeable directement depuis un téléphone, ainsi qu'en artefact du run.
+
+En local :
+
+```bash
+npm run apk              # nécessite le SDK Android (ANDROID_HOME, ou ~/android-sdk) et Java 17+
+# -> dist/generation-football-<version>.apk
+```
+
+- L'APK est une coque WebView (`android/`) qui embarque `index.html`, `styles.css` et `src/`, copiés à chaque build. Il n'y a qu'une seule source pour le web et le mobile.
+- Il fonctionne hors ligne, en paysage et en plein écran. La touche Retour agit comme Échap, et l'application se met en pause quand elle passe en arrière-plan.
+- Sur téléphone, le terrain occupe l'écran. Les boutons « Effectif » et « Tactique » ouvrent les panneaux en tiroirs.
+- Le versionCode est le nombre de commits, et le versionName vaut `0.1.<n>-<sha>`.
+- L'APK est signé avec une **clé de prototype versionnée** (`android/keystore/prototype.jks`), si bien que chaque nouvel APK s'installe par-dessus le précédent. Ce n'est pas une clé de publication : pour un store, il faudra une clé privée gardée hors du dépôt.
+
 ## Ce qui est jouable
 
 - **Configuration d'un match** : deux équipes parmi quatre profils synthétiques (styles distincts), rôle *manager A*, *manager B* ou *observateur*, graine de reproductibilité, délégation des remplacements au staff.
