@@ -519,3 +519,5 @@ label.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; f
 @media (max-width: 700px) { .clubs li { grid-template-columns: 28px 1fr 80px; } }
 
 .home-actions button.primary small { color: rgba(0,0,0,0.65); opacity: 1; }
+
+.crest-img { display: block; object-fit: contain; }

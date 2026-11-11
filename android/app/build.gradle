@@ -68,7 +68,7 @@ android {
 
 def copyWeb = tasks.register('copyWeb', Copy) {
     from(repoRoot) {
-        include 'index.html', 'styles.css', 'src/**'
+        include 'index.html', 'styles.css', 'src/**', 'assets/**'
     }
     into webOut.map { it.dir('www') }
 }
