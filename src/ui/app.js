@@ -7,6 +7,7 @@ import { SIM, INSTRUCTION_OPTIONS, INSTRUCTION_LABELS, ROLE_LABELS, DEFAULT_COMP
 import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
 import { crestSVG } from './crest.js';
+import { icon } from './icons.js';
 import { ballChoices, defendChoices, supportChoices, choiceTargets } from './choices.js';
 import { matchRating } from '../career/career.js';
 
@@ -217,7 +218,7 @@ function startHighlight() {
   const start = Math.max(0, h.frame - 30), end = Math.min(m.frames.length - 1, h.frame + 8);
   S.replay = { start, end, cursor: start, playing: true, hl: true, label: h.label, goal: h.goal };
   const t = m.teams[h.team];
-  $('#replay-banner').innerHTML = `${h.goal ? '⚽ ' : '🎬 '}TEMPS FORT · <span>${esc(h.label)}</span>`;
+  $('#replay-banner').innerHTML = `${icon(h.goal ? 'ball' : 'replay', 16)}<em>${h.goal ? 'But' : 'Temps fort'}</em><span>${esc(h.label)}</span>`;
   $('#replay-banner').style.setProperty('--team', t?.colors.primary ?? '#f5c542');
   refreshUI(true);
   return true;
@@ -226,7 +227,7 @@ function endHighlight() {
   const r = S.replay;
   S.replay = null;
   if (r?.goal) { const ev = [...S.m.events].reverse().find((e) => e.type === 'but'); if (ev) goalBanner(ev); }
-  $('#replay-banner').innerHTML = 'REPLAY — lecture seule <span id="replay-time"></span>';
+  $('#replay-banner').innerHTML = `${icon('replay', 16)}<em>Replay</em><span>lecture seule <span id="replay-time"></span></span>`;
   refreshUI(true);
 }
 
@@ -327,8 +328,8 @@ function openChoice(ch, u) {
   S.choice = { ...ch, targets: ch.type === 'ball' ? choiceTargets(m, u, ch) : null, opened: performance.now() };
   const box = $('#choices');
   box.innerHTML = `<div class="ch-head"><strong>${esc(ch.title)}</strong><span>${esc(ch.sub)}</span></div>
-    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${c.icon}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span></button>`).join('')}</div>
-    <div class="ch-foot"><button id="ch-auto" class="ch-skip">🤖 Laisser l'instinct décider</button></div>`;
+    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
+    <div class="ch-foot"><button id="ch-auto" class="ch-skip">${icon('auto', 16)} Laisser l'instinct décider</button></div>`;
   box.hidden = false;
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
   box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
@@ -395,10 +396,15 @@ function goalBanner(ev) {
   const m = S.m, el = $('#goal-banner');
   const t = m.teams[ev.team];
   const mine = S.career && ev.player === S.ctl.userId && !ev.own;
-  el.innerHTML = `<strong>${mine ? 'TU MARQUES !' : 'BUT !'}</strong><span>${esc(t.name)} · ${esc(m.teams[0].short)} ${m.score[0]} – ${m.score[1]} ${esc(m.teams[1].short)}</span>`;
-  el.style.setProperty('--team', t.colors.primary);
+  const scorer = ev.player != null && !ev.own ? m.players[ev.player] : null;
+  el.innerHTML = `<span class="gb-crest">${crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, 64)}</span>
+    <span class="gb-txt"><strong>${mine ? 'Tu marques' : ev.own ? 'Contre son camp' : 'But'}</strong>
+    <span class="gb-who">${scorer ? esc(scorer.name) : esc(t.name)} · ${esc(ev.minute)}'</span>
+    <span class="gb-score">${esc(m.teams[0].short)} <b>${m.score[0]}</b><i>–</i><b>${m.score[1]}</b> ${esc(m.teams[1].short)}</span></span>`;
+  el.style.setProperty('--team', t.colors.primary); el.style.setProperty('--team2', t.colors.secondary);
+  S.renderer.celebrate(t.colors);
   el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-  clearTimeout(S.goalTimer); S.goalTimer = setTimeout(() => { el.hidden = true; }, 2600);
+  clearTimeout(S.goalTimer); S.goalTimer = setTimeout(() => { el.hidden = true; }, 3000);
 }
 
 function addFeed(ev) {
@@ -410,7 +416,7 @@ function addFeed(ev) {
   li.innerHTML = `<span class="min">${esc(ev.minute)}'</span><span class="dot" style="background:${t ? t.colors.primary : 'transparent'}"></span><span>${esc(ev.text)}</span>`;
   if (['but', 'tir', 'arret', 'penalty', 'faute', 'carton'].includes(ev.type)) {
     const b = document.createElement('button');
-    b.textContent = '▶ revoir';
+    b.innerHTML = `${icon('replay', 14)} revoir`;
     b.title = 'Revoir en lecture seule';
     b.addEventListener('click', () => openReplay(ev.frame));
     li.append(' ', b);
@@ -457,7 +463,7 @@ function refreshUI(force) {
   else if (m.phase === 'fulltime') { badge.textContent = 'TERMINÉ'; badge.className = 'badge'; }
   else if (S.paused) { badge.textContent = 'PAUSE'; badge.className = 'badge pause'; }
   else { badge.textContent = `DIRECT ${S.speed}×`; badge.className = 'badge live'; }
-  $('#btn-play').innerHTML = S.paused ? '<span class="ico">▶</span><span class="lbl"> Reprendre</span>' : '<span class="ico">⏸</span><span class="lbl"> Pause</span>';
+  $('#btn-play').innerHTML = S.paused ? `<span class="ico">${icon('play', 18)}</span><span class="lbl">Reprendre</span>` : `<span class="ico">${icon('pause', 18)}</span><span class="lbl">Pause</span>`;
   document.body.classList.toggle('ctl-manual', false);
   $('#btn-play').disabled = !!S.replay || m.phase === 'fulltime';
   $('#btn-live').hidden = !S.replay;
@@ -468,10 +474,10 @@ function refreshUI(force) {
   const court = S.pace.mode === 'court';
   document.querySelector('.speed').hidden = court || S.pace.mode === 'tf';
   if (S.pace.mode === 'tf' && !S.paused && m.phase !== 'fulltime') {
-    badge.textContent = S.replay?.hl ? '🎬 TEMPS FORT' : S.choice ? '🎯 À TOI DE CHOISIR' : m.t < S.hl.follow ? '▶ SUITE DE L\'ACTION' : `⏩ ×${Math.round(S.pace.cur)}`;
+    badge.textContent = S.replay?.hl ? 'TEMPS FORT' : S.choice ? 'À TOI DE CHOISIR' : m.t < S.hl.follow ? 'SUITE DE L\'ACTION' : `ACCÉLÉRÉ ×${Math.round(S.pace.cur)}`;
     badge.className = `badge ${S.replay?.hl || S.choice ? 'live' : 'fast'}`;
   } else if (court && !S.replay && !S.paused && m.phase !== 'fulltime') {
-    badge.textContent = S.choice ? '🎯 À TOI DE CHOISIR' : S.pace.isLive ? '▶ TEMPS FORT' : `⏩ ×${Math.round(S.pace.cur)}`;
+    badge.textContent = S.choice ? 'À TOI DE CHOISIR' : S.pace.isLive ? 'TEMPS FORT' : `ACCÉLÉRÉ ×${Math.round(S.pace.cur)}`;
     badge.className = `badge ${S.pace.isLive ? 'live' : 'fast'}`;
   }
   document.querySelectorAll('.speed button').forEach((b) => {
@@ -480,9 +486,9 @@ function refreshUI(force) {
   });
   const bc = $('#btn-ctl'), bz = $('#btn-zoom');
   bc.hidden = !S.ctl.enabled; bz.hidden = !S.career || S.ctl.userId == null;
-  bc.innerHTML = S.ctl.manual ? '<span class="ico">🎯</span><span class="lbl"> Choix</span>' : '<span class="ico">🤖</span><span class="lbl"> Auto</span>';
+  bc.innerHTML = S.ctl.manual ? `<span class="ico">${icon('target', 18)}</span><span class="lbl">Choix</span>` : `<span class="ico">${icon('auto', 18)}</span><span class="lbl">Auto</span>`;
   bc.classList.toggle('active', S.ctl.manual);
-  bz.innerHTML = `<span class="ico">🔍</span><span class="lbl"> ${S.ctl.zoom <= 1 ? 'Large' : S.ctl.zoom < 2 ? 'Moyen' : 'Proche'}</span>`;
+  bz.innerHTML = `<span class="ico">${icon('zoom', 18)}</span><span class="lbl">${S.ctl.zoom <= 1 ? 'Large' : S.ctl.zoom < 2 ? 'Moyen' : 'Proche'}</span>`;
   if ((S.paused || S.replay || m.phase === 'fulltime') && S.choice) { /* le choix reste affiché */ }
   renderLeft();
   renderRight();
@@ -638,7 +644,7 @@ function renderMine() {
     </div>
     <div class="gauge"><span>Énergie</span><span class="bar"><i class="${e > 66 ? 'good' : e > 45 ? 'mid' : 'low'}" style="width:${e}%"></i></span></div>
     ${S.ctl.enabled ? `<h2>Tes choix</h2>
-    <p>${S.ctl.manual ? `Aux moments clés, le match se fige et tu choisis : passe, profondeur, frappe, dribble, centre ; sans ballon : presser, tacler, couper une passe, faire un appel ou demander le ballon. Choix faits ce match : <b>${S.ctl.made}</b>.` : 'Choix désactivés : l\'IA joue pour toi. Touche le bouton 🤖/🎯 pour les réactiver.'}</p>
+    <p>${S.ctl.manual ? `Aux moments clés, le match se fige et tu choisis : passe, profondeur, frappe, dribble, centre ; sans ballon : presser, tacler, couper une passe, faire un appel ou demander le ballon. Choix faits ce match : <b>${S.ctl.made}</b>.` : 'Choix désactivés : l\'IA joue pour toi. Touche le bouton « Auto » pour les réactiver.'}</p>
     <p class="muted">Les indications (risque, chances de marquer) sont des estimations : la réussite dépend de ta technique, de la pression et de la fatigue. Clavier : touches 1 à 4, 0 pour laisser l'instinct décider.</p>`
     : u.role === 'GK' ? '<p class="muted">Le pilotage direct du gardien n\'est pas encore disponible : l\'IA joue pour toi.</p>' : ''}`;
 }
@@ -1023,6 +1029,10 @@ export function initMatchUI() { bind(); window.__gfPace = () => S.pace; }
 
 function bind() {
   S.renderer = new PitchRenderer($('#pitch'));
+  // icônes des boutons fixes de la barre de match
+  const setIco = (id, name, lbl) => { const b = $(id); if (b) b.innerHTML = `<span class="ico">${icon(name, 18)}</span>${lbl ? `<span class="lbl">${lbl}</span>` : ''}`; };
+  setIco('#btn-left', 'squad'); setIco('#btn-right', 'board'); setIco('#btn-replay', 'replay', 'Replay');
+  setIco('#btn-quick', 'skip', 'Résultat rapide'); setIco('#btn-help', 'help', 'Aide'); setIco('#btn-live', 'live', 'Direct');
   window.addEventListener('resize', () => S.renderer.resize());
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);

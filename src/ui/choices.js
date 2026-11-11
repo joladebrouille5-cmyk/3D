@@ -18,7 +18,7 @@ export function ballChoices(m, u) {
   const add = (o, icon, label, hint, cls) => { if (o && !out.some((x) => x.opt === o)) out.push({ opt: o, icon, label, hint, cls }); };
 
   const shot = by('shoot')[0];
-  if (shot && shot.xg >= 0.03) add(shot, '🥅', 'Frapper au but', `≈ ${Math.round(shot.xg * 100)} % de chances de marquer`, shot.xg > 0.15 ? 'low' : shot.xg > 0.07 ? 'mid' : 'high');
+  if (shot && shot.xg >= 0.03) add(shot, 'shoot', 'Frapper au but', `≈ ${Math.round(shot.xg * 100)} % de chances de marquer`, shot.xg > 0.15 ? 'low' : shot.xg > 0.07 ? 'mid' : 'high');
 
   const passes = by('pass');
   const through = passes.filter((o) => o.through).sort((a, b) => b.u - a.u)[0];
@@ -28,15 +28,15 @@ export function ballChoices(m, u) {
   const carry = by('carry').sort((a, b) => b.u - a.u)[0];
   const P = (o) => m.players[o.to];
 
-  if (through) add(through, '🚀', `Passe en profondeur pour ${short(P(through))}`, riskLabel(through.risk), riskClass(through.risk));
-  if (cross && out.length < 3) add(cross, '🎯', 'Centrer dans la surface', `${cross.attackers} partenaire(s) dans la surface · ${riskLabel(cross.risk)}`, riskClass(cross.risk));
-  if (forward && forward !== through) add(forward, '⬆️', `Passe vers l'avant à ${short(P(forward))}`, riskLabel(forward.risk), riskClass(forward.risk));
-  if (safe && out.length < 4) add(safe, '🔁', `Passe sûre à ${short(P(safe))}`, riskLabel(safe.risk), riskClass(safe.risk));
+  if (through) add(through, 'through', `Passe en profondeur pour ${short(P(through))}`, riskLabel(through.risk), riskClass(through.risk));
+  if (cross && out.length < 3) add(cross, 'cross', 'Centrer dans la surface', `${cross.attackers} partenaire(s) dans la surface · ${riskLabel(cross.risk)}`, riskClass(cross.risk));
+  if (forward && forward !== through) add(forward, 'forward', `Passe vers l'avant à ${short(P(forward))}`, riskLabel(forward.risk), riskClass(forward.risk));
+  if (safe && out.length < 4) add(safe, 'safe', `Passe sûre à ${short(P(safe))}`, riskLabel(safe.risk), riskClass(safe.risk));
   if (carry && out.length < 4) {
     const fwd = carry.forward > 3;
-    add(carry, fwd ? '⚡' : '↪️', fwd ? 'Percer balle au pied' : 'Conduire pour se dégager', riskLabel(carry.risk), riskClass(carry.risk));
+    add(carry, fwd ? 'dribble' : 'turn', fwd ? 'Percer balle au pied' : 'Conduire pour se dégager', riskLabel(carry.risk), riskClass(carry.risk));
   }
-  if (out.length < 2) add({ kind: 'hold' }, '🛡', 'Temporiser, protéger le ballon', 'garder la possession', 'low');
+  if (out.length < 2) add({ kind: 'hold' }, 'shield', 'Temporiser, protéger le ballon', 'garder la possession', 'low');
   // ordre d'affichage stable : le plus offensif d'abord
   void team;
   return { title: 'Tu as le ballon', sub: situation(m, u), list: out.slice(0, 4), type: 'ball' };
@@ -46,19 +46,19 @@ export function ballChoices(m, u) {
 export function defendChoices(m, u, h) {
   const d = dist(u.x, u.y, h.x, h.y);
   const list = [];
-  if (d < 3) list.push({ intent: 'tackle', icon: '🦵', label: 'Tacler maintenant', hint: 'récupération possible · risque de faute', cls: 'high' });
-  list.push({ intent: 'press', icon: '🏃', label: `Presser ${short(h)}`, hint: 'fermer son espace, le pousser à l\'erreur', cls: 'mid' });
-  list.push({ intent: 'cover', icon: '🚧', label: 'Couper la ligne de passe', hint: 'anticiper la passe suivante', cls: 'low' });
-  list.push({ intent: 'hold', icon: '📍', label: 'Garder ta position', hint: 'protéger la structure de l\'équipe', cls: 'low' });
+  if (d < 3) list.push({ intent: 'tackle', icon: 'tackle', label: 'Tacler maintenant', hint: 'récupération possible · risque de faute', cls: 'high' });
+  list.push({ intent: 'press', icon: 'press', label: `Presser ${short(h)}`, hint: 'fermer son espace, le pousser à l\'erreur', cls: 'mid' });
+  list.push({ intent: 'cover', icon: 'cut', label: 'Couper la ligne de passe', hint: 'anticiper la passe suivante', cls: 'low' });
+  list.push({ intent: 'hold', icon: 'pin', label: 'Garder ta position', hint: 'protéger la structure de l\'équipe', cls: 'low' });
   return { title: `${short(h)} arrive sur toi`, sub: situation(m, u), list, type: 'defend' };
 }
 
 // Sans ballon, en attaque : un partenaire a le ballon
 export function supportChoices(m, u, h) {
   const list = [
-    { intent: 'run', icon: '💨', label: 'Appel en profondeur', hint: 'attaquer l\'espace · attention au hors-jeu', cls: 'mid' },
-    { intent: 'call', icon: '🙋', label: `Demander le ballon à ${short(h)}`, hint: 'proposer une solution courte', cls: 'low' },
-    { intent: 'hold', icon: '📍', label: 'Rester en soutien', hint: 'équilibre et couverture', cls: 'low' },
+    { intent: 'run', icon: 'run', label: 'Appel en profondeur', hint: 'attaquer l\'espace · attention au hors-jeu', cls: 'mid' },
+    { intent: 'call', icon: 'call', label: `Demander le ballon à ${short(h)}`, hint: 'proposer une solution courte', cls: 'low' },
+    { intent: 'hold', icon: 'pin', label: 'Rester en soutien', hint: 'équilibre et couverture', cls: 'low' },
   ];
   return { title: `${short(h)} a le ballon`, sub: situation(m, u), list, type: 'support' };
 }

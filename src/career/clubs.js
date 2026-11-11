@@ -138,9 +138,20 @@ function fakeName(rng, used) {
 // Couleurs de maillot : couleurs réelles du club quand elles sont connues (src/data/club-colors.js)
 function colorsFor(id) { return kitColors(id); }
 
-function shortName(name) {
-  const w = name.replace(/\b(FC|SC|AS|US|AC|RC|CS|ES|EA|OGC|LOSC|SCO|AJ|SM|HSC|AF|U17|U19|\d+)\b/g, '').trim().split(/[\s-]+/).filter(Boolean);
-  return (w.length >= 2 ? w[0].slice(0, 2) + w[1][0] : (w[0] || name).slice(0, 3)).toUpperCase();
+// Abréviations d'usage (bandeau de score) ; sinon, premier mot distinctif du nom
+const SHORT = {
+  'paris-saint-germain': 'PSG', 'olympique-de-marseille': 'OM', 'olympique-lyonnais': 'OL', 'as-monaco': 'ASM', 'losc-lille': 'LIL',
+  'rc-lens': 'RCL', 'ogc-nice': 'NIC', 'stade-rennais': 'REN', 'rc-strasbourg-alsace': 'RCS', 'stade-brestois': 'BRE', 'toulouse-fc': 'TFC',
+  'fc-lorient': 'FCL', 'aj-auxerre': 'AJA', 'angers-sco': 'SCO', 'paris-fc': 'PFC', 'le-havre-ac': 'HAC', 'le-mans-fc': 'LMF', 'estac-troyes': 'ETG',
+  'as-saint-etienne': 'ASSE', 'fc-nantes': 'FCN', 'montpellier-hsc': 'MHSC', 'stade-de-reims': 'SDR', 'fc-metz': 'FCM', 'en-avant-guingamp': 'EAG',
+  'fc-sochaux-montbeliard': 'FCSM', 'as-nancy-lorraine': 'ASNL', 'clermont-foot': 'CF63', 'red-star-fc': 'RSFC', 'sm-caen': 'SMC', 'sc-bastia': 'SCB',
+  'girondins-de-bordeaux': 'FCGB', 'fc-girondins-de-bordeaux': 'FCGB', 'ac-ajaccio': 'ACA', 'dijon-fco': 'DFCO', 'amiens-sc': 'ASC', 'valenciennes-fc': 'VAFC',
+};
+const SHORT_STOP = /^(fc|sc|as|us|ac|rc|cs|es|ea|ogc|losc|sco|aj|sm|hsc|af|stade|olympique|racing|sporting|union|association|jeunesse|entente|en|avant|de|du|la|le|les|u17|u19|\d+)$/i;
+function shortName(name, id) {
+  if (SHORT[id]) return SHORT[id];
+  const w = name.normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[\s'-]+/).filter((x) => x && !SHORT_STOP.test(x));
+  return (w[0] || name).slice(0, 3).toUpperCase();
 }
 
 // Effectif d'une équipe pour une saison et une étape. Déterministe (graine = club + saison + étape).
@@ -204,7 +215,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
   const name = teamName(club, stage, league);
   return {
     def: {
-      id: `${club.id}-${stage}`, clubId: club.id, name, short: shortName(name), formation: '4-3-3', colors: colorsFor(club.id),
+      id: `${club.id}-${stage}`, clubId: club.id, name, short: shortName(club.name, club.id), formation: '4-3-3', colors: colorsFor(club.id),
       tactics: { pressing: 'moyen', bloc: 'moyen', style: 'équilibré' }, mods: {}, level: 0,
       identity: realList ? 'Noms publiés par le club ; notes estimées par le jeu.' : 'Effectif fictif généré par le jeu.',
     },

@@ -1,0 +1,226 @@
+{
+ "aj-auxerre": {
+  "tm": 290,
+  "name": "AJ Auxerre",
+  "league": "Ligue 1"
+ },
+ "angers-sco": {
+  "tm": 1420,
+  "name": "Angers SCO",
+  "league": "Ligue 1"
+ },
+ "estac-troyes": {
+  "tm": 1095,
+  "name": "ESTAC Troyes",
+  "league": "Ligue 1"
+ },
+ "fc-lorient": {
+  "tm": 1158,
+  "name": "FC Lorient",
+  "league": "Ligue 1"
+ },
+ "le-havre-ac": {
+  "tm": 738,
+  "name": "Le Havre AC",
+  "league": "Ligue 1"
+ },
+ "le-mans-fc": {
+  "tm": 1164,
+  "name": "Le Mans FC",
+  "league": "Ligue 1"
+ },
+ "olympique-lyonnais": {
+  "tm": 1041,
+  "name": "Olympique Lyonnais",
+  "league": "Ligue 1"
+ },
+ "paris-saint-germain": {
+  "tm": 583,
+  "name": "Paris Saint-Germain",
+  "league": "Ligue 1"
+ },
+ "rc-lens": {
+  "tm": 826,
+  "name": "RC Lens",
+  "league": "Ligue 1"
+ },
+ "rc-strasbourg-alsace": {
+  "tm": 667,
+  "name": "RC Strasbourg Alsace",
+  "league": "Ligue 1"
+ },
+ "stade-brestois": {
+  "tm": 3911,
+  "name": "Stade Brestois 29",
+  "league": "Ligue 1"
+ },
+ "stade-rennais": {
+  "tm": 273,
+  "name": "Stade Rennais FC",
+  "league": "Ligue 1"
+ },
+ "toulouse-fc": {
+  "tm": 415,
+  "name": "Toulouse FC",
+  "league": "Ligue 1"
+ },
+ "as-saint-etienne": {
+  "tm": 618,
+  "name": "AS Saint-Étienne",
+  "league": "Ligue 2"
+ },
+ "clermont-foot": {
+  "tm": 3524,
+  "name": "Clermont Foot 63",
+  "league": "Ligue 2"
+ },
+ "dijon-fco": {
+  "tm": 2969,
+  "name": "Dijon FCO",
+  "league": "Ligue 2"
+ },
+ "fc-metz": {
+  "tm": 347,
+  "name": "FC Metz",
+  "league": "Ligue 2"
+ },
+ "fc-nantes": {
+  "tm": 995,
+  "name": "FC Nantes",
+  "league": "Ligue 2"
+ },
+ "fc-sochaux-montbeliard": {
+  "tm": 750,
+  "name": "FC Sochaux-Montbéliard",
+  "league": "Ligue 2"
+ },
+ "grenoble-foot": {
+  "tm": 1290,
+  "name": "Grenoble Foot 38",
+  "league": "Ligue 2"
+ },
+ "red-star-fc": {
+  "tm": 1154,
+  "name": "Red Star FC",
+  "league": "Ligue 2"
+ },
+ "rodez-af": {
+  "tm": 11273,
+  "name": "Rodez AF",
+  "league": "Ligue 2"
+ },
+ "stade-de-reims": {
+  "tm": 1421,
+  "name": "Stade de Reims",
+  "league": "Ligue 2"
+ },
+ "stade-lavallois": {
+  "tm": 1080,
+  "name": "Stade Lavallois",
+  "league": "Ligue 2"
+ },
+ "us-boulogne": {
+  "tm": 7042,
+  "name": "US Boulogne",
+  "league": "Ligue 2"
+ },
+ "usl-dunkerque": {
+  "tm": 9202,
+  "name": "USL Dunkerque",
+  "league": "Ligue 2"
+ },
+ "amiens-sc": {
+  "tm": 1416,
+  "name": "Amiens SC",
+  "league": "Ligue 3"
+ },
+ "fc-fleury-91": {
+  "tm": 17442,
+  "name": "FC Fleury 91",
+  "league": "Ligue 3"
+ },
+ "fc-rouen": {
+  "tm": 1564,
+  "name": "FC Rouen 1899",
+  "league": "Ligue 3"
+ },
+ "fc-versailles-78": {
+  "tm": 13466,
+  "name": "FC Versailles 78",
+  "league": "Ligue 3"
+ },
+ "fc-villefranche-beaujolais": {
+  "tm": 18633,
+  "name": "FC Villefranche-Beaujolais",
+  "league": "Ligue 3"
+ },
+ "paris-13-atletico": {
+  "tm": 62382,
+  "name": "Paris 13 Atletico",
+  "league": "Ligue 3"
+ },
+ "sc-aubagne-air-bel": {
+  "tm": 42609,
+  "name": "SC Aubagne Air Bel",
+  "league": "Ligue 3"
+ },
+ "sc-bastia": {
+  "tm": 595,
+  "name": "SC Bastia",
+  "league": "Ligue 3"
+ },
+ "sm-caen": {
+  "tm": 1162,
+  "name": "SM Caen",
+  "league": "Ligue 3"
+ },
+ "us-concarneau": {
+  "tm": 21688,
+  "name": "US Concarneau",
+  "league": "Ligue 3"
+ },
+ "us-orleans": {
+  "tm": 10868,
+  "name": "US Orléans",
+  "league": "Ligue 3"
+ },
+ "us-thionville-lusitanos": {
+  "tm": 94385,
+  "name": "US Thionville Lusitanos",
+  "league": "Ligue 3"
+ },
+ "valenciennes-fc": {
+  "tm": 1423,
+  "name": "Valenciennes FC",
+  "league": "Ligue 3"
+ },
+ "angouleme-charente-fc": {
+  "tm": 3915,
+  "name": "Angoulême Charente FC",
+  "league": "Championnat National 1 - Groupe B"
+ },
+ "as-monaco": {
+  "tm": 162,
+  "name": "AS Monaco",
+  "league": "Ligue 1",
+  "exact": true
+ },
+ "losc-lille": {
+  "tm": 1082,
+  "name": "LOSC Lille",
+  "league": "Ligue 1",
+  "exact": true
+ },
+ "ogc-nice": {
+  "tm": 417,
+  "name": "OGC Nice",
+  "league": "Ligue 1",
+  "exact": true
+ },
+ "olympique-de-marseille": {
+  "tm": 244,
+  "name": "Olympique de Marseille",
+  "league": "Ligue 1",
+  "exact": true
+ }
+}
