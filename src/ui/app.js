@@ -24,6 +24,7 @@ const S = {
   seenEvents: 0, prev: null, accelDead: true, modalOpen: false, quick: false, config: null, uiDirty: true, lastUi: 0,
   // pilotage direct (carrière) : manuel ou délégué à l'IA
   ctl: { enabled: false, manual: true, engaged: false, zoom: 1.7, sent: '', userId: null, wasOn: false, fbT: -1 },
+  pace: { mode: 'court', real: 0, live: 0, cur: 1, isLive: false },
 };
 
 // ------------------------------------------------------------------ démarrage
@@ -35,6 +36,7 @@ export function startMatch(cfg) {
   const aiTeams = [0, 1].filter((i) => i !== userTeam || cfg.delegate);
   S.m = cfg.match ?? new Match({ home: cfg.home, away: cfg.away, seed: cfg.seed, userTeam, aiTeams, competition: DEFAULT_COMPETITION });
   S.speed = 1;
+  S.pace = { mode: matchLength(), real: 0, live: 0, cur: 1, isLive: false };
   S.paused = false; S.acc = 0; S.replay = null; S.selectedId = null; S.seenEvents = 0;
   S.draft = null; S.draftHistory = []; S.draftError = null; S.validated = [];
   S.subMode = false; S.subDraft = { outId: null, inId: null }; S.subError = null; S.quick = false;
@@ -88,10 +90,12 @@ function frame(now) {
       }
     } else if (!S.paused && !S.modalOpen && !S.quick && m.phase !== 'fulltime') {
       updateControl();
-      const mult = S.speed * (S.accelDead && m.phase === 'dead' ? (controlActive() ? 2.5 : 4) : 1);
+      let mult;
+      if (S.pace.mode === 'court') mult = paceSpeed(dt);
+      else mult = S.speed * (S.accelDead && m.phase === 'dead' ? (controlActive() ? 2.5 : 4) : 1);
       S.acc += dt * mult;
       let n = 0;
-      while (S.acc >= SIM.dt && n < 400) {
+      while (S.acc >= SIM.dt && n < 2000) {
         S.prev = snapshot();
         m.step();
         S.acc -= SIM.dt; n++;
@@ -149,6 +153,56 @@ function draw() {
 // ------------------------------------------------------------------ pilotage direct
 function controlActive() { return S.ctl.enabled && S.ctl.manual && S.ctl.engaged; }
 
+// ------------------------------------------------------------------ match court (≈ 4 min 30)
+// Le moteur joue toujours les 90 minutes. On accélère loin de l'action et on revient à 1×
+// pendant les temps forts, avec un budget qui fait tenir la rencontre dans la durée visée.
+export const PACE = { target: 250, liveBudget: 115, totalSim: 5640 };
+const LS_KEY = 'generation-football.matchLength';
+export function matchLength() { try { return localStorage.getItem(LS_KEY) || 'court'; } catch { return 'court'; } }
+export function setMatchLength(v) { try { localStorage.setItem(LS_KEY, v); } catch { /* stockage indisponible */ } if (S.pace) S.pace.mode = v; }
+
+function isLiveMoment() {
+  const m = S.m, b = m.ball;
+  if (m.phase !== 'play') return false;
+  const u = S.ctl.userId != null ? m.players[S.ctl.userId] : null;
+  if (u && u.onPitch && S.ctl.enabled && S.ctl.manual) {
+    // carrière en manuel : le ballon s'approche de ton joueur
+    return Math.hypot(u.x - b.x, u.y - b.y) < 18 || b.owner === u.id || (b.pass && b.pass.to === u.id);
+  }
+  // sinon : actions de but (tir en vol, ballon dans les 22 derniers mètres)
+  if (b.shot) return true;
+  return Math.min(Math.abs(b.x), Math.abs(105 - b.x)) < 22 && Math.abs(b.y - 34) < 26;
+}
+
+function paceSpeed(dt) {
+  const m = S.m, P = S.pace;
+  const simDone = (m.period - 1) * 2700 + Math.min(m.periodTime, 2700 + (m.added[m.period - 1] ?? 0) * 60);
+  const remainingSim = Math.max(30, PACE.totalSim - simDone);
+  const realLeft = Math.max(12, PACE.target - P.real);
+  // budget de temps forts réparti sur la rencontre (pas tout consommé en début de match)
+  const allowed = PACE.liveBudget * Math.min(1, simDone / PACE.totalSim) + 14;
+  const liveLeft = Math.max(0, Math.min(PACE.liveBudget, allowed) - P.live);
+  const wasLive = P.isLive;
+  // hystérésis : un temps fort dure au moins quelques secondes
+  const liveNow = isLiveMoment();
+  if (liveNow && (P.isLive || liveLeft > 6)) { P.isLive = liveLeft > 0; P.liveHold = 3.5; }
+  else if (P.isLive) { P.liveHold -= dt; if (P.liveHold <= 0 || liveLeft <= 0) P.isLive = false; }
+  let target;
+  if (P.isLive) target = controlActive() || (S.ctl.enabled && S.ctl.manual) ? 1 : 2;
+  else {
+    const liveReserve = Math.min(liveLeft, realLeft * 0.5);
+    target = Math.min(140, Math.max(5, remainingSim / Math.max(6, realLeft - liveReserve)));
+    if (m.phase === 'dead') target = Math.max(target, 20);
+  }
+  P.target = target; P.remainingSim = remainingSim; P.realLeft = realLeft; P.liveLeft = liveLeft;
+  // transitions douces vers l'accéléré, retour immédiat au temps forts
+  P.cur = target < P.cur ? target : Math.min(target, P.cur * Math.exp(dt * 7) + dt * 4);
+  P.real += dt;
+  if (P.isLive) P.live += dt;
+  if (wasLive !== P.isLive) S.uiDirty = true;
+  return P.cur;
+}
+
 // Synchronise l'état de pilotage avec le moteur et transmet les entrées (commandes horodatées)
 function updateControl() {
   const m = S.m, c = S.ctl;
@@ -157,7 +211,7 @@ function updateControl() {
   const on = u.onPitch;
   if (on && !c.wasOn) toast('Tu entres en jeu : à toi de jouer !');
   c.wasOn = on;
-  const want = on && c.manual;
+  const want = on && c.manual && (S.pace.mode !== 'court' || S.pace.isLive);
   if (want && !c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: true }); c.engaged = true; c.sent = ''; S.speed = 1; S.uiDirty = true; }
   if (!want && c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: false }); c.engaged = false; Pad.reset(); S.uiDirty = true; }
   Pad.setVisible(c.engaged);
@@ -288,6 +342,12 @@ function refreshUI(force) {
   $('#replay-banner').hidden = !S.replay;
   $('#btn-quick').disabled = m.phase === 'fulltime' || !!S.replay;
   const manual = S.ctl.enabled && S.ctl.manual;
+  const court = S.pace.mode === 'court';
+  document.querySelector('.speed').hidden = court;
+  if (court && !S.replay && !S.paused && m.phase !== 'fulltime') {
+    badge.textContent = S.pace.isLive ? (controlActive() ? '🎮 À TOI' : '▶ TEMPS FORT') : `⏩ ×${Math.round(S.pace.cur)}`;
+    badge.className = `badge ${S.pace.isLive ? 'live' : 'fast'}`;
+  }
   document.querySelectorAll('.speed button').forEach((b) => {
     b.classList.toggle('active', Number(b.dataset.speed) === S.speed);
     b.disabled = manual && Number(b.dataset.speed) > 1; // pilotage direct limité à 1×
@@ -646,11 +706,13 @@ function showSetup() {
       <label>Rôle<select id="su-role"><option value="0">Manager de l'équipe A</option><option value="1">Manager de l'équipe B</option><option value="observer">Observateur</option></select></label>
       <label>Graine (reproductibilité)<input type="text" id="su-seed" value="${esc(prev.seed)}"></label>
     </div>
+    <label>Durée du match<select id="su-length"><option value="court">Match court (≈ 4 min 30, temps forts au ralenti)</option><option value="reel">Temps réel (vitesses 1× à 8×)</option></select></label>
     <label><input type="checkbox" id="su-delegate" ${prev.delegate ? 'checked' : ''}> Déléguer les remplacements au staff</label>
     <p class="note">Profils synthétiques : aucun club ni joueur réel n'est utilisé dans ce prototype. Le catalogue réel (docs/) reste bloqué à l'import tant que les identités et les droits ne sont pas vérifiés.</p>
     <div class="actions"><button id="su-help">Commandes</button><button class="primary" id="su-go">Lancer le match</button></div>`, { closable: !!S.m });
   const home = modal.querySelector('#su-home'), away = modal.querySelector('#su-away');
   home.value = prev.home; away.value = prev.away; modal.querySelector('#su-role').value = prev.role;
+  modal.querySelector('#su-length').value = matchLength();
   const ident = () => {
     const h = TEAM_DEFS.find((t) => t.id === home.value), a = TEAM_DEFS.find((t) => t.id === away.value);
     modal.querySelector('#su-ident').innerHTML = `<strong>${esc(h.name)}</strong> : ${esc(h.identity)}<br><strong>${esc(a.name)}</strong> : ${esc(a.identity)}`;
@@ -659,6 +721,7 @@ function showSetup() {
   modal.querySelector('#su-help').addEventListener('click', () => showHelp(true));
   modal.querySelector('#su-go').addEventListener('click', () => {
     if (home.value === away.value) { toast('Choisissez deux équipes différentes.'); return; }
+    setMatchLength(modal.querySelector('#su-length').value);
     startMatch({ home: home.value, away: away.value, role: modal.querySelector('#su-role').value, seed: modal.querySelector('#su-seed').value.trim() || 'graine', delegate: modal.querySelector('#su-delegate').checked });
   });
 }
@@ -817,10 +880,12 @@ function showMenu() {
   openModal(`<h1>Menu du match</h1>
     <div class="actions" style="justify-content:flex-start">
       <button class="primary" id="mn-resume">Reprendre</button>
+      <label class="inline">Durée <select id="mn-length"><option value="court" ${S.pace.mode === 'court' ? 'selected' : ''}>Match court (≈ 4 min 30)</option><option value="reel" ${S.pace.mode === 'reel' ? 'selected' : ''}>Temps réel</option></select></label>
       <button id="mn-help">Aide</button>
       ${career ? '<button id="mn-quick">Simuler la fin du match</button>' : '<button id="mn-new">Nouveau match</button><button id="mn-home">Accueil</button>'}
     </div>`);
   $('#mn-resume').addEventListener('click', () => { closeModal(); S.paused = false; refreshUI(true); });
+  $('#mn-length').addEventListener('change', (e) => { setMatchLength(e.target.value); refreshUI(true); });
   $('#mn-help').addEventListener('click', () => showHelp());
   $('#mn-quick')?.addEventListener('click', () => { closeModal(); quickResult(); });
   $('#mn-new')?.addEventListener('click', () => showSetup());
@@ -829,7 +894,7 @@ function showMenu() {
 
 export function showQuickMatchSetup() { showSetup(); }
 export function setHomeHandler(fn) { S.onHome = fn; }
-export function initMatchUI() { bind(); }
+export function initMatchUI() { bind(); window.__gfPace = () => S.pace; }
 
 function bind() {
   S.renderer = new PitchRenderer($('#pitch'));
