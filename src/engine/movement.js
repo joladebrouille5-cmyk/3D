@@ -106,7 +106,12 @@ export function updateTeamShape(m, team) {
       // courses dans le dos de la défense
       if (poss && (slot.role === 'ST' || slot.role === 'W' || slot.role === 'AM') && !restart && b.owner != null && b.owner !== p.id) {
         if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + 0.09); y = y + (34 - y) * 0.3; }
-        else if (ballRel > 0.3 && m.rng.chance(0.035 * (0.5 + tv.direct))) p.runUntil = m.t + 3.5;
+        else {
+          // espace dans le dos d'une ligne haute : les appels deviennent bien plus fréquents
+          const space = 1 - offLine;
+          const lure = 1 + 7 * Math.max(0, space - 0.32);
+          if (ballRel > 0.25 && m.rng.chance(0.035 * (0.5 + tv.direct) * lure)) p.runUntil = m.t + 3.5;
+        }
       }
     }
     if (restart?.type === 'kickoff') rel = Math.min(rel, 0.47);
@@ -148,7 +153,7 @@ export function updateTeamShape(m, team) {
     const sorted = [...outfield].sort((a, c) => dist(a.x, a.y, tx, ty) - dist(c.x, c.y, tx, ty));
     const gdx = ownGX - tx, gdy = 34 - ty, gl = Math.hypot(gdx, gdy) || 1;
     sorted.slice(0, Math.max(1, nP)).forEach((p, i) => {
-      const off = nP === 0 ? 7 : i === 0 ? 1.7 : 4;
+      const off = nP === 0 ? 7 : i === 0 ? 1.7 : i === 1 ? 4 : 2.8;
       const urg = nP === 0 ? 0.5 : 0.78 + 0.22 * tv.press;
       p.pressRole = { off, rank: i, urg };
       targets.set(p.id, { x: tx + (gdx / gl) * off, y: ty + (gdy / gl) * off, urg });
@@ -172,9 +177,10 @@ export function updateTeamShape(m, team) {
     if (relDef < 0.42) {
       const taken = new Set(takenRun);
       for (const p of outfield) {
-        if (!['CB', 'FB', 'DM'].includes(p.role) || sorted.indexOf(p) < nP || takenRun.has(p.id)) continue;
+        const markRoles = relDef < 0.3 ? ['CB', 'FB', 'DM', 'CM'] : ['CB', 'FB', 'DM'];
+        if (!markRoles.includes(p.role) || sorted.indexOf(p) < nP || takenRun.has(p.id)) continue;
         const t0 = targets.get(p.id);
-        let best = null, bd = 14;
+        let best = null, bd = relDef < 0.3 ? 18 : 14;
         for (const o of opps) {
           if (taken.has(o.id) || o.role === 'GK' || o.id === b.owner) continue;
           if (m.relX(team, o.x) > 0.42) continue;
@@ -184,12 +190,14 @@ export function updateTeamShape(m, team) {
         if (best) {
           taken.add(best.id);
           const ddx = ownGX - best.x, ddy = 34 - best.y, dl = Math.hypot(ddx, ddy) || 1;
-          let mx = best.x + (ddx / dl) * 1.6;
-          const my = best.y + (ddy / dl) * 1.6;
+          const tight = relDef < 0.3 ? 1.0 : 1.6; // marquage plus serré près du but
+          let mx = best.x + (ddx / dl) * tight;
+          const my = best.y + (ddy / dl) * tight;
           // le marquage ne fait pas reculer la ligne : on tient la hauteur, sauf ballon dans la surface
           const floorRel = relDef < 0.16 ? 0.05 : Math.max(0.08, lineRel - 0.025);
           if (m.relX(team, mx) < floorRel) mx = m.absX(team, floorRel);
-          targets.set(p.id, { x: t0.x * 0.3 + mx * 0.7, y: t0.y * 0.3 + my * 0.7, urg: 0.8 });
+          const wM = relDef < 0.3 ? 0.88 : 0.7;
+          targets.set(p.id, { x: t0.x * (1 - wM) + mx * wM, y: t0.y * (1 - wM) + my * wM, urg: relDef < 0.3 ? 0.95 : 0.8 });
         }
       }
     }

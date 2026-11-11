@@ -585,7 +585,7 @@ export class Match {
       else continue;
       if (hands && b.shot) {
         const since = this.t - b.shot.t0;
-        reach = 1.0 + 3.1 * p.attrs.gk * clamp((since - 0.12) / 0.5, 0.2, 1) + 1.4 * clamp((since - 0.55) / 0.5, 0, 1);
+        reach = 1.2 + 3.1 * p.attrs.gk * clamp((since - 0.1) / 0.45, 0.35, 1) + 1.4 * clamp((since - 0.55) / 0.5, 0, 1);
       }
       const { d, s } = segDist(p.x, p.y, b.prevX, b.prevY, b.x, b.y);
       // sur un tir, le gardien intervient au point de passage le plus proche
@@ -631,7 +631,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      const pSave = clamp(1.12 - (d / reach) * 0.34 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      const pSave = clamp(1.11 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
         const shooter = this.players[shot.by];
@@ -647,7 +647,16 @@ export class Match {
         const ang = out + side * (this.teams[p.team].dir > 0 ? 1 : -1) * this.rng.range(0.35, 1.45);
         const s = this.rng.range(5, 11);
         b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(0.5, 4);
-        if (b.z > 1.7 && this.rng.chance(0.6)) { b.vx = -Math.cos(out) * 4; b.vy = side * 2; b.z = 2.6; b.vz = 3; } // claquée au-dessus
+        if (b.z > 1.7 && this.rng.chance(0.6)) { b.vx = -Math.cos(out) * 3; b.vy = side * 2; b.z = 2.7; b.vz = 5; } // claquée au-dessus (nettement)
+        else if (this.rng.chance(0.45)) {
+          // détournée en corner : le ballon file vers la ligne de but, à l'extérieur des poteaux
+          const gx = this.ownGoalX(this.teams[p.team]);
+          const vy = side * this.rng.range(6, 9), vx = Math.sign(gx - p.x || -Math.cos(out)) * this.rng.range(1.5, 3);
+          b.vx = vx; b.vy = vy; b.z = 0.3; b.vz = 1.5;
+          const tCross = Math.abs((gx - b.x) / vx);
+          const yCross = b.y + vy * tCross;
+          if (Math.abs(yCross - 34) < PITCH.goalWidth / 2 + 0.6) { b.z = 2.7; b.vz = 5; } // sinon par-dessus
+        }
         b.lastTouch = p.id; b.lastTeam = p.team;
         p.touchCooldown = this.t + 0.6;
         return;
@@ -671,6 +680,8 @@ export class Match {
       this.#log('contre', p.team, `Frappe contrée par ${p.name}.`, { player: p.id });
       b.shot = null;
       this.#deflect(p, 0.35, 1.2);
+      // une frappe contrée file souvent derrière la ligne de but
+      if (this.rng.chance(0.4)) { const gx = this.ownGoalX(team); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - p.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
       return;
     }
 
@@ -703,6 +714,7 @@ export class Match {
     let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9) * 0.03 - pr * 0.1 + (intended ? 0.08 : -0.06) + (d < 0.5 ? 0.03 : 0);
     if (pass && pass.lofted) pCtrl -= 0.06;
     if (pass && pass.type === 'through') pCtrl -= 0.1;
+    if (p.role === 'GK' && pass && pass.team === p.team) pCtrl = Math.max(pCtrl, 0.97); // gardien sur passe d'un partenaire
     pCtrl = clamp(pCtrl * (0.88 + 0.12 * p.energy), 0.12, 0.97);
     if (this.rng.chance(pCtrl)) this.#gainBall(p, false, pass);
     else this.#deflect(p, 0.25, 0.9);
@@ -719,7 +731,7 @@ export class Match {
     b.vx = b.vy = b.vz = 0; b.z = 0;
     for (const q of this.players) q.carry = null;
     const pr = pressureOn(this, p);
-    p.nextDecision = this.t + (gkHands ? this.rng.range(1.5, 4) : clamp(0.55 - 0.25 * p.attrs.decisions - 0.2 * pr + this.rng.range(0, 0.25), 0.15, 0.8));
+    p.nextDecision = this.t + (gkHands ? this.rng.range(1.5, 4) : clamp(1.15 - 0.35 * p.attrs.decisions - 0.45 * pr + this.rng.range(0, 0.6), 0.3, 1.7));
     p.gkHolding = !!gkHands;
     p.gotBallAt = this.t;
     if (prevTeam != null && prevTeam !== p.team) p.wonAt = this.t;
@@ -731,7 +743,12 @@ export class Match {
     const team = this.teams[p.team];
     const fwd = team.dir > 0 ? 0 : Math.PI;
     const side = p.y < 34 ? -1 : 1;
-    const ang = fwd + side * (team.dir > 0 ? 1 : -1) * this.rng.range(0.1, 0.9);
+    let ang = fwd + side * (team.dir > 0 ? 1 : -1) * this.rng.range(0.1, 0.9);
+    // sous pression près du but : on dégage où l'on peut, souvent en touche ou en corner
+    const ownGX = this.ownGoalX(team);
+    const nearGoal = Math.abs(p.x - ownGX) < 14;
+    if (nearGoal && this.rng.chance(0.5)) ang = (team.dir > 0 ? Math.PI : 0) + side * (team.dir > 0 ? -1 : 1) * this.rng.range(0.5, 1.1);
+    else if (this.rng.chance(0.15)) ang = side * Math.PI / 2 + this.rng.gauss(0, 0.3);
     const s = this.rng.range(14, 22);
     b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(4, 8); b.z = Math.max(b.z, 0.2);
     b.lastTouch = p.id; b.lastTeam = p.team; b.pass = { from: p.id, to: null, team: p.team, type: 'clearance', lofted: true, t0: this.t }; b.cross = false; b.shot = null;
@@ -823,7 +840,7 @@ export class Match {
     let aimZ = opts.header ? this.rng.range(0.2, 1.6) : this.rng.range(0.15, 2.0);
     const fatigue = 1 + 0.4 * (1 - p.energy);
     const skill = opts.header ? p.attrs.aerial : p.attrs.shooting;
-    const sigma = (0.6 + 0.15 * d * (1.4 - skill) + 0.7 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue;
+    const sigma = (0.85 + 0.15 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue;
     aimY += this.rng.gauss(0, sigma);
     aimZ = Math.max(0.05, aimZ + this.rng.gauss(0, sigma * 0.75));
     const speed = opts.header ? this.rng.range(10, 15) : opts.penalty ? this.rng.range(22, 28) : this.rng.range(17, 22) + 8 * p.attrs.shooting * this.rng.range(0.6, 1);
@@ -848,7 +865,7 @@ export class Match {
     if (onTarget) team.stats.onTarget++;
     const kind = opts.penalty ? 'Penalty tiré' : opts.header ? 'Tête' : opts.freekick ? 'Coup franc direct' : 'Frappe';
     this.#log('tir', p.team, `${kind} de ${p.name} (${team.short}) à ${Math.round(d)} m — xG pré-tir ${xg.toFixed(2)}.`, { player: p.id, xg, x: p.x, y: p.y, onTarget, major: true, shot: true });
-    if (!opts.penalty && !opts.header) this.#releaseBlock(p, ang, 0.45);
+    if (!opts.penalty && !opts.header) this.#shotBlock(p, ang);
     this.nextChaseUpdate = 0;
   }
 
@@ -871,9 +888,34 @@ export class Match {
     return false;
   }
 
+  // Contre d'une frappe : un défenseur placé dans la trajectoire, entre 0,5 et 7 m du tireur,
+  // peut s'interposer (jambe, corps). Plus il est proche de l'axe, plus le contre est probable.
+  #shotBlock(p, ang) {
+    const b = this.ball;
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    for (const o of this.onPitch(1 - p.team)) {
+      if (o.role === 'GK' || this.t < o.stunUntil) continue;
+      const dx = o.x - p.x, dy = o.y - p.y;
+      const along = dx * ux + dy * uy;
+      if (along < 0.4 || along > 7) continue;
+      const perp = Math.abs(-dx * uy + dy * ux);
+      const reach = 0.75 + 0.25 * o.attrs.positioning;
+      if (perp > reach) continue;
+      const pBlock = 0.62 * (1 - perp / reach) * (0.75 + 0.35 * o.attrs.positioning) * (along < 2 ? 1 : 1 - (along - 2) / 8);
+      if (this.rng.chance(pBlock)) {
+        if (b.shot) { b.shot.blocked = true; this.#log('contre', o.team, `Frappe contrée par ${o.name}.`, { player: o.id }); b.shot = null; }
+        b.lastShot = { by: p.id, team: p.team, t: this.t };
+        this.#deflect(o, 0.25, 0.8);
+        if (this.rng.chance(0.4)) { const gx = this.ownGoalX(this.teams[o.team]); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - o.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
+        return true;
+      }
+    }
+    return false;
+  }
+
   carry(p, dx, dy, speed) {
     p.carry = { dx, dy, speed };
-    p.nextDecision = this.t + 0.45 + this.rng.range(0, 0.2);
+    p.nextDecision = this.t + 0.7 + this.rng.range(0, 0.5);
   }
 
   // ---------------------------------------------------------------- duels défensifs
@@ -888,7 +930,7 @@ export class Match {
     const gdx = gx - ax, gdy = 34 - ay, gl = Math.hypot(gdx, gdy) || 1;
     for (const p of this.onPitch(team.idx)) {
       if (!p.pressRole) continue;
-      const side = p.pressRole.rank === 1 ? 1.8 : 0;
+      const side = p.pressRole.rank === 1 ? 1.8 : p.pressRole.rank === 2 ? -1.8 : 0;
       p.tx = ax + (gdx / gl) * p.pressRole.off + (-gdy / gl) * side;
       p.ty = ay + (gdy / gl) * p.pressRole.off + (gdx / gl) * side;
       p.urgency = p.pressRole.urg;
@@ -905,10 +947,13 @@ export class Match {
       if (def.role === 'GK' || def.injured || this.t < def.tackleCooldown || this.t < def.stunUntil) continue;
       if (this.isControlled(def)) continue; // le tacle du joueur piloté est sa décision
       const d = dist(def.x, def.y, h.x, h.y);
-      if (d > 1.3) continue;
+      if (d > 1.5) continue;
       const tv = this.teams[def.team].tv;
       if (this.t - (h.wonAt ?? -9) < 0.4) continue;
-      const rate = 0.35 + 0.6 * def.attrs.aggression + 0.3 * tv.press + (d < 0.9 ? 0.4 : 0);
+      // près de son but, on ne laisse pas conduire : engagement nettement plus fréquent
+      const dGoal = Math.abs(h.x - this.ownGoalX(this.teams[def.team]));
+      const danger = dGoal < 30 ? (30 - dGoal) / 30 : 0;
+      const rate = 0.35 + 0.6 * def.attrs.aggression + 0.3 * tv.press + (d < 0.9 ? 0.4 : 0) + 1.6 * danger + (h.carry ? 0.3 : 0);
       if (!this.rng.chance(rate * dt)) continue;
       this.#duel(def, h);
       return;
@@ -925,8 +970,11 @@ export class Match {
     const attSpeed = Math.hypot(att.vx, att.vy);
     const slide = !goalSide && attSpeed > 4.5 && this.rng.chance(0.25 + 0.3 * def.attrs.aggression);
     const diff = def.attrs.tackling * (0.8 + 0.2 * def.energy) - att.attrs.dribbling * (0.8 + 0.2 * att.energy);
-    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0));
-    const pFoul = 0.03 + 0.05 * def.attrs.aggression + 0.05 * (1 - def.attrs.tackling) + (slide ? 0.1 : 0) + (goalSide ? 0 : 0.04);
+    // couverture : chaque défenseur supplémentaire à portée réduit l'espace de sortie du dribbleur
+    let cover = 0;
+    for (const o of this.onPitch(def.team)) if (o !== def && o.role !== 'GK' && dist(o.x, o.y, att.x, att.y) < 3.2) cover++;
+    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2));
+    const pFoul = 0.018 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025);
     const r = this.rng.next();
     // incident physique : évalué au contact, pas de quota
     const injuryRisk = 0.0025 * (slide ? 3 : 1) * (1.6 - att.energy);
@@ -949,7 +997,8 @@ export class Match {
       }
       if (slide) def.stunUntil = this.t + 1.2;
     } else {
-      def.stunUntil = this.t + (slide ? 1.6 : 0.8);
+      // dribblé : celui qui était bien placé se retourne vite, l'autre est éliminé
+      def.stunUntil = this.t + (slide ? 1.6 : goalSide ? 0.45 : 0.8);
     }
     if (this.rng.chance(injuryRisk)) this.#injury(att);
   }
@@ -961,8 +1010,8 @@ export class Match {
     const inOwnBox = inBox(att.x, att.y, this.ownGoalX(dteam));
     this.#log('faute', def.team, `Faute de ${def.name} (${dteam.short}) sur ${att.name}${inOwnBox ? ' dans la surface' : ''}.`, { player: def.id, major: inOwnBox });
     let red = false;
-    if (sev > 1.45) red = true;
-    else if (sev > 0.76) {
+    if (sev > 1.6) red = true;
+    else if (sev > 0.7) {
       def.yellow++; dteam.stats.yellows++;
       this.stoppage[this.period - 1] += 10;
       if (def.yellow >= 2) { red = true; this.#log('carton', def.team, `Second avertissement pour ${def.name} : expulsion.`, { player: def.id, card: 'red', major: true }); }

@@ -523,13 +523,12 @@ function poisson(r, lambda) {
   return k - 1;
 }
 
-// Modèle agrégé des rencontres de contexte. Le volume de buts est aligné sur la production
-// actuelle du moteur de match (≈ 6 buts/match, calibration en cours, cf. README) pour que le
-// classement reste cohérent entre matchs joués et matchs résumés. À ajuster avec le moteur.
-export const CONTEXT_GOALS = { home: 3.1, away: 2.7 };
+// Modèle agrégé des rencontres de contexte : volume de buts aligné sur le moteur de match
+// recalibré (≈ 2,9 buts par match, avantage du terrain compris).
+export const CONTEXT_GOALS = { home: 1.6, away: 1.25 };
 function aggregateScore(st, h, a, r) {
   const sH = teamStrength(clubById(h), st.stage, st.league), sA = teamStrength(clubById(a), st.stage, st.league);
-  return [poisson(r, CONTEXT_GOALS.home * Math.exp(5 * (sH - sA))), poisson(r, CONTEXT_GOALS.away * Math.exp(5 * (sA - sH)))];
+  return [poisson(r, CONTEXT_GOALS.home * Math.exp(7 * (sH - sA))), poisson(r, CONTEXT_GOALS.away * Math.exp(7 * (sA - sH)))];
 }
 
 function recordResult(st, h, a, gh, ga) {

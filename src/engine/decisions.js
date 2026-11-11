@@ -23,7 +23,9 @@ export function pressureOn(m, p) {
 }
 
 // Estimateur de danger pré-tir (indicateur de bilan, distinct de la résolution).
-export function xgEstimate(m, p, { header = false, pressure = 0, freekick = false } = {}) {
+// `bias` : décalage logit. Le porteur décide sur sa perception de l'occasion (bias > 0),
+// le bilan affiche l'indicateur calibré sur la résolution des tirs (bias = 0).
+export function xgEstimate(m, p, { header = false, pressure = 0, freekick = false, bias = 0 } = {}) {
   const team = m.teams[p.team];
   const gx = m.oppGoalX(team);
   const d = dist(p.x, p.y, gx, 34);
@@ -34,7 +36,7 @@ export function xgEstimate(m, p, { header = false, pressure = 0, freekick = fals
     const { d: dd, s } = segDist(o.x, o.y, p.x, p.y, gx, 34);
     if (dd < 1.2 && s > 0.02 && s < 0.9) blockers++;
   }
-  const z = 0.25 - 0.14 * d + 1.25 * a - 0.8 * pressure - (header ? 0.9 : 0) - 0.35 * blockers - (freekick ? 0.4 : 0);
+  const z = bias + 0.12 - 0.14 * d + 1.25 * a - 0.8 * pressure - (header ? 0.9 : 0) - 0.35 * blockers - (freekick ? 0.4 : 0);
   return clamp(sigmoid(z), 0.005, 0.85);
 }
 
@@ -84,9 +86,9 @@ export function decideHolder(m, p, restartType) {
   const dGoal = dist(p.x, p.y, gx, 34);
   const shotAllowed = !restartType || (restartType === 'freekick' && m.restartDirect);
   if ((shotAllowed || (restartType === 'freekick' && dGoal < 30)) && dGoal < 34 && rel > 0.62) {
-    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType });
+    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType, bias: 0.13 });
     // un tir termine presque toujours la possession : on le compare à la valeur de la garder
-    const hesitation = 0.02 + 0.002 * Math.max(0, dGoal - 12) + 0.02 * pr - 0.012 * (p.attrs.shooting - 0.5);
+    const hesitation = -0.004 + 0.0008 * Math.max(0, dGoal - 12) + 0.016 * pr - 0.014 * (p.attrs.shooting - 0.5);
     const v = xg + 0.1 * here - here - hesitation;
     opts.push({ kind: 'shoot', u: v });
   }
@@ -98,6 +100,8 @@ export function decideHolder(m, p, restartType) {
     const d = dist(p.x, p.y, q.x, q.y);
     if (d < 4 || (throwIn && d > 22)) continue;
     const isGK = q.role === 'GK';
+    // pas de passe en retrait au gardien quand on est déjà près de son propre but
+    if (isGK && dist(p.x, p.y, m.ownGoalX(team), 34) < 26) continue;
     const qRel = m.relX(team, q.x);
     if (restartType === 'kickoff' && qRel > 0.5) continue;
     const lofted = d > 32 || (restartType === 'goalkick' && d > 28);
@@ -111,15 +115,16 @@ export function decideHolder(m, p, restartType) {
     if (m.t < (q.callUntil ?? 0)) gain += 0.03; // un partenaire demande le ballon : signal, pas ordre
     if (qRel > rel) gain += 0.006 * tv.direct * ((qRel - rel) * 4);
     else gain += 0.005 * (1 - tv.direct);
-    if (lofted) gain -= 0.01 * (1 - tv.direct);
+    if (lofted) gain -= 0.014 * (1 - tv.direct) + 0.004;
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
     const u = (1 - risk * riskW) * gain - risk * riskW * lossCostAt(mx, my) - here;
     opts.push({ kind: 'pass', to: q.id, tx: q.x + q.vx * 0.3, ty: q.y + q.vy * 0.3, lofted, u });
 
     // passe dans la course (attaquants, ailiers, latéraux qui montent)
     if (!restartType || restartType === 'freekick') {
-      const fwd = ['ST', 'W', 'AM', 'FB', 'CM'].includes(q.role);
-      if (fwd && qRel >= rel - 0.04 && qRel > 0.45) {
+      const running = m.t < (q.runUntil ?? 0) || (m.t < (q.callUntil ?? 0));
+      const fwd = ['ST', 'W', 'AM'].includes(q.role) || (q.role === 'FB' && running);
+      if (fwd && running && qRel >= rel - 0.02 && qRel > 0.5) {
         const lead = 7 + 5 * tv.direct;
         const tx = clamp(q.x + team.dir * lead, 2, PITCH.length - 2);
         const ty = clamp(q.y + (34 - q.y) * 0.15, 3, PITCH.width - 3);
