@@ -6,9 +6,8 @@ import { Match } from '../engine/match.js';
 import { SIM, INSTRUCTION_OPTIONS, INSTRUCTION_LABELS, ROLE_LABELS, DEFAULT_COMPETITION } from '../engine/config.js';
 import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
-import { Pad } from './pad.js';
 import { crestSVG } from './crest.js';
-import { pickTarget, canCross } from '../engine/control.js';
+import { ballChoices, defendChoices, supportChoices, choiceTargets } from './choices.js';
 import { matchRating } from '../career/career.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -43,8 +42,9 @@ export function startMatch(cfg) {
   S.subMode = false; S.subDraft = { outId: null, inId: null }; S.subError = null; S.quick = false;
   const u = S.career ? S.m.players.find((p) => p.isUser) : null;
   const canControl = !!u && u.role !== 'GK';
-  S.ctl = { enabled: canControl, manual: canControl, engaged: false, zoom: 1.7, sent: '', userId: u?.id ?? null, wasOn: !!u?.onPitch, fbT: -1 };
-  Pad.reset(); Pad.setVisible(false);
+  // choix en match : activés pour un joueur de champ, désactivables (l'IA joue alors pour toi)
+  S.ctl = { enabled: canControl, manual: canControl, zoom: 1.7, userId: u?.id ?? null, wasOn: !!u?.onPitch, lastOwner: null, lastBallChoice: -99, lastOffChoice: -99, made: 0 };
+  S.choice = null; $('#choices').hidden = true;
   S.renderer.cam.zoom = 1;
   S.tab = 'consignes';
   $('#tab1-label').textContent = S.career ? 'Mon match' : 'Consignes';
@@ -89,11 +89,11 @@ function frame(now) {
         S.replay.cursor += dt * 5; // 5 images de replay par seconde réelle = vitesse 1×
         if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; }
       }
-    } else if (!S.paused && !S.modalOpen && !S.quick && m.phase !== 'fulltime') {
+    } else if (!S.paused && !S.modalOpen && !S.quick && !S.choice && m.phase !== 'fulltime') {
       updateControl();
       let mult;
       if (S.pace.mode === 'court') mult = paceSpeed(dt);
-      else mult = S.speed * (S.accelDead && m.phase === 'dead' ? (controlActive() ? 2.5 : 4) : 1);
+      else mult = S.speed * (S.accelDead && m.phase === 'dead' ? 4 : 1);
       S.acc += dt * mult;
       let n = 0;
       while (S.acc >= SIM.dt && n < 2000) {
@@ -102,6 +102,7 @@ function frame(now) {
         S.acc -= SIM.dt; n++;
         if (handleNewEvents()) { S.acc = 0; break; }
         if (m.phase === 'fulltime') break;
+        if (checkChoice()) { S.acc = 0; break; }
       }
       if (n) S.uiDirty = true;
     }
@@ -141,18 +142,16 @@ function draw() {
   let aim = null;
   if (u && u.onPitch && S.career) {
     const z = S.ctl.zoom;
-    S.renderer.follow(u.x * 0.65 + ball.x * 0.35, u.y * 0.65 + ball.y * 0.35, z);
-    if (controlActive() && m.ball.owner === u.id && m.phase === 'play') {
-      const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
-      const tg = pickTarget(m, m.players[u.id], w.dx, w.dy, 'short');
-      if (tg) aim = { x0: u.x, y0: u.y, x1: tg.player.x, y1: tg.player.y };
-    }
+    // choix ouvert sur écran bas (téléphone) : le panneau occupe la droite, on décale la vue
+    const shift = S.choice && innerHeight <= 520 ? 14 / z * (S.renderer.mirror ? -1 : 1) : 0;
+    S.renderer.follow(u.x * 0.65 + ball.x * 0.35 + shift, u.y * 0.65 + ball.y * 0.35, z);
+    if (S.choice && S.choice.targets) aim = S.choice.targets;
   } else S.renderer.follow(52.5, 34, 1);
   S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim });
 }
 
 // ------------------------------------------------------------------ pilotage direct
-function controlActive() { return S.ctl.enabled && S.ctl.manual && S.ctl.engaged; }
+function controlActive() { return S.ctl.enabled && S.ctl.manual; }
 
 // ------------------------------------------------------------------ match court (≈ 4 min 30)
 // Le moteur joue toujours les 90 minutes. On accélère loin de l'action et on revient à 1×
@@ -189,7 +188,7 @@ function paceSpeed(dt) {
   if (liveNow && (P.isLive || liveLeft > 6)) { P.isLive = liveLeft > 0; P.liveHold = 3.5; }
   else if (P.isLive) { P.liveHold -= dt; if (P.liveHold <= 0 || liveLeft <= 0) P.isLive = false; }
   let target;
-  if (P.isLive) target = controlActive() || (S.ctl.enabled && S.ctl.manual) ? 1 : 2;
+  if (P.isLive) target = controlActive() ? 1.2 : 2;
   else {
     const liveReserve = Math.min(liveLeft, realLeft * 0.5);
     target = Math.min(140, Math.max(5, remainingSim / Math.max(6, realLeft - liveReserve)));
@@ -204,46 +203,87 @@ function paceSpeed(dt) {
   return P.cur;
 }
 
-// Synchronise l'état de pilotage avec le moteur et transmet les entrées (commandes horodatées)
+// Entrée en jeu, etc.
 function updateControl() {
   const m = S.m, c = S.ctl;
-  if (!c.enabled) return;
+  if (c.userId == null) return;
   const u = m.players[c.userId];
-  const on = u.onPitch;
-  if (on && !c.wasOn) toast('Tu entres en jeu : à toi de jouer !');
-  c.wasOn = on;
-  const want = on && c.manual && (S.pace.mode !== 'court' || S.pace.isLive);
-  if (want && !c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: true }); c.engaged = true; c.sent = ''; S.speed = 1; S.uiDirty = true; }
-  if (!want && c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: false }); c.engaged = false; Pad.reset(); S.uiDirty = true; }
-  Pad.setVisible(c.engaged);
-  if (!c.engaged) return;
-  Pad.poll();
-  const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
-  const q = `${Math.round(w.dx * 8)}|${Math.round(w.dy * 8)}|${Pad.sprint ? 1 : 0}`;
-  if (q !== c.sent) { c.sent = q; m.queueCommand({ type: 'ctrl', dx: w.dx, dy: w.dy, sprint: Pad.sprint }); }
-  const has = m.ball.owner === u.id;
-  Pad.setLabels(has ? { A: 'Passe', B: 'Tir', X: canCross(m, u) ? 'Centre' : 'Longue', Y: 'Profondeur' } : { A: 'Tacle', B: '', X: '', Y: 'Appel' });
-  const fb = m.control?.feedback;
-  if (fb && fb.t !== c.fbT) { c.fbT = fb.t; const h = $('#pad-hint'); h.textContent = fb.text; h.hidden = false; clearTimeout(S.hintTimer); S.hintTimer = setTimeout(() => { h.hidden = true; }, 1200); }
+  if (u.onPitch && !c.wasOn && S.career) toast('Tu entres en jeu !');
+  c.wasOn = u.onPitch;
 }
 
-function padAction(btn) {
+// ------------------------------------------------------------------ choix en match
+// Moments de décision : réception du ballon, adversaire porteur qui arrive sur toi,
+// partenaire porteur qui peut te trouver. Le match est figé pendant le choix (aucun bonus,
+// aucun malus de temps). Entre deux choix, l'IA joue pour toi « à l'instinct ».
+const CHOICE_GAP = { ball: 7, off: 22 };
+function checkChoice() {
+  const m = S.m, c = S.ctl;
+  if (!c.enabled || !c.manual || m.phase !== 'play' || S.replay) return false;
+  if (S.pace.mode === 'court' && !S.pace.isLive) return false; // seulement pendant les temps forts
+  const u = m.players[c.userId];
+  if (!u.onPitch || u.injured) return false;
+  const b = m.ball;
+  const owner = b.owner != null ? m.players[b.owner] : null;
+  const justGot = owner && owner.id === u.id && c.lastOwner !== u.id;
+  c.lastOwner = owner?.id ?? null;
+  let ch = null;
+  if (justGot && m.t - c.lastBallChoice >= CHOICE_GAP.ball && !u.gkHolding) {
+    ch = ballChoices(m, u); c.lastBallChoice = m.t;
+  } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= CHOICE_GAP.off) {
+    const d = Math.hypot(owner.x - u.x, owner.y - u.y);
+    if (owner.team !== u.team && d < 9 && !owner.gkHolding) { ch = defendChoices(m, u, owner); c.lastOffChoice = m.t; }
+    else if (owner.team === u.team && d < 28 && d > 6) {
+      const team = m.teams[u.team];
+      if (m.relX(team, u.x) > m.relX(team, owner.x) - 0.04 && m.relX(team, u.x) > 0.45) { ch = supportChoices(m, u, owner); c.lastOffChoice = m.t; }
+    }
+  }
+  if (!ch || !ch.list.length) return false;
+  openChoice(ch, u);
+  return true;
+}
+
+function openChoice(ch, u) {
   const m = S.m;
-  if (!m || !controlActive() || S.paused || S.modalOpen || S.replay) return;
+  S.choice = { ...ch, targets: ch.type === 'ball' ? choiceTargets(m, u, ch) : null, opened: performance.now() };
+  const box = $('#choices');
+  box.innerHTML = `<div class="ch-head"><strong>${esc(ch.title)}</strong><span>${esc(ch.sub)}</span></div>
+    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${c.icon}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span></button>`).join('')}</div>
+    <div class="ch-foot"><button id="ch-auto" class="ch-skip">🤖 Laisser l'instinct décider</button></div>`;
+  box.hidden = false;
+  box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
+  box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
+  S.uiDirty = true;
+}
+
+function pickChoice(i) {
+  const m = S.m, ch = S.choice;
+  if (!ch) return;
   const u = m.players[S.ctl.userId];
-  const has = m.ball.owner === u.id;
-  const action = btn === 'C' ? 'call' : has ? { A: 'pass', B: 'shoot', X: 'long', Y: 'through' }[btn] : { A: 'tackle', Y: 'call', B: 'shoot', X: 'long' }[btn];
-  if (!action) return;
-  const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
-  m.queueCommand({ type: 'act', action, dx: w.dx, dy: w.dy });
+  const c = ch.list[i];
+  if (c) {
+    if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
+    else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent });
+    S.ctl.made++;
+    flashHint(`${c.icon} ${c.label}`);
+  }
+  S.choice = null;
+  $('#choices').hidden = true;
+  S.uiDirty = true;
+}
+
+function flashHint(text) {
+  const h = $('#pad-hint');
+  h.textContent = text; h.hidden = false;
+  clearTimeout(S.hintTimer); S.hintTimer = setTimeout(() => { h.hidden = true; }, 1400);
 }
 
 function setManual(v) {
   const c = S.ctl;
   if (!c.enabled) return;
   c.manual = v;
-  if (v) S.speed = 1;
-  toast(v ? 'Pilotage manuel : tu contrôles ton joueur.' : 'Pilotage délégué : l\'IA joue pour toi (les vitesses rapides sont disponibles).');
+  if (!v && S.choice) pickChoice(-1);
+  toast(v ? 'Choix activés : tu décides aux moments clés.' : 'L\'IA joue pour toi (instinct).');
   refreshUI(true);
 }
 
@@ -261,7 +301,7 @@ function handleNewEvents() {
     addFeed(ev);
     if (ev.type === 'but' && !S.quick) goalBanner(ev);
     if (ev.pause && (ev.type !== 'blessure' || ev.team === userTeamIdx())) {
-      S.paused = true; stop = true; Pad.reset();
+      S.paused = true; stop = true;
       toast(ev.decision ? `${ev.text} Décision requise : préparez un remplacement ou laissez-le sur le terrain.` : ev.text);
     }
     if (ev.type === 'fin') { stop = true; setTimeout(showSummary, 400); }
@@ -336,7 +376,7 @@ function refreshUI(force) {
   else if (S.paused) { badge.textContent = 'PAUSE'; badge.className = 'badge pause'; }
   else { badge.textContent = `DIRECT ${S.speed}×`; badge.className = 'badge live'; }
   $('#btn-play').innerHTML = S.paused ? '<span class="ico">▶</span><span class="lbl"> Reprendre</span>' : '<span class="ico">⏸</span><span class="lbl"> Pause</span>';
-  document.body.classList.toggle('ctl-manual', S.ctl.enabled && S.ctl.manual);
+  document.body.classList.toggle('ctl-manual', false);
   $('#btn-play').disabled = !!S.replay || m.phase === 'fulltime';
   $('#btn-live').hidden = !S.replay;
   $('#btn-replay').hidden = !!S.replay;
@@ -346,19 +386,19 @@ function refreshUI(force) {
   const court = S.pace.mode === 'court';
   document.querySelector('.speed').hidden = court;
   if (court && !S.replay && !S.paused && m.phase !== 'fulltime') {
-    badge.textContent = S.pace.isLive ? (controlActive() ? '🎮 À TOI' : '▶ TEMPS FORT') : `⏩ ×${Math.round(S.pace.cur)}`;
+    badge.textContent = S.choice ? '🎯 À TOI DE CHOISIR' : S.pace.isLive ? '▶ TEMPS FORT' : `⏩ ×${Math.round(S.pace.cur)}`;
     badge.className = `badge ${S.pace.isLive ? 'live' : 'fast'}`;
   }
   document.querySelectorAll('.speed button').forEach((b) => {
     b.classList.toggle('active', Number(b.dataset.speed) === S.speed);
-    b.disabled = manual && Number(b.dataset.speed) > 1; // pilotage direct limité à 1×
+    b.disabled = false;
   });
   const bc = $('#btn-ctl'), bz = $('#btn-zoom');
   bc.hidden = !S.ctl.enabled; bz.hidden = !S.career || S.ctl.userId == null;
-  bc.innerHTML = S.ctl.manual ? '<span class="ico">🎮</span><span class="lbl"> Manuel</span>' : '<span class="ico">🤖</span><span class="lbl"> Auto</span>';
+  bc.innerHTML = S.ctl.manual ? '<span class="ico">🎯</span><span class="lbl"> Choix</span>' : '<span class="ico">🤖</span><span class="lbl"> Auto</span>';
   bc.classList.toggle('active', S.ctl.manual);
   bz.innerHTML = `<span class="ico">🔍</span><span class="lbl"> ${S.ctl.zoom <= 1 ? 'Large' : S.ctl.zoom < 2 ? 'Moyen' : 'Proche'}</span>`;
-  if (S.paused || S.replay || m.phase === 'fulltime') Pad.setVisible(false);
+  if ((S.paused || S.replay || m.phase === 'fulltime') && S.choice) { /* le choix reste affiché */ }
   renderLeft();
   renderRight();
 }
@@ -512,15 +552,9 @@ function renderMine() {
       <div><b>${(st.distance / 1000).toFixed(1)}</b><span>km</span></div>
     </div>
     <div class="gauge"><span>Énergie</span><span class="bar"><i class="${e > 66 ? 'good' : e > 45 ? 'mid' : 'low'}" style="width:${e}%"></i></span></div>
-    ${S.ctl.enabled ? `<h2>Commandes</h2>
-    <table class="help-table">
-      <tr><td>${touch ? 'Stick (zone gauche)' : '<kbd>ZQSD</kbd> / flèches'}</td><td>Se déplacer${touch ? ' ; pousser à fond pour sprinter' : ' ; <kbd>Maj</kbd> pour sprinter'}</td></tr>
-      <tr><td>${touch ? 'Passe' : '<kbd>E</kbd>'}</td><td>Passe vers le partenaire visé · sans ballon : tacle</td></tr>
-      <tr><td>${touch ? 'Tir' : '<kbd>F</kbd>'}</td><td>Frapper (incliner le stick pour choisir le côté)</td></tr>
-      <tr><td>${touch ? 'Longue / Centre' : '<kbd>R</kbd>'}</td><td>Jeu long, ou centre depuis un couloir</td></tr>
-      <tr><td>${touch ? 'Profondeur / Appel' : '<kbd>A</kbd> (AZERTY) · <kbd>C</kbd>'}</td><td>Passe dans la course · sans ballon : demander le ballon</td></tr>
-    </table>
-    <p class="muted">Sans toucher au stick, ton joueur se replace seul (placement assisté). La ligne dorée montre le partenaire visé : la réussite dépend de ta technique, de la pression et de la fatigue. Coups de pied arrêtés : gérés par l'équipe.</p>`
+    ${S.ctl.enabled ? `<h2>Tes choix</h2>
+    <p>${S.ctl.manual ? `Aux moments clés, le match se fige et tu choisis : passe, profondeur, frappe, dribble, centre ; sans ballon : presser, tacler, couper une passe, faire un appel ou demander le ballon. Choix faits ce match : <b>${S.ctl.made}</b>.` : 'Choix désactivés : l\'IA joue pour toi. Touche le bouton 🤖/🎯 pour les réactiver.'}</p>
+    <p class="muted">Les indications (risque, chances de marquer) sont des estimations : la réussite dépend de ta technique, de la pression et de la fatigue. Clavier : touches 1 à 4, 0 pour laisser l'instinct décider.</p>`
     : u.role === 'GK' ? '<p class="muted">Le pilotage direct du gardien n\'est pas encore disponible : l\'IA joue pour toi.</p>' : ''}`;
 }
 
@@ -789,7 +823,7 @@ function quickResult() {
     closeModal();
     if (ti != null && !m.aiTeams.includes(ti)) m.aiTeams.push(ti);
     if (S.ctl.engaged) { m.queueCommand({ type: 'control', playerId: S.ctl.userId, on: false }); S.ctl.engaged = false; }
-    S.ctl.manual = false; Pad.setVisible(false);
+    S.ctl.manual = false; if (S.choice) pickChoice(-1);
     S.quick = true;
     const chunk = () => {
       for (let i = 0; i < 3000 && m.phase !== 'fulltime'; i++) { m.step(); }
@@ -825,13 +859,18 @@ function onKeyDown(e) {
   }
   if (!S.m) return;
   // pilotage direct : touches de déplacement et de geste (jamais pendant une pause ou un replay)
-  if (controlActive() && !S.paused && !S.replay && !e.ctrlKey && !e.metaKey && !e.altKey && Pad.keyDown(e)) { e.preventDefault(); return; }
+  // choix ouvert : 1-4 pour choisir, Échap / 0 pour laisser l'instinct
+  if (S.choice) {
+    const n = Number(e.key);
+    if (n >= 1 && n <= S.choice.list.length) { e.preventDefault(); pickChoice(n - 1); return; }
+    if (e.key === '0') { e.preventDefault(); pickChoice(-1); return; }
+  }
   const inConsignes = !S.career && $('#right').contains(document.activeElement) && S.tab === 'consignes';
   switch (e.key) {
     case ' ':
       e.preventDefault();
       if (S.replay) { S.replay.playing = !S.replay.playing; return; }
-      if (S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; Pad.reset(); refreshUI(true); }
+      if (S.m.phase !== 'fulltime' && !S.choice) { S.paused = !S.paused; S.acc = 0; refreshUI(true); }
       return;
     case 'Escape':
       e.preventDefault();
@@ -902,12 +941,9 @@ function bind() {
   window.addEventListener('resize', () => S.renderer.resize());
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', (e) => Pad.keyUp(e));
-  Pad.init();
-  Pad.onAction = padAction;
   $('#btn-ctl').addEventListener('click', (e) => { e.currentTarget.blur(); setManual(!S.ctl.manual); });
   $('#btn-zoom').addEventListener('click', (e) => { e.currentTarget.blur(); S.ctl.zoom = S.ctl.zoom <= 1 ? 1.7 : S.ctl.zoom < 2 ? 2.4 : 1; refreshUI(true); });
-  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m && S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; Pad.reset(); refreshUI(true); } });
+  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m && S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; refreshUI(true); } });
   document.querySelectorAll('.speed button').forEach((b) => b.addEventListener('click', () => { S.speed = Number(b.dataset.speed); b.blur(); refreshUI(true); }));
   $('#btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m) openReplay(); });
   $('#btn-live').addEventListener('click', (e) => { e.currentTarget.blur(); closeReplay(); });

@@ -104,7 +104,8 @@ export function updateTeamShape(m, team) {
       y = (PITCH.width - width) / 2 + (team.dir > 0 ? by : 1 - by) * width + (b.y - 34) * shift;
       if (poss) rel = Math.min(rel, offLine - 0.008, 0.95);
       // courses dans le dos de la défense
-      if (poss && (slot.role === 'ST' || slot.role === 'W' || slot.role === 'AM') && !restart && b.owner != null && b.owner !== p.id) {
+      const userRun = m.t < (p.userRun ?? 0);
+      if (poss && (slot.role === 'ST' || slot.role === 'W' || slot.role === 'AM' || userRun) && !restart && b.owner != null && b.owner !== p.id) {
         if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + 0.09); y = y + (34 - y) * 0.3; }
         else {
           // espace dans le dos d'une ligne haute : les appels deviennent bien plus fréquents

@@ -22,8 +22,9 @@ const URL = process.argv[2] || 'http://localhost:8000/index.html';
   let t = 0, liveSeen = 0, fastMax = 0;
   while (t < 600) {
     await page.clock.runFor(5000); t += 5;
-    const st = await page.evaluate(() => ({ badge: document.getElementById('mode-badge').textContent, clock: document.getElementById('clock-t').textContent, done: !!document.getElementById('sum-career'), pad: !document.getElementById('pad').hidden }));
-    if (/À TOI|TEMPS FORT/.test(st.badge)) liveSeen++;
+    const st = await page.evaluate(() => ({ badge: document.getElementById('mode-badge').textContent, clock: document.getElementById('clock-t').textContent, done: !!document.getElementById('sum-career'), choice: !document.getElementById('choices').hidden }));
+    if (st.choice) await page.keyboard.press('1'); // choix rapide (le temps de réflexion n'est pas mesuré ici)
+    if (/CHOISIR|TEMPS FORT/.test(st.badge)) liveSeen++;
     const mm = st.badge.match(/×(\d+)/); if (mm) fastMax = Math.max(fastMax, +mm[1]);
     if (st.badge === 'PAUSE' && !st.done) { await page.keyboard.press(' '); }
     if (st.done) break;

@@ -6,7 +6,7 @@ import { Rng } from './rng.js';
 import { PITCH, SIM, DEFAULT_COMPETITION, INSTRUCTION_OPTIONS } from './config.js';
 import { buildSquad, FORMATIONS } from './teams.js';
 import { clamp, dist, segDist, inBox, sigmoid } from './geom.js';
-import { decideHolder, xgEstimate, pressureOn } from './decisions.js';
+import { decideHolder, xgEstimate, pressureOn, executeOption } from './decisions.js';
 import { updateTeamShape, assignChasers, predictBall } from './movement.js';
 import { runAIManager } from './manager.js';
 import { pickTarget, canCross } from './control.js';
@@ -137,6 +137,8 @@ export class Match {
       else if (c.type === 'control') this.#setControl(c.playerId, c.on);
       else if (c.type === 'ctrl') { if (this.control) { this.control.dx = clamp(c.dx || 0, -1, 1); this.control.dy = clamp(c.dy || 0, -1, 1); this.control.sprint = !!c.sprint; } }
       else if (c.type === 'act') this.#userAction(c.action, c.dx || 0, c.dy || 0);
+      else if (c.type === 'choice') this.#userChoice(c.playerId, c.opt);
+      else if (c.type === 'intent') this.#userIntent(c.playerId, c.kind);
     }
   }
 
@@ -187,6 +189,61 @@ export class Match {
     const tg = pickTarget(this, p, dx, dy, kind);
     if (!tg) { this.#feedback('Aucun partenaire'); return; }
     this.pass(p, tg.tx, tg.ty, { to: tg.player.id, lofted: tg.lofted, through: kind === 'through' });
+  }
+
+  // ---------------------------------------------------------------- choix du joueur (carrière)
+  // Le joueur choisit une option ; l'exécution reste résolue par le moteur (rien n'est garanti).
+  #userChoice(playerId, opt) {
+    const p = this.players[playerId];
+    if (!p || !p.onPitch || this.phase !== 'play' || !opt) return;
+    if (this.ball.owner !== p.id) { this.#log('choix', p.team, `${p.name} n'a plus le ballon : le choix arrive trop tard.`, { player: p.id, hidden: true }); return; }
+    p.lastChoice = { kind: opt.kind, t: this.t };
+    if (opt.kind === 'carry') { executeOption(this, p, { ...opt, speed: 0.95 }); p.nextDecision = this.t + 1.4; return; }
+    if (opt.kind === 'hold') { p.carry = null; p.nextDecision = this.t + 1.2; return; }
+    executeOption(this, p, opt);
+  }
+
+  // Intentions sans ballon : orientent le placement et les gestes de l'agent, sans le télécommander
+  #userIntent(playerId, kind) {
+    const p = this.players[playerId];
+    if (!p || !p.onPitch || this.phase !== 'play') return;
+    const until = this.t + 4;
+    if (kind === 'press') p.userIntent = { kind: 'press', until };
+    else if (kind === 'cover') p.userIntent = { kind: 'cover', until };
+    else if (kind === 'tackle') {
+      const h = this.ball.owner != null ? this.players[this.ball.owner] : null;
+      if (h && h.team !== p.team && !h.gkHolding && dist(p.x, p.y, h.x, h.y) < 2.2 && this.t >= p.tackleCooldown) this.#duel(p, h);
+      else p.userIntent = { kind: 'press', until: this.t + 3, tackle: true };
+    } else if (kind === 'run') { p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; }
+    else if (kind === 'call') p.callUntil = this.t + 3;
+    else p.userIntent = null;
+  }
+
+  // Applique les intentions en cours (à chaque pas, après l'organisation collective)
+  #applyIntents() {
+    const b = this.ball;
+    for (const p of this.players) {
+      const it = p.userIntent;
+      if (!it || !p.onPitch) continue;
+      if (this.t > it.until || this.phase !== 'play') { p.userIntent = null; continue; }
+      const h = b.owner != null ? this.players[b.owner] : null;
+      if (!h || h.team === p.team) { p.userIntent = null; continue; }
+      const gx = this.ownGoalX(this.teams[p.team]);
+      if (it.kind === 'press') {
+        const gdx = gx - h.x, gdy = 34 - h.y, gl = Math.hypot(gdx, gdy) || 1;
+        p.tx = h.x + h.vx * 0.3 + (gdx / gl) * 1.2; p.ty = h.y + h.vy * 0.3 + (gdy / gl) * 1.2; p.urgency = 1;
+        if (it.tackle && dist(p.x, p.y, h.x, h.y) < 1.5 && this.t >= p.tackleCooldown && !h.gkHolding) { p.userIntent = null; this.#duel(p, h); }
+      } else if (it.kind === 'cover') {
+        // se placer dans la ligne de passe vers l'adversaire le plus dangereux proche
+        let best = null, bd = 25;
+        for (const o of this.onPitch(h.team)) {
+          if (o.id === h.id || o.role === 'GK') continue;
+          const d = dist(o.x, o.y, p.x, p.y) + Math.abs(o.x - gx) * 0.3;
+          if (d < bd) { bd = d; best = o; }
+        }
+        if (best) { p.tx = h.x + (best.x - h.x) * 0.55; p.ty = h.y + (best.y - h.y) * 0.55; p.urgency = 0.95; }
+      }
+    }
   }
 
   #userTackle(p) {
@@ -398,7 +455,7 @@ export class Match {
       } else if (this.t >= h.nextDecision) decideHolder(this, h, null);
     }
 
-    if (this.phase === 'play') { this.#updatePressers(); this.#defensiveDuels(dt); }
+    if (this.phase === 'play') { this.#updatePressers(); this.#applyIntents(); this.#defensiveDuels(dt); }
     this.#movePlayers(dt);
     this.#moveBall(dt);
     if (this.phase === 'play') {

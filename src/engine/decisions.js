@@ -65,8 +65,9 @@ function nearestOppDist(m, p, x, y) {
   return best;
 }
 
-// Décision du porteur. `restartType` restreint les options lors d'une remise en jeu.
-export function decideHolder(m, p, restartType) {
+// Options du porteur (sans aucun tirage aléatoire : utilisable pour proposer des choix au joueur).
+// Chaque option porte son utilité perçue `u` et, selon le cas, son risque ou son xG.
+export function holderOptions(m, p, restartType = null) {
   const team = m.teams[p.team];
   const opp = m.teams[1 - p.team];
   const tv = team.tv;
@@ -79,7 +80,6 @@ export function decideHolder(m, p, restartType) {
   const lossCostAt = (x, y) => 0.025 + 1.3 * threat(m, opp, x, y);
   const riskW = 1.15 - 0.3 * tv.direct; // patient = aversion au risque
 
-  if (restartType === 'penalty') { m.shoot(p, { penalty: true }); return; }
 
   // --- tir
   const gx = m.oppGoalX(team);
@@ -90,7 +90,7 @@ export function decideHolder(m, p, restartType) {
     // un tir termine presque toujours la possession : on le compare à la valeur de la garder
     const hesitation = -0.004 + 0.0008 * Math.max(0, dGoal - 12) + 0.016 * pr - 0.014 * (p.attrs.shooting - 0.5);
     const v = xg + 0.1 * here - here - hesitation;
-    opts.push({ kind: 'shoot', u: v });
+    opts.push({ kind: 'shoot', u: v, xg: xgEstimate(m, p, { pressure: pr, freekick: !!restartType }) });
   }
 
   // --- passes
@@ -118,7 +118,7 @@ export function decideHolder(m, p, restartType) {
     if (lofted) gain -= 0.014 * (1 - tv.direct) + 0.004;
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
     const u = (1 - risk * riskW) * gain - risk * riskW * lossCostAt(mx, my) - here;
-    opts.push({ kind: 'pass', to: q.id, tx: q.x + q.vx * 0.3, ty: q.y + q.vy * 0.3, lofted, u });
+    opts.push({ kind: 'pass', to: q.id, tx: q.x + q.vx * 0.3, ty: q.y + q.vy * 0.3, lofted, u, risk, forward: qRel - rel });
 
     // passe dans la course (attaquants, ailiers, latéraux qui montent)
     if (!restartType || restartType === 'freekick') {
@@ -144,7 +144,7 @@ export function decideHolder(m, p, restartType) {
           if (qRel > offLine) riskT += 0.25 * p.attrs.decisions;
           const gainT = threat(m, team, tx, ty) + RETAIN + 0.012 * tv.direct;
           const uT = (1 - riskT * riskW) * gainT - riskT * riskW * lossCostAt(tx, ty) * 0.8 - here;
-          opts.push({ kind: 'pass', to: q.id, tx, ty, lofted: loftedT, through: true, u: uT });
+          opts.push({ kind: 'pass', to: q.id, tx, ty, lofted: loftedT, through: true, u: uT, risk: clamp(riskT, 0, 1), forward: trel - rel });
         }
       }
     }
@@ -155,10 +155,13 @@ export function decideHolder(m, p, restartType) {
     let att = 0, defn = 0;
     for (const q of mates) if (dist(q.x, q.y, gx, 34) < 16) att++;
     for (const o of m.onPitch(1 - p.team)) if (dist(o.x, o.y, gx, 34) < 16) defn++;
-    const ty = 34 + rng.range(-7, 7);
-    const tx = gx - team.dir * rng.range(6, 12);
+    // cible : zone des partenaires présents dans la surface (déterministe)
+    const inBoxMates = mates.filter((q) => dist(q.x, q.y, gx, 34) < 18);
+    const my = inBoxMates.length ? inBoxMates.reduce((a, q) => a + q.y, 0) / inBoxMates.length : 34;
+    const ty = clamp(my, 27, 41);
+    const tx = gx - team.dir * 9;
     const u = 0.025 + 0.008 * att - 0.005 * defn - here * 0.6 + (restartType === 'corner' ? 0.08 : 0);
-    opts.push({ kind: 'cross', tx, ty, u });
+    opts.push({ kind: 'cross', tx, ty, u, risk: clamp(0.45 + 0.06 * defn - 0.05 * att, 0.2, 0.9), attackers: att });
   }
 
   // --- conduite / dribble
@@ -178,13 +181,36 @@ export function decideHolder(m, p, restartType) {
       const gain = threat(m, team, nx, ny) + RETAIN;
       const onBall = Math.min(4, m.t - (p.gotBallAt ?? m.t));
       const u = (1 - risk * riskW) * gain - risk * riskW * lossCostAt(p.x, p.y) - here + 0.002 * p.attrs.dribbling - 0.004 * onBall - 0.012 * pr;
-      opts.push({ kind: 'carry', dx, dy, u });
+      opts.push({ kind: 'carry', dx, dy, u, risk, forward: (nx - p.x) * team.dir });
     }
     // garder, protéger
     opts.push({ kind: 'hold', u: RETAIN * 0.6 - pr * 0.03 + (p.role === 'GK' ? -0.02 : 0) });
     // dégagement sous pression dans son camp
     if (rel < 0.3 && pr > 0.4) opts.push({ kind: 'clear', u: -0.004 + pr * 0.012 - 0.008 * (1 - tv.direct) });
   }
+
+  return { opts, throwIn, rel, team, tv };
+}
+
+// Exécute une option choisie (par l'IA ou par le joueur)
+export function executeOption(m, p, choice, restartType = null) {
+  const team = m.teams[p.team];
+  const rel = m.relX(team, p.x);
+  switch (choice.kind) {
+    case 'shoot': m.shoot(p, { freekick: restartType === 'freekick' }); break;
+    case 'pass': m.pass(p, choice.tx, choice.ty, { to: choice.to, lofted: choice.lofted, through: choice.through, low: restartType === 'throw' }); break;
+    case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true }); break;
+    case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + m.rng.range(-20, 20), 4, 64), { lofted: true }); break;
+    case 'carry': m.carry(p, choice.dx, choice.dy, choice.speed ?? 0.75 + 0.25 * team.tv.direct); break;
+    default: p.carry = null; p.nextDecision = m.t + 0.4;
+  }
+}
+
+// Décision du porteur. `restartType` restreint les options lors d'une remise en jeu.
+export function decideHolder(m, p, restartType) {
+  if (restartType === 'penalty') { m.shoot(p, { penalty: true }); return; }
+  const { opts, throwIn, rel, team } = holderOptions(m, p, restartType);
+  const rng = m.rng;
 
   if (!opts.length) {
     // aucune option : jeu long devant
@@ -200,12 +226,6 @@ export function decideHolder(m, p, restartType) {
   const w = opts.map((o) => Math.exp((o.pu - maxU) / temp));
   const choice = opts[rng.weighted(w)];
 
-  switch (choice.kind) {
-    case 'shoot': m.shoot(p, { freekick: restartType === 'freekick' }); break;
-    case 'pass': m.pass(p, choice.tx, choice.ty, { to: choice.to, lofted: choice.lofted, through: choice.through, low: throwIn }); break;
-    case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true }); break;
-    case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + rng.range(-20, 20), 4, 64), { lofted: true }); break;
-    case 'carry': m.carry(p, choice.dx, choice.dy, 0.75 + 0.25 * tv.direct); break;
-    default: p.carry = null; p.nextDecision = m.t + 0.4;
-  }
+  void throwIn;
+  executeOption(m, p, choice, restartType);
 }

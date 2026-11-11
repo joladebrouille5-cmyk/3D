@@ -114,12 +114,20 @@ export class PitchRenderer {
     // rayon des pastilles : grossit moins vite que le zoom pour garder de l'espace lisible
     const r = 1.05 * this.base * Math.pow(Math.max(1, this.cam.zoom), 0.55);
     if (aim) {
-      // aide de visée : intention affichée, résultat non garanti
+      // options proposées : flèches numérotées (intention, résultat non garanti)
+      const list = Array.isArray(aim) ? aim : [aim];
       ctx.save();
-      ctx.strokeStyle = 'rgba(245,197,66,0.85)'; ctx.lineWidth = Math.max(2, 0.18 * s); ctx.setLineDash([0.9 * s, 0.7 * s]);
-      ctx.beginPath(); ctx.moveTo(this.sx(aim.x0, aim.y0), this.sy(aim.x0, aim.y0)); ctx.lineTo(this.sx(aim.x1, aim.y1), this.sy(aim.x1, aim.y1)); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.beginPath(); ctx.arc(this.sx(aim.x1, aim.y1), this.sy(aim.x1, aim.y1), r * 1.7, 0, Math.PI * 2); ctx.stroke();
+      for (const a of list) {
+        const X0 = this.sx(a.x0, a.y0), Y0 = this.sy(a.x0, a.y0), X1 = this.sx(a.x1, a.y1), Y1 = this.sy(a.x1, a.y1);
+        ctx.strokeStyle = 'rgba(245,197,66,0.9)'; ctx.lineWidth = Math.max(2, 0.16 * s); ctx.setLineDash([0.8 * s, 0.6 * s]);
+        ctx.beginPath(); ctx.moveTo(X0, Y0); ctx.lineTo(X1, Y1); ctx.stroke(); ctx.setLineDash([]);
+        if (a.n) {
+          const R = Math.max(9, 0.95 * r);
+          ctx.fillStyle = '#f5c542'; ctx.beginPath(); ctx.arc(X1, Y1, R, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#111'; ctx.font = `bold ${Math.round(R * 1.2)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(String(a.n), X1, Y1 + 0.5);
+        }
+      }
       ctx.restore();
     }
     for (const p of players) {

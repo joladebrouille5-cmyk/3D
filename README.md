@@ -35,24 +35,21 @@ L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements,
    - Ta note et tes minutes font évoluer la confiance du coach, ton moral et ta progression.
 6. **Fin de saison** : un bilan, puis des offres. Selon ton niveau, tu restes en formation (U17, puis U19), tu signes ton premier contrat pro ou un contrat stagiaire en réserve, ou tu es libéré et dois rebondir dans un autre centre ou un autre club. La carrière continue jusqu'à la retraite.
 
-### Pilotage direct de ton joueur
+### Tes choix pendant le match
 
-Quand tu es sur le terrain (joueur de champ), tu pilotes ton joueur. Tu peux aussi le confier à l'IA à tout moment avec le bouton **Manuel / Auto**.
+Plus de boutons de pilotage : aux moments clés, le match se fige et tu **choisis** ce que fait ton joueur. Tu ne subis aucun malus de temps pendant la réflexion. Ces options sont celles que l'IA envisagerait elle-même dans la même situation.
 
-| Geste | Téléphone | Clavier (positions physiques) |
-|---|---|---|
-| Se déplacer / sprinter | Stick dans la moitié gauche de l'écran ; poussé à fond = sprint | ZQSD (AZERTY) ou WASD, flèches ; Maj = sprint |
-| Passe · sans ballon : tacle | Bouton principal | E |
-| Tir (incliner le stick pour choisir le côté) | Tir | F |
-| Jeu long, ou centre depuis un couloir | Longue / Centre | R |
-| Passe dans la course · sans ballon : demander le ballon | Profondeur / Appel | A (AZERTY) / Q (QWERTY) ; C pour l'appel |
+| Situation | Choix proposés |
+|---|---|
+| Tu reçois le ballon | Frapper (≈ % de chances), passe en profondeur, passe vers l'avant, passe sûre, centre, percée balle au pied, temporiser |
+| Un adversaire porteur arrive sur toi | Tacler (s'il est à portée), presser, couper la ligne de passe, garder ta position |
+| Un partenaire a le ballon | Appel en profondeur, demander le ballon, rester en soutien |
 
-- **Caméra** : elle suit ton joueur, avec trois niveaux de zoom, et ton équipe attaque toujours vers la droite de l'écran (affichage seulement).
-- **Aide de visée** : une ligne dorée montre le partenaire visé. La réussite du geste reste résolue par le moteur selon ta technique, la pression et la fatigue.
-- **Placement assisté** : sans toucher au stick et sans ballon, ton joueur se replace seul. Avec le ballon, rien ne part sans toi. Le tacle est toujours ta décision.
-- **Vitesse** : le pilotage direct est limité à 1×. Pour accélérer, il faut déléguer explicitement (Auto). La pause relâche toutes les commandes maintenues.
+- **Ce qu'affiche chaque choix** : un niveau de risque estimé, et des flèches numérotées sur le terrain. La réussite reste résolue par le moteur, selon ta technique, la pression et la fatigue.
+- **Comment choisir** : toucher l'option, ou les touches 1 à 4. « Laisser l'instinct décider » (touche 0) confie l'action à l'IA.
+- **Entre deux choix**, l'IA joue pour toi. Le bouton 🎯 / 🤖 désactive les choix pour tout le match.
+- **Fréquence** : en match court, les choix n'arrivent que pendant les temps forts, soit une vingtaine par match.
 - **Hors de ce lot** : le gardien et les coups de pied arrêtés restent gérés par l'IA.
-- Les entrées sont des commandes horodatées : un match piloté reste reproductible (`tests/control.test.js`).
 
 ### Programme de la semaine et bilan mensuel
 
