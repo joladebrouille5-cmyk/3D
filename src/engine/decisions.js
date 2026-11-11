@@ -108,6 +108,7 @@ export function decideHolder(m, p, restartType) {
     risk = clamp(risk, 0.02, 0.97);
     let gain = threat(m, team, q.x, q.y) + RETAIN;
     if (isGK) gain -= 0.012;
+    if (m.t < (q.callUntil ?? 0)) gain += 0.03; // un partenaire demande le ballon : signal, pas ordre
     if (qRel > rel) gain += 0.006 * tv.direct * ((qRel - rel) * 4);
     else gain += 0.005 * (1 - tv.direct);
     if (lofted) gain -= 0.01 * (1 - tv.direct);

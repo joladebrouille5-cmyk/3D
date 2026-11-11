@@ -10,6 +10,8 @@ export class PitchRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.mirror = false; // affichage seulement : le sens réel de l'attaque est toujours indiqué
+    // caméra (affichage seulement) : centre en coordonnées affichées, zoom ≥ 1
+    this.cam = { x: PITCH.length / 2, y: PITCH.width / 2, zoom: 1 };
     this.resize();
   }
 
@@ -19,10 +21,29 @@ export class PitchRenderer {
     this.canvas.width = Math.max(10, Math.round(r.width * dpr));
     this.canvas.height = Math.max(10, Math.round(r.height * dpr));
     const W = PITCH.length + MARGIN * 2, H = PITCH.width + MARGIN * 2;
-    this.scale = Math.min(this.canvas.width / W, this.canvas.height / H);
-    this.ox = (this.canvas.width - W * this.scale) / 2 + MARGIN * this.scale;
-    this.oy = (this.canvas.height - H * this.scale) / 2 + MARGIN * this.scale;
+    this.base = Math.min(this.canvas.width / W, this.canvas.height / H);
     this.dpr = dpr;
+    this.#applyCam();
+  }
+
+  #applyCam() {
+    const z = Math.max(1, this.cam.zoom);
+    this.scale = this.base * z;
+    // la vue ne sort pas du terrain (marge comprise)
+    const halfW = this.canvas.width / 2 / this.scale, halfH = this.canvas.height / 2 / this.scale;
+    const cx = halfW >= PITCH.length / 2 + MARGIN ? PITCH.length / 2 : Math.min(PITCH.length + MARGIN - halfW, Math.max(-MARGIN + halfW, this.cam.x));
+    const cy = halfH >= PITCH.width / 2 + MARGIN ? PITCH.width / 2 : Math.min(PITCH.width + MARGIN - halfH, Math.max(-MARGIN + halfH, this.cam.y));
+    this.ox = this.canvas.width / 2 - cx * this.scale;
+    this.oy = this.canvas.height / 2 - cy * this.scale;
+  }
+
+  // Suivi fluide d'un point du monde (ex. le joueur piloté) ; zoom 1 = terrain entier.
+  follow(wx, wy, zoom, smooth = 0.12) {
+    const tx = this.mirror ? PITCH.length - wx : wx, ty = this.mirror ? PITCH.width - wy : wy;
+    this.cam.zoom += (zoom - this.cam.zoom) * 0.15;
+    if (zoom <= 1.01 && Math.abs(this.cam.zoom - 1) < 0.01) { this.cam.zoom = 1; this.cam.x = PITCH.length / 2; this.cam.y = PITCH.width / 2; }
+    else { this.cam.x += (tx - this.cam.x) * smooth; this.cam.y += (ty - this.cam.y) * smooth; }
+    this.#applyCam();
   }
 
   // monde -> écran
@@ -34,6 +55,9 @@ export class PitchRenderer {
     const x = (px * this.dpr - this.ox) / this.scale, y = (py * this.dpr - this.oy) / this.scale;
     return this.mirror ? { x: PITCH.length - x, y: PITCH.width - y } : { x, y };
   }
+
+  // direction écran -> direction monde (stick, clavier)
+  dirToWorld(dx, dy) { return this.mirror ? { dx: -dx, dy: -dy } : { dx, dy }; }
 
   drawPitch() {
     const { ctx, scale: s } = this;
@@ -83,51 +107,71 @@ export class PitchRenderer {
   }
 
   // players : [{id, x, y, team, num, onPitch, yellow, injured, role, user}] ; ball : {x, y, z}
-  draw({ teams, players, ball, ownerId, selectedId, userTeam, showNames = false }) {
+  draw({ teams, players, ball, ownerId, selectedId, userTeam, showNames = false, aim = null }) {
     const { ctx, scale: s } = this;
     this.drawPitch();
     this.drawDirections(teams);
-    const r = 1.05 * s;
+    // rayon des pastilles : grossit moins vite que le zoom pour garder de l'espace lisible
+    const r = 1.05 * this.base * Math.pow(Math.max(1, this.cam.zoom), 0.55);
+    if (aim) {
+      // aide de visée : intention affichée, résultat non garanti
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245,197,66,0.85)'; ctx.lineWidth = Math.max(2, 0.18 * s); ctx.setLineDash([0.9 * s, 0.7 * s]);
+      ctx.beginPath(); ctx.moveTo(this.sx(aim.x0, aim.y0), this.sy(aim.x0, aim.y0)); ctx.lineTo(this.sx(aim.x1, aim.y1), this.sy(aim.x1, aim.y1)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(this.sx(aim.x1, aim.y1), this.sy(aim.x1, aim.y1), r * 1.7, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
     for (const p of players) {
       if (!p.onPitch || !Number.isFinite(p.x)) continue;
       const t = teams[p.team];
       const X = this.sx(p.x, p.y), Y = this.sy(p.x, p.y);
       ctx.save();
       ctx.fillStyle = p.role === 'GK' ? (t.colors.gk || '#111827') : t.colors.primary;
-      ctx.strokeStyle = t.colors.secondary; ctx.lineWidth = Math.max(1.5, 0.22 * s);
+      ctx.strokeStyle = t.colors.secondary; ctx.lineWidth = Math.max(1.5, 0.21 * r);
       ctx.beginPath();
       if (p.team === 0) ctx.arc(X, Y, r, 0, Math.PI * 2); // équipe A : cercles
       else { const h = r * 0.92; ctx.rect(X - h, Y - h, h * 2, h * 2); } // équipe B : carrés (lisible en niveaux de gris)
       ctx.fill(); ctx.stroke();
-      if (p.id === ownerId) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 0.12 * s); ctx.beginPath(); ctx.arc(X, Y, r * 1.55, 0, Math.PI * 2); ctx.stroke(); }
+      if (p.id === ownerId) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 0.12 * r); ctx.beginPath(); ctx.arc(X, Y, r * 1.55, 0, Math.PI * 2); ctx.stroke(); }
       if (p.isUser) {
         // joueur de l'utilisateur : double anneau, repérable sans dépendre de la couleur
-        ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(2, 0.25 * s);
+        ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(2, 0.24 * r);
         ctx.beginPath(); ctx.arc(X, Y, r * 1.45, 0, Math.PI * 2); ctx.stroke();
         ctx.beginPath(); ctx.arc(X, Y, r * 1.85, 0, Math.PI * 2); ctx.stroke();
       }
-      if (p.id === selectedId) { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(1.5, 0.2 * s); ctx.beginPath(); ctx.arc(X, Y, r * 1.9, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+      if (p.id === selectedId) { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(1.5, 0.19 * r); ctx.beginPath(); ctx.arc(X, Y, r * 1.9, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
       ctx.fillStyle = p.role === 'GK' ? '#ffffff' : t.colors.text;
-      ctx.font = `bold ${Math.max(9, 1.15 * s)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(p.num), X, Y + 0.05 * s);
-      if (p.yellow) { ctx.fillStyle = '#facc15'; ctx.fillRect(X + r * 0.7, Y - r * 1.4, 0.45 * s, 0.65 * s); }
-      if (p.injured) { ctx.fillStyle = '#f87171'; ctx.font = `bold ${Math.max(9, 1.2 * s)}px system-ui`; ctx.fillText('+', X - r * 1.2, Y - r * 1.2); }
+      ctx.font = `bold ${Math.max(9, 1.1 * r)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(p.num), X, Y + 0.05 * r);
+      if (p.yellow) { ctx.fillStyle = '#facc15'; ctx.fillRect(X + r * 0.7, Y - r * 1.4, 0.43 * r, 0.62 * r); }
+      if (p.injured) { ctx.fillStyle = '#f87171'; ctx.font = `bold ${Math.max(9, 1.15 * r)}px system-ui`; ctx.fillText('+', X - r * 1.2, Y - r * 1.2); }
       if (showNames || p.id === selectedId || p.isUser) {
         ctx.fillStyle = 'rgba(0,0,0,0.65)';
-        ctx.font = `${Math.max(9, 1.0 * s)}px system-ui`;
+        ctx.font = `${Math.max(9, 0.95 * r)}px system-ui`;
         const w = ctx.measureText(p.name).width + 6;
-        ctx.fillRect(X - w / 2, Y + r * 1.5, w, 1.4 * s);
-        ctx.fillStyle = '#fff'; ctx.fillText(p.name, X, Y + r * 1.5 + 0.7 * s);
+        ctx.fillRect(X - w / 2, Y + r * 1.5, w, 1.35 * r);
+        ctx.fillStyle = '#fff'; ctx.fillText(p.name, X, Y + r * 1.5 + 0.68 * r);
       }
       ctx.restore();
     }
     // ballon : ombre au sol + hauteur
     if (ball && Number.isFinite(ball.x)) {
       const X = this.sx(ball.x, ball.y), Y = this.sy(ball.x, ball.y);
-      const lift = Math.min(ball.z, 8) * 0.55 * s;
+      const W = this.canvas.width, H = this.canvas.height, pad = 14 * this.dpr;
+      if (X < 0 || X > W || Y < 0 || Y > H) {
+        // ballon hors champ (vue zoomée) : repère sur le bord de l'écran
+        const bx = Math.min(W - pad, Math.max(pad, X)), by = Math.min(H - pad, Math.max(pad, Y));
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#111'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(bx, by, 6 * this.dpr, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = '#f5c542'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(bx, by, 10 * this.dpr, 0, Math.PI * 2); ctx.stroke();
+      }
+      const rb = r / 1.05;
+      const lift = Math.min(ball.z, 8) * 0.55 * rb;
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.beginPath(); ctx.ellipse(X, Y, 0.55 * s, 0.35 * s, 0, 0, Math.PI * 2); ctx.fill();
-      const br = (0.48 + Math.min(ball.z, 8) * 0.04) * s;
+      ctx.beginPath(); ctx.ellipse(X, Y, 0.55 * rb, 0.35 * rb, 0, 0, Math.PI * 2); ctx.fill();
+      const br = (0.48 + Math.min(ball.z, 8) * 0.04) * rb;
       ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(1, 0.1 * s);
       ctx.beginPath(); ctx.arc(X, Y - lift, br, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }

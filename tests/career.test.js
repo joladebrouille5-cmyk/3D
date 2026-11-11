@@ -8,12 +8,14 @@ import { simulateCareerMatch } from '../src/career/play.js';
 // joue des semaines rapidement : rencontres résumées par le modèle agrégé
 function runWeeks(st, n, choices = { focus: 'technique', intensity: 'normale', offpitch: 'repos' }, ev = 0) {
   for (let i = 0; i < n && st.phase !== 'season_end'; ) {
-    if (st.phase === 'week') { C.submitWeek(st, choices); i++; }
+    if (st.phase === 'month_review') C.closeMonthReview(st);
+    else if (st.phase === 'week') { C.submitWeek(st, choices); i++; }
     else if (st.phase === 'event') C.resolveEvent(st, ev);
     else if (st.phase === 'matchday') C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
   }
-  while (st.phase === 'event' || st.phase === 'matchday') {
-    if (st.phase === 'event') C.resolveEvent(st, ev);
+  while (st.phase === 'event' || st.phase === 'matchday' || st.phase === 'month_review') {
+    if (st.phase === 'month_review') C.closeMonthReview(st);
+    else if (st.phase === 'event') C.resolveEvent(st, ev);
     else C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
   }
   return st;
@@ -114,6 +116,7 @@ test('un match de carrière passe par le moteur : le joueur titulaire joue et re
   while (st.phase !== 'matchday' || st.matchday.bye) {
     if (st.phase === 'week') C.submitWeek(st, { focus: 'finition', intensity: 'normale', offpitch: 'repos' });
     else if (st.phase === 'event') C.resolveEvent(st, 0);
+    else if (st.phase === 'month_review') C.closeMonthReview(st);
     else C.applyMatchResult(st, {});
   }
   assert.equal(st.matchday.selection, 'titulaire');
@@ -123,4 +126,58 @@ test('un match de carrière passe par le moteur : le joueur titulaire joue et re
   assert.ok(res.rating >= 3 && res.rating <= 10);
   C.applyMatchResult(st, res);
   assert.equal(st.seasonStats.apps, 1);
+});
+
+test('aperçu de la semaine : effets attendus sans toucher à la partie, cohérents avec le choix', () => {
+  const st = mk('rc-lens', 'preview');
+  const before = JSON.stringify(st);
+  const leger = C.previewWeek(st, { focus: 'technique', intensity: 'légère', offpitch: 'repos' });
+  const intense = C.previewWeek(st, { focus: 'technique', intensity: 'intense', offpitch: 'extra' });
+  assert.equal(JSON.stringify(st), before, 'l\'aperçu ne modifie rien');
+  assert.ok(intense.ca > leger.ca, 'plus d\'intensité = plus de progression attendue');
+  assert.ok(intense.gauges.fresh < leger.gauges.fresh, 'et plus de fatigue');
+  assert.ok(intense.injuryRisk > leger.injuryRisk);
+  const tech = C.previewWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'repos' });
+  const phys = C.previewWeek(st, { focus: 'physique', intensity: 'normale', offpitch: 'repos' });
+  const d = (pv, k) => pv.attrs.find((a) => a.k === k)?.d ?? 0;
+  assert.ok(d(tech, 'passing') > d(phys, 'passing'));
+  assert.ok(d(phys, 'pace') > d(tech, 'pace'));
+  assert.ok(C.previewWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'sortie' }).pa < 0);
+  assert.ok(C.previewWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'video' }).pa > 0);
+});
+
+test('bilan mensuel : toutes les 4 semaines, avec le détail mesuré de chaque choix', () => {
+  const st = mk('rc-lens', 'month');
+  const ca0 = C.currentCA(st), attrs0 = { ...st.player.attrs };
+  let weeks = 0;
+  while (st.phase !== 'month_review') {
+    if (st.phase === 'week') { C.submitWeek(st, { focus: weeks % 2 ? 'physique' : 'technique', intensity: 'normale', offpitch: weeks % 2 ? 'video' : 'sortie' }); weeks++; }
+    else if (st.phase === 'event') C.resolveEvent(st, 0);
+    else C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
+  }
+  assert.equal(weeks, 4);
+  const rv = st.monthReview;
+  assert.deepEqual([rv.fromWeek, rv.toWeek], [1, 4]);
+  assert.ok(Math.abs(rv.ca[0] - ca0) < 1e-9 && Math.abs(rv.ca[1] - C.currentCA(st)) < 1e-9);
+  // sources présentes, avec leur nombre de semaines
+  const src = Object.fromEntries(rv.sources.map((x) => [x.key, x]));
+  assert.equal(src['train:technique'].n, 2);
+  assert.equal(src['train:physique'].n, 2);
+  assert.equal(src['off:sortie'].n, 2);
+  assert.equal(src['off:video'].n, 2);
+  assert.ok(src['off:sortie'].pa < 0 && src['off:video'].pa > 0);
+  assert.ok(src['off:sortie'].gauges.discipline < 0);
+  assert.ok(src['train:physique'].attrs.some((a) => a.k === 'pace' && a.d > 0));
+  // la somme des sources explique la variation de chaque attribut et du potentiel
+  for (const a of rv.attrs) {
+    const sum = a.by.train + a.by.off + a.by.match + a.by.other;
+    assert.ok(Math.abs(sum - (st.player.attrs[a.k] - attrs0[a.k])) < 1e-9, `attribut ${a.k}`);
+  }
+  const paSum = rv.sources.reduce((s, x) => s + x.pa, 0);
+  assert.ok(Math.abs(paSum - rv.paDelta) < 1e-9, 'le potentiel est entièrement expliqué');
+  assert.ok(rv.advice.length >= 1);
+  assert.equal(rv.matches.list.length + (4 - rv.matches.list.length), 4);
+  C.closeMonthReview(st);
+  assert.equal(st.phase, 'week');
+  assert.ok(st.lastMonthReview, 'le dernier bilan reste consultable');
 });

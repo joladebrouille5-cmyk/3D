@@ -11,7 +11,21 @@ const root = () => document.getElementById('screen');
 const stars = (n) => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') + '☆'.repeat(5 - Math.ceil(n));
 const ATTR_LABELS = { pace: 'Vitesse', accel: 'Accélération', stamina: 'Endurance', passing: 'Passe', vision: 'Vision', decisions: 'Décisions', firstTouch: 'Contrôle', dribbling: 'Dribble', tackling: 'Tacle', positioning: 'Placement', shooting: 'Frappe', aerial: 'Jeu aérien', aggression: 'Agressivité', gk: 'Gardien', composure: 'Sang-froid' };
 
-const G = { st: null, slot: null, tab: 'classement', choices: { focus: 'technique', intensity: 'normale', offpitch: 'repos' }, filter: { q: '', level: 'all' }, pick: null, form: null, busy: false };
+const FOCUS_ICON = { technique: '🎯', physique: '⚡', tactique: '🧠', finition: '🥅', defense: '🛡️', gardien: '🧤', recuperation: '🧘' };
+const OFF_ICON = { ecole: '📚', video: '🎬', extra: '💪', repos: '🛋️', sortie: '🎉' };
+const INT_DESC = { 'légère': 'Progression réduite, peu de fatigue', normale: 'Équilibre progression / fatigue', intense: 'Progression forte, fatigue et risque de blessure' };
+
+const G = { st: null, slot: null, tab: 'classement', choices: { focus: 'technique', intensity: 'normale', offpitch: 'repos' }, filter: { q: '', level: 'all' }, pick: null, form: null, busy: false, showReview: null };
+
+// pastille de variation : valeur en points (×100), couleur selon le sens
+function chip(label, v, { unit = '', digits = 0, invert = false, title = '' } = {}) {
+  const x = v * 100;
+  const shown = Math.abs(x) < Math.pow(10, -digits) / 2 ? 0 : x;
+  const cls = shown === 0 ? 'flat' : (shown > 0) !== invert ? 'up' : 'down';
+  const sign = shown > 0 ? '+' : shown < 0 ? '−' : '±';
+  return `<span class="chip ${cls}" title="${esc(title)}">${esc(label)} <b>${sign}${Math.abs(shown).toFixed(digits)}${unit}</b></span>`;
+}
+const fmtLvl = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
 
 function show(html) {
   const el = root();
@@ -26,21 +40,31 @@ function persist() { if (G.slot && G.st) saveCareer(G.slot, G.st); }
 
 // ------------------------------------------------------------------ accueil
 export function showHome() {
-  G.st = null; G.slot = null;
+  G.st = null; G.slot = null; G.showReview = null;
   const nClubs = CATALOG.clubs.length;
+  const saves = listSaves().filter((x) => !x.empty && !x.corrupt).sort((a, b) => b.savedAt - a.savedAt);
+  const last = saves[0];
   const el = show(`<div class="home">
-    <h1>Generation Football</h1>
-    <p class="tagline">« Tu n'es pas le centre du monde. Tu essaies d'y trouver ta place, puis d'y laisser une trace. »</p>
+    <div class="hero"><div class="hero-pitch"></div>
+      <h1>Generation Football</h1>
+      <p class="tagline">« Tu n'es pas le centre du monde. Tu essaies d'y trouver ta place, puis d'y laisser une trace. »</p>
+    </div>
     <div class="home-actions">
-      <button class="primary big" id="h-new">Débuter la partie</button>
+      ${last ? `<button class="primary big" id="h-continue">▶ Continuer<small>${esc(last.name)} · ${esc(last.club)} (${esc(last.stage)}) · ${last.age} ans</small></button>` : ''}
+      <button class="${last ? '' : 'primary '}big" id="h-new">Débuter la partie</button>
       <button class="big" id="h-load" ${hasSaves() ? '' : 'disabled'}>Charger la partie</button>
       <button id="h-quick">Match amical (moteur 2D)</button>
     </div>
     <p class="note">${nClubs} clubs réels du catalogue V1 (saison 2026-2027). Les effectifs professionnels reprennent les noms publiés par les clubs ; les notes sont des estimations du jeu. Les coéquipiers du centre de formation sont fictifs.</p>
   </div>`);
+  el.querySelector('#h-continue')?.addEventListener('click', () => openSave(last.slot));
   el.querySelector('#h-new').addEventListener('click', showNewCareer);
   el.querySelector('#h-load').addEventListener('click', showLoad);
   el.querySelector('#h-quick').addEventListener('click', () => { hideScreen(); showQuickMatchSetup(); });
+}
+
+function openSave(slot) {
+  try { G.st = C.ensureState(loadCareer(slot)); G.slot = slot; G.showReview = null; renderHub(); } catch (e) { alert(e.message); }
 }
 
 function showLoad() {
@@ -55,7 +79,7 @@ function showLoad() {
     <div class="actions"><button id="l-back">Retour</button></div>
   </div>`);
   el.querySelectorAll('[data-load]').forEach((b) => b.addEventListener('click', () => {
-    try { G.st = loadCareer(Number(b.dataset.load)); G.slot = Number(b.dataset.load); renderHub(); } catch (e) { alert(e.message); }
+    openSave(Number(b.dataset.load));
   }));
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
     if (confirm(`Supprimer définitivement la sauvegarde de l'emplacement ${b.dataset.del} ?`)) { deleteSave(Number(b.dataset.del)); hasSaves() ? showLoad() : showHome(); }
@@ -160,7 +184,7 @@ function showClubPicker() {
 // ------------------------------------------------------------------ tableau de bord
 function gauge(label, v, hint = '') {
   const cls = v > 0.66 ? 'good' : v > 0.4 ? 'mid' : 'low';
-  return `<div class="gauge" title="${esc(hint)}"><span>${esc(label)}</span><span class="bar"><i class="${cls}" style="width:${Math.round(v * 100)}%"></i></span></div>`;
+  return `<div class="gauge" title="${esc(hint)}"><span>${esc(label)}</span><span class="bar"><i class="${cls}" style="width:${Math.round(v * 100)}%"></i></span><span class="gv">${Math.round(v * 100)}</span></div>`;
 }
 
 function profileCard(st) {
@@ -169,56 +193,96 @@ function profileCard(st) {
   const est = C.potentialEstimate(st);
   const youth = st.stage === 'U17' || st.stage === 'U19';
   const w = Object.keys(p.attrs).filter((k) => k !== 'gk' || p.role === 'GK').sort((a, b) => p.attrs[b] - p.attrs[a]);
-  return `<section class="card">
+  const season = ca - st.seasonStats.caStart;
+  return `<section class="card profile">
     <h2>${esc(p.firstName)} ${esc(p.lastName)} <small>${p.age} ans · ${esc(C.ROLES[p.role])} · pied ${esc(p.foot)}</small></h2>
     <div class="big-stats">
-      <div><span class="label">Niveau actuel</span><span class="value">${C.pct(ca)}</span></div>
+      <div><span class="label">Niveau actuel</span><span class="value">${C.pct(ca)}</span><span class="muted">${fmtLvl(season)} cette saison</span></div>
       <div><span class="label">Potentiel estimé par le staff</span><span class="value stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
     </div>
-    ${p.injuryWeeks ? `<p class="error">Blessé : encore ${p.injuryWeeks} semaine(s).</p>` : ''}
-    ${gauge('Moral', p.morale)}${gauge('Fraîcheur', p.fresh)}${gauge('Confiance du coach', p.trust)}${gauge('Discipline', p.discipline)}${youth ? gauge('Scolarité', p.school) : ''}
-    <details><summary>Attributs</summary><ul class="attrs">${w.map((k) => `<li><span>${esc(ATTR_LABELS[k])}</span><span class="bar"><i style="width:${Math.round(p.attrs[k] * 100)}%"></i></span><span>${C.pct(p.attrs[k])}</span></li>`).join('')}</ul></details>
+    ${p.injuryWeeks ? `<p class="error">🩹 Blessé : encore ${p.injuryWeeks} semaine(s).</p>` : ''}
+    ${gauge('Moral', p.morale, 'Influence ta progression et tes performances')}${gauge('Fraîcheur', p.fresh, 'Basse : progression ralentie et risque de blessure')}${gauge('Confiance du coach', p.trust, 'Pèse sur ta place dans le onze')}${gauge('Discipline', p.discipline, 'Basse : le coach perd confiance')}${youth ? gauge('Scolarité', p.school, 'Le centre de formation y est attentif') : ''}
+    <details><summary>Attributs détaillés</summary><ul class="attrs">${w.map((k) => `<li><span>${esc(ATTR_LABELS[k])}</span><span class="bar"><i style="width:${Math.round(p.attrs[k] * 100)}%"></i></span><span>${C.pct(p.attrs[k])}</span></li>`).join('')}</ul></details>
+    ${st.lastMonthReview ? '<button id="hub-review" class="wide">📊 Revoir le dernier bilan mensuel</button>' : ''}
   </section>`;
+}
+
+function reportBlock(rep) {
+  if (!rep || !rep.lines.length) return '';
+  const d = rep.delta;
+  const chips = d ? `<div class="chips">${chip('Niveau', d.ca, { digits: 1 })}${chip('Fraîcheur', d.fresh)}${chip('Moral', d.morale)}${chip('Confiance', d.trust)}${Math.abs(d.discipline) > 0.004 ? chip('Discipline', d.discipline) : ''}${Math.abs(d.school) > 0.004 ? chip('Scolarité', d.school) : ''}</div>` : '';
+  const m = rep.match;
+  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}</div>` : '';
+  return `<div class="report"><strong>Semaine ${rep.week != null ? rep.week + 1 : ''} — ce qui s'est passé</strong><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${chips}${mchips}</div>`;
+}
+
+// Aperçu des effets attendus du programme choisi (sans aléa)
+function previewBlock(st) {
+  const pv = C.previewWeek(st, G.choices);
+  const top = pv.attrs.filter((a) => a.d > 0).slice(0, 4);
+  const pa = pv.pa * 100;
+  const paTxt = Math.abs(pa) < 0.005 ? 'stable' : `${pa > 0 ? '▲' : '▼'} ${pa > 0 ? '+' : '−'}${Math.abs(pa).toFixed(2)}`;
+  return `<div class="preview">
+    <strong>Effets attendus cette semaine</strong>
+    <div class="chips">
+      ${chip('Niveau', pv.ca, { digits: 1, title: 'Progression attendue de ta note de poste' })}
+      ${chip('Fraîcheur', pv.gauges.fresh, { title: 'Récupération naturelle comprise' })}
+      ${chip('Moral', pv.gauges.morale)}${chip('Confiance', pv.gauges.trust)}
+      ${Math.abs(pv.gauges.discipline) > 0.004 ? chip('Discipline', pv.gauges.discipline) : ''}${Math.abs(pv.gauges.school) > 0.004 ? chip('Scolarité', pv.gauges.school) : ''}
+      <span class="chip ${pa > 0.005 ? 'up' : pa < -0.005 ? 'down' : 'flat'}" title="Effet attendu sur ton potentiel (points)">Potentiel <b>${paTxt}</b></span>
+      <span class="chip ${pv.injuryRisk > 0.03 ? 'down' : pv.injuryRisk > 0.015 ? 'warn' : 'flat'}" title="Probabilité de blessure à l'entraînement cette semaine">Risque blessure <b>${(pv.injuryRisk * 100).toFixed(1)} %</b></span>
+    </div>
+    ${top.length ? `<p class="muted">Attributs travaillés : ${top.map((a) => `${esc(ATTR_LABELS[a.k])} +${(a.d * 100).toFixed(1)}`).join(' · ')}</p>` : ''}
+    ${pv.parts.length ? `<p class="muted">${pv.parts.map((x) => `${esc(x.label)} : niveau ${fmtLvl(x.ca)}`).join(' · ')}</p>` : ''}
+    ${pv.warnings.map((w) => `<p class="error">${esc(w)}</p>`).join('')}
+    ${st.player.fresh + pv.choiceFresh < 0.3 ? '<p class="error">⚠ Tu finirais la semaine épuisé : progression ralentie, blessure plus probable.</p>' : ''}
+  </div>`;
 }
 
 function weekCard(st) {
   const p = st.player;
   const n = C.seasonLength(st);
   const fx = C.fixtureOfWeek(st);
-  const rep = st.lastReport;
-  const report = rep && rep.lines.length ? `<div class="report"><strong>Dernière semaine</strong><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul></div>` : '';
+  const report = reportBlock(st.lastReport);
+  const myName = st.league.teams.find((t) => t.id === st.clubId).name;
   if (st.phase === 'event') {
-    return `<section class="card week">${report}<h2>Un choix à faire</h2><p class="event-text">${esc(st.pendingEvent.text)}</p>
-      <div class="options">${st.pendingEvent.options.map((o, i) => `<button data-ev="${i}">${esc(o)}</button>`).join('')}</div></section>`;
+    return `<section class="card week">${report}<h2>💬 Un choix à faire</h2><p class="event-text">${esc(st.pendingEvent.text)}</p>
+      <div class="options">${st.pendingEvent.options.map((o, i) => `<button class="opt" data-ev="${i}">${esc(o)}</button>`).join('')}</div>
+      <p class="muted">Chaque réponse a des conséquences durables (confiance, potentiel, moral…).</p></section>`;
   }
   if (st.phase === 'matchday') {
     const md = st.matchday;
-    if (md.bye) return `<section class="card week">${report}<h2>Semaine ${st.week + 1}/${n}</h2><p>Pas de match cette semaine.</p><button class="primary" id="w-bye">Continuer</button></section>`;
+    if (md.bye) return `<section class="card week">${report}<h2>Semaine ${st.week + 1}/${n}</h2><p>Pas de match cette semaine.</p><button class="primary cta" id="w-bye">Continuer</button></section>`;
     const opp = st.league.teams.find((t) => t.id === md.opponentId)?.name;
     const inSquad = md.selection === 'titulaire' || md.selection === 'remplaçant';
-    const selTxt = { titulaire: 'Le coach t\'aligne d\'entrée.', remplaçant: 'Tu commences sur le banc.', 'non retenu': 'Tu n\'es pas retenu dans le groupe cette semaine.', 'blessé': 'Tu es blessé et ne peux pas jouer.' }[md.selection];
+    const selTxt = { titulaire: 'Le coach t\'aligne d\'entrée.', remplaçant: 'Tu commences sur le banc : le coach peut te faire entrer.', 'non retenu': 'Tu n\'es pas retenu dans le groupe cette semaine.', 'blessé': 'Tu es blessé et ne peux pas jouer.' }[md.selection];
+    const canPlay = inSquad && p.role !== 'GK';
     return `<section class="card week">${report}
-      <h2>Jour de match — journée ${st.week + 1}/${n}</h2>
-      <p class="fixture">${md.home ? `<strong>${esc(st.league.teams.find((t) => t.id === st.clubId).name)}</strong> – ${esc(opp)}` : `${esc(opp)} – <strong>${esc(st.league.teams.find((t) => t.id === st.clubId).name)}</strong>`}</p>
-      <p>${esc(selTxt)}${md.rival && md.selection !== 'titulaire' ? ` Concurrent direct : ${esc(md.rival.name)}.` : ''}</p>
+      <h2>⚽ Jour de match — journée ${st.week + 1}/${n}</h2>
+      <div class="fixture-box"><span class="${md.home ? 'me' : ''}">${esc(md.home ? myName : opp)}</span><span class="vs">–</span><span class="${md.home ? '' : 'me'}">${esc(md.home ? opp : myName)}</span></div>
+      <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? ` Concurrent direct : ${esc(md.rival.name)}.` : ''}</p>
       <div class="options">
-        ${inSquad ? '<button class="primary" id="w-watch">Jouer le match (vue 2D)</button><button id="w-sim">Simuler le match</button>'
-          : '<button class="primary" id="w-sim">Voir le résultat</button><button id="w-watch">Regarder depuis la tribune</button>'}
+        ${inSquad ? `<button class="primary cta" id="w-watch">${canPlay ? '🎮 Jouer le match' : '👁 Suivre le match (vue 2D)'}<small>${canPlay ? 'Tu pilotes ton joueur (ou tu délègues à l\'IA)' : 'Le gardien est piloté par l\'IA'}</small></button><button id="w-sim">⏩ Simuler le match</button>`
+          : '<button class="primary cta" id="w-sim">Voir le résultat</button><button id="w-watch">👁 Regarder depuis la tribune</button>'}
       </div></section>`;
   }
   const c = G.choices;
   if (p.role !== 'GK' && c.focus === 'gardien') c.focus = 'technique';
   const sel = C.selectionForecast(st);
   const opp = fx && !fx.bye ? st.league.teams.find((t) => t.id === fx.opponentId)?.name : null;
+  const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
   return `<section class="card week">${report}
-    <h2>Semaine ${st.week + 1}/${n}</h2>
-    ${opp ? `<p class="muted">Prochain match : ${fx.home ? 'contre' : 'chez'} ${esc(opp)} · le coach t'annonce <strong>${esc(sel.status)}</strong>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? ` (concurrent : ${esc(sel.rival.name)})` : ''}.</p>` : '<p class="muted">Pas de match cette semaine.</p>'}
-    ${p.injuryWeeks ? '<p>Programme imposé : soins et réathlétisation.</p>' : `
-    <label>Thème d'entraînement<select id="w-focus">${Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK').map(([k, v]) => `<option value="${k}" ${c.focus === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
-    <div class="seg" role="group" aria-label="Intensité">${Object.keys(C.INTENSITY).map((k) => `<button data-int="${k}" class="${c.intensity === k ? 'active' : ''}">${esc(k)}</button>`).join('')}</div>
-    <label>Hors du terrain<select id="w-off">${Object.entries(C.OFFPITCH).map(([k, v]) => `<option value="${k}" ${c.offpitch === k ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
-    <p class="muted" id="w-offdesc">${esc(C.OFFPITCH[c.offpitch].desc)}</p>`}
-    <button class="primary" id="w-go">Valider la semaine</button>
+    <h2>📅 Semaine ${st.week + 1}/${n} — ton programme</h2>
+    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? ` <span class="muted">concurrent : ${esc(sel.rival.name)}</span>` : ''}</p>` : '<p class="muted">Pas de match cette semaine.</p>'}
+    ${p.injuryWeeks ? '<p>🩹 Programme imposé : soins et réathlétisation.</p>' : `
+    <h3>Entraînement</h3>
+    <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''}"><span class="ci">${FOCUS_ICON[k]}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>
+    <h3>Intensité</h3>
+    <div class="seg wide" role="group" aria-label="Intensité">${Object.keys(C.INTENSITY).map((k) => `<button data-int="${k}" class="${c.intensity === k ? 'active' : ''}" title="${esc(INT_DESC[k])}">${esc(k)}</button>`).join('')}</div>
+    <h3>Hors du terrain</h3>
+    <div class="choice-grid" id="w-off">${Object.entries(C.OFFPITCH).map(([k, v]) => `<button data-off="${k}" class="choice ${c.offpitch === k ? 'active' : ''}"><span class="ci">${OFF_ICON[k]}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${esc(v.desc)}</span></button>`).join('')}</div>
+    <div id="w-preview">${previewBlock(st)}</div>`}
+    <button class="primary cta" id="w-go">Valider la semaine</button>
   </section>`;
 }
 
@@ -233,20 +297,74 @@ function leagueCard(st) {
   } else if (G.tab === 'resultats') {
     const mine = st.league.results.filter((r) => r.h === st.clubId || r.a === st.clubId);
     const name = (id) => st.league.teams.find((t) => t.id === id)?.name ?? id;
-    body = mine.length ? `<ul class="plain">${mine.map((r) => `<li>J${r.week + 1} · ${esc(name(r.h))} ${r.gh}-${r.ga} ${esc(name(r.a))}</li>`).join('')}</ul>` : '<p class="muted">Aucun match joué.</p>';
+    body = mine.length ? `<ul class="plain">${mine.map((r) => { const w = (r.h === st.clubId ? r.gh - r.ga : r.ga - r.gh); return `<li><span class="res ${w > 0 ? 'w' : w < 0 ? 'l' : 'd'}">${w > 0 ? 'V' : w < 0 ? 'D' : 'N'}</span> J${r.week + 1} · ${esc(name(r.h))} <strong>${r.gh}-${r.ga}</strong> ${esc(name(r.a))}</li>`; }).join('')}</ul>` : '<p class="muted">Aucun match joué.</p>';
   } else if (G.tab === 'journal') {
     body = `<ul class="plain">${st.journal.slice(0, 60).map((j) => `<li><span class="muted">${j.season} · S${j.week + 1}</span> ${esc(j.text)}</li>`).join('')}</ul>`;
   } else {
     const h = st.history;
-    const hist = st.player.caHistory;
-    const pts = hist.slice(-80);
+    const pts = st.player.caHistory.slice(-80);
     const min = Math.min(...pts, 0.3), max = Math.max(...pts, 0.8);
     const path = pts.map((v, i) => `${(i / Math.max(1, pts.length - 1)) * 300},${60 - ((v - min) / (max - min)) * 56}`).join(' ');
     body = `${pts.length > 1 ? `<svg viewBox="0 0 300 62" class="spark" aria-label="Évolution du niveau"><polyline points="${path}" fill="none" stroke="currentColor" stroke-width="2"/></svg><p class="muted">Évolution du niveau (dernières semaines)</p>` : ''}
       ${h.length ? `<table class="table"><tr><th>Saison</th><th>Club</th><th>Matchs</th><th>Buts</th><th>Note</th><th>Niveau</th></tr>${h.map((x) => `<tr><td>${x.season}</td><td>${esc(x.club)} ${esc(x.stage)}</td><td>${x.apps}</td><td>${x.goals}</td><td>${x.rating ? x.rating.toFixed(1) : '—'}</td><td>${C.pct(x.caStart)}→${C.pct(x.caEnd)}</td></tr>`).join('')}</table>` : '<p class="muted">Première saison en cours.</p>'}
       <p>Cette saison : ${st.seasonStats.apps} matchs (${st.seasonStats.starts} titularisations), ${st.seasonStats.goals} but(s), ${st.seasonStats.minutes} minutes.</p>`;
   }
-  return `<section class="card"><nav class="tabs">${Object.entries(tabs).map(([k, v]) => `<button data-tab="${k}" class="${G.tab === k ? 'active' : ''}">${v}</button>`).join('')}</nav>${body}</section>`;
+  return `<section class="card league"><nav class="tabs">${Object.entries(tabs).map(([k, v]) => `<button data-tab="${k}" class="${G.tab === k ? 'active' : ''}">${v}</button>`).join('')}</nav>${body}</section>`;
+}
+
+// ------------------------------------------------------------------ bilan mensuel (pop-up)
+function monthReviewHtml(rv, st, closable) {
+  const dCa = rv.ca[1] - rv.ca[0];
+  const e0 = rv.est[0], e1 = rv.est[1];
+  const m = rv.matches;
+  const tot = rv.totals;
+  const parts = [['Entraînement', tot.train.ca, 'p-train'], ['Hors terrain', tot.off.ca, 'p-off'], ['Matchs', tot.match.ca, 'p-match'], ['Autres', tot.other.ca, 'p-other']];
+  const posSum = parts.reduce((a, x) => a + Math.max(0, x[1]), 0) || 1;
+  const effChips = (x) => `${Math.abs(x.ca) > 5e-5 ? chip('Niveau', x.ca, { digits: 1 }) : ''}${Math.abs(x.pa) > 5e-5 ? chip('Potentiel', x.pa, { digits: 2 }) : ''}${Object.entries(x.gauges).map(([k, v]) => chip(C.GAUGE_LABELS[k].replace(' du coach', ''), v)).join('')}`;
+  const row = (x) => `<li><div class="src-head"><strong>${esc(x.label)}</strong>${x.n ? `<span class="muted">${x.n} semaine${x.n > 1 ? 's' : ''}</span>` : ''}</div>
+      <div class="chips">${effChips(x) || '<span class="muted">Aucun effet mesurable</span>'}</div>
+      ${x.attrs.length ? `<div class="muted small">${x.attrs.slice(0, 5).map((a) => `${esc(ATTR_LABELS[a.k])} ${a.d >= 0 ? '+' : '−'}${Math.abs(a.d * 100).toFixed(1)}`).join(' · ')}</div>` : ''}</li>`;
+  const of = (kinds) => rv.sources.filter((x) => kinds.includes(x.kind));
+  const others = rv.sources.filter((x) => !['train', 'off'].includes(x.kind));
+  const maxAbs = Math.max(0.002, ...rv.attrs.map((a) => Math.abs(a.d)));
+  return `<div class="modal-backdrop" id="mr-backdrop"><div class="modal review" role="dialog" aria-modal="true">
+    <h1>📊 Bilan du mois ${rv.index} <small>semaines ${rv.fromWeek} à ${rv.toWeek} · saison ${rv.season}-${rv.season + 1}</small></h1>
+    <div class="kpis">
+      <div><span class="label">Niveau</span><span class="value">${C.pct(rv.ca[0])} → ${C.pct(rv.ca[1])}</span>${chip('', dCa, { digits: 1 })}</div>
+      <div><span class="label">Potentiel estimé</span><span class="value stars">${stars(C.toStars(e1.center))}</span><span class="muted">${C.pct(e0.lo)}–${C.pct(e0.hi)} → ${C.pct(e1.lo)}–${C.pct(e1.hi)}</span>${chip('Ce mois-ci', rv.paDelta, { digits: 2, title: 'Variation réelle du potentiel ce mois-ci, en points (détail par source ci-dessous)' })}</div>
+      <div><span class="label">Matchs</span><span class="value">${m.played}<small> joué${m.played > 1 ? 's' : ''}</small></span><span class="muted">${m.minutes} min · ${m.goals} but${m.goals > 1 ? 's' : ''} · note ${m.avg != null ? m.avg.toFixed(1) : '—'}</span><span class="muted">Équipe : ${m.w} V · ${m.d} N · ${m.l} D</span></div>
+      <div><span class="label">Classement</span><span class="value">${rv.pos[0] ?? '—'}<sup>e</sup> → ${rv.pos[1]}<sup>e</sup></span><span class="muted">sur ${rv.teams} équipes</span></div>
+    </div>
+
+    <h3>D'où vient ta progression (${fmtLvl(dCa)} de niveau)</h3>
+    <div class="stack">${parts.filter((x) => x[1] > 0).map((x) => `<i class="${x[2]}" style="width:${(Math.max(0, x[1]) / posSum) * 100}%" title="${x[0]}"></i>`).join('')}</div>
+    <div class="legend">${parts.map((x) => `<span><i class="${x[2]}"></i>${x[0]} <b>${fmtLvl(x[1])}</b></span>`).join('')}</div>
+
+    <div class="review-cols">
+      <div>
+        <h3>🏋️ Tes choix d'entraînement</h3>
+        <ul class="src">${of(['train']).map(row).join('') || '<li class="muted">Aucune séance (blessure).</li>'}</ul>
+        <h3>🏠 Hors du terrain</h3>
+        <ul class="src">${of(['off']).map(row).join('') || '<li class="muted">—</li>'}</ul>
+        <h3>⚽ Matchs, événements et reste</h3>
+        <ul class="src">${others.map(row).join('') || '<li class="muted">—</li>'}</ul>
+      </div>
+      <div>
+        <h3>📈 Attributs ce mois-ci</h3>
+        <ul class="attr-delta">${rv.attrs.map((a) => `<li><span>${esc(ATTR_LABELS[a.k])}</span><span class="num">${C.pct(a.a)} → ${C.pct(a.b)}</span>
+          <span class="dbar" title="Entraînement ${fmtLvl(a.by.train)} · Hors terrain ${fmtLvl(a.by.off)} · Matchs ${fmtLvl(a.by.match)} · Autres ${fmtLvl(a.by.other)}">${[['p-train', a.by.train], ['p-off', a.by.off], ['p-match', a.by.match], ['p-other', a.by.other]].filter((x) => x[1] > 0).map((x) => `<i class="${x[0]}" style="width:${(x[1] / maxAbs) * 100}%"></i>`).join('')}</span>
+          <b class="${a.d > 5e-4 ? 'up' : a.d < -5e-4 ? 'down' : ''}">${a.d >= 0 ? '+' : '−'}${Math.abs(a.d * 100).toFixed(1)}</b></li>`).join('')}</ul>
+        <h3>🧭 Ton état</h3>
+        <ul class="attr-delta">${Object.entries(rv.gauges).filter(([k]) => k !== 'school' || st.stage === 'U17' || st.stage === 'U19').map(([k, v]) => `<li><span>${esc(C.GAUGE_LABELS[k])}</span><span class="num">${C.pct(v[0])} → ${C.pct(v[1])}</span><span class="dbar"></span><b class="${v[1] - v[0] > 0.004 ? 'up' : v[1] - v[0] < -0.004 ? 'down' : ''}">${v[1] - v[0] >= 0 ? '+' : '−'}${Math.abs((v[1] - v[0]) * 100).toFixed(0)}</b></li>`).join('')}</ul>
+        ${m.list.length ? `<h3>🗓 Tes matchs</h3><ul class="plain">${m.list.map((x) => `<li><span class="res ${x.outcome === 'victoire' ? 'w' : x.outcome === 'défaite' ? 'l' : 'd'}">${x.outcome[0].toUpperCase()}</span> ${x.gf}-${x.ga} ${x.home ? 'contre' : 'chez'} ${esc(x.opp)} · ${x.minutes ? `${x.minutes} min, note ${x.rating.toFixed(1)}${x.goals ? `, ${x.goals} but(s)` : ''}` : esc(x.selection)}</li>`).join('')}</ul>` : ''}
+      </div>
+    </div>
+
+    <h3>🗣 Le staff te dit</h3>
+    <ul class="advice">${rv.advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+    <p class="muted small">Chaque chiffre est mesuré : c'est la variation réellement produite par tes choix ce mois-ci (niveau et attributs en points sur 100, potentiel en points).</p>
+    <div class="actions"><button class="primary cta" id="mr-close">${closable ? 'Fermer' : 'Continuer'}</button></div>
+  </div></div>`;
 }
 
 export function renderHub() {
@@ -255,13 +373,17 @@ export function renderHub() {
   if (st.phase === 'season_end') return renderSeasonEnd();
   if (st.phase === 'retired') return renderRetired();
   const club = clubById(st.clubId);
+  const n = C.seasonLength(st);
+  const review = st.phase === 'month_review' ? st.monthReview : G.showReview;
   const el = show(`<div class="hub">
     <header class="hub-head">
-      <div><strong>${esc(club.name)}</strong> · ${esc(STAGE_LABEL[st.stage])} <span class="muted">· saison ${st.season}-${st.season + 1}</span></div>
-      <div class="row"><button id="hub-save">Sauvegarder</button><button id="hub-home">Accueil</button></div>
+      <div class="hub-title"><span class="crest">${esc(club.name.replace(/\b(FC|SC|AS|US|AC|RC|OGC|LOSC|AJ|SM)\b/g, '').trim().slice(0, 2).toUpperCase())}</span>
+        <div><strong>${esc(club.name)}</strong> · ${esc(STAGE_LABEL[st.stage])}<br><span class="muted">Saison ${st.season}-${st.season + 1} · semaine ${Math.min(st.week + 1, n)}/${n}</span></div></div>
+      <div class="season-bar" title="Avancement de la saison"><i style="width:${(st.week / n) * 100}%"></i></div>
+      <div class="row"><button id="hub-save">💾 Sauvegarder</button><button id="hub-home">Accueil</button></div>
     </header>
-    <div class="hub-grid">${profileCard(st)}${weekCard(st)}${leagueCard(st)}</div>
-  </div>`);
+    <div class="hub-grid">${weekCard(st)}${profileCard(st)}${leagueCard(st)}</div>
+  </div>${review ? monthReviewHtml(review, st, st.phase !== 'month_review') : ''}`);
   bindHub(el);
 }
 
@@ -269,10 +391,22 @@ function bindHub(el) {
   const st = G.st;
   el.querySelector('#hub-save').addEventListener('click', () => { persist(); flash('Partie sauvegardée.'); });
   el.querySelector('#hub-home').addEventListener('click', () => { persist(); showHome(); });
-  el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { G.tab = b.dataset.tab; renderHub(); }));
-  el.querySelector('#w-focus')?.addEventListener('change', (e) => { G.choices.focus = e.target.value; });
-  el.querySelector('#w-off')?.addEventListener('change', (e) => { G.choices.offpitch = e.target.value; el.querySelector('#w-offdesc').textContent = C.OFFPITCH[e.target.value].desc; });
-  el.querySelectorAll('[data-int]').forEach((b) => b.addEventListener('click', () => { G.choices.intensity = b.dataset.int; el.querySelectorAll('[data-int]').forEach((x) => x.classList.toggle('active', x === b)); }));
+  el.querySelector('#hub-review')?.addEventListener('click', () => { G.showReview = st.lastMonthReview; renderHub(); });
+  el.querySelector('#mr-close')?.addEventListener('click', () => {
+    if (st.phase === 'month_review') { C.closeMonthReview(st); persist(); }
+    G.showReview = null;
+    renderHub();
+  });
+  el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { G.tab = b.dataset.tab; const y = root().scrollTop; renderHub(); root().scrollTop = y; }));
+  const refreshPreview = () => { const box = el.querySelector('#w-preview'); if (box) box.innerHTML = previewBlock(st); };
+  const pickIn = (sel, attr, key) => el.querySelectorAll(sel).forEach((b) => b.addEventListener('click', () => {
+    G.choices[key] = b.dataset[attr];
+    el.querySelectorAll(sel).forEach((x) => x.classList.toggle('active', x === b));
+    refreshPreview();
+  }));
+  pickIn('[data-focus]', 'focus', 'focus');
+  pickIn('[data-int]', 'int', 'intensity');
+  pickIn('[data-off]', 'off', 'offpitch');
   el.querySelector('#w-go')?.addEventListener('click', () => { C.submitWeek(st, { ...G.choices }); persist(); renderHub(); });
   el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { C.resolveEvent(st, Number(b.dataset.ev)); persist(); renderHub(); }));
   el.querySelector('#w-bye')?.addEventListener('click', () => { C.applyMatchResult(st, {}); persist(); renderHub(); });
@@ -367,6 +501,8 @@ export function initCareerUI() {
   window.addEventListener('keydown', (e) => {
     if (root().hidden || e.key !== 'Escape') return;
     e.stopImmediatePropagation();
+    if (G.showReview) { G.showReview = null; renderHub(); return; }
+    if (G.st && G.st.phase === 'month_review') { C.closeMonthReview(G.st); persist(); renderHub(); return; }
     if (G.st) { persist(); showHome(); } else showHome();
   }, true);
 }

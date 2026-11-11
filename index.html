@@ -17,19 +17,21 @@
         <span id="team0-name" class="team-tag"></span>
         <span id="score">0 – 0</span>
         <span id="team1-name" class="team-tag"></span>
-        <span id="clock">00:00</span>
+        <span id="clock"><span id="clock-t">00:00</span><span class="lbl" id="clock-x"></span></span>
         <span id="mode-badge" class="badge">DIRECT</span>
       </div>
       <div class="tb-right">
-        <button id="btn-left" class="compact-only" title="Onze, banc et remplacements">Effectif</button>
-        <button id="btn-right" class="compact-only" title="Consignes, analyse, staff">Tactique</button>
+        <button id="btn-left" class="compact-only" title="Onze, banc et remplacements"><span class="ico">👥</span></button>
+        <button id="btn-right" class="compact-only" title="Mon match, consignes, analyse"><span class="ico">📋</span></button>
+        <button id="btn-ctl" hidden title="Piloter ton joueur ou le confier à l'IA">Manuel</button>
+        <button id="btn-zoom" hidden title="Changer le zoom de la caméra">Zoom</button>
         <button id="btn-play" title="Pause / reprendre (Espace)">⏸ Pause</button>
         <div class="speed" role="group" aria-label="Vitesse">
           <button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
         </div>
-        <button id="btn-replay" title="Revoir la dernière action (F8)">Replay</button>
+        <button id="btn-replay" title="Revoir la dernière action (F8)"><span class="ico">⟲</span><span class="lbl"> Replay</span></button>
         <button id="btn-live" title="Revenir au direct (F9)" hidden>Direct</button>
-        <button id="btn-quick" title="Simuler la fin du match sans rendu">Résultat rapide</button>
+        <button id="btn-quick" title="Simuler la fin du match sans rendu"><span class="ico">⏭</span><span class="lbl"> Résultat rapide</span></button>
         <button id="btn-help" title="Aide (F1)">Aide</button>
       </div>
     </header>
@@ -45,13 +47,24 @@
 
     <main id="center">
       <canvas id="pitch" aria-label="Terrain 2D vu du dessus"></canvas>
+      <div id="pad" hidden>
+        <div id="joy-zone"><div id="joy-base" hidden><div id="joy-knob"></div></div></div>
+        <div id="pad-btns">
+          <button data-btn="Y" class="pb pb-y"><span></span><kbd>A/Q</kbd></button>
+          <button data-btn="X" class="pb pb-x"><span></span><kbd>R</kbd></button>
+          <button data-btn="B" class="pb pb-b"><span></span><kbd>F</kbd></button>
+          <button data-btn="A" class="pb pb-a"><span></span><kbd>E</kbd></button>
+        </div>
+        <div id="pad-hint" hidden></div>
+      </div>
+      <div id="goal-banner" hidden></div>
       <div id="replay-banner" hidden>REPLAY — lecture seule <span id="replay-time"></span></div>
       <div id="toast" role="status" hidden></div>
     </main>
 
     <aside id="right" class="panel" tabindex="-1">
       <nav class="tabs" role="tablist">
-        <button data-tab="consignes" class="active" role="tab">Consignes <kbd>3</kbd></button>
+        <button data-tab="consignes" class="active" role="tab"><span id="tab1-label">Consignes</span> <kbd>3</kbd></button>
         <button data-tab="analyse" role="tab">Analyse <kbd>4</kbd></button>
         <button data-tab="staff" role="tab">Staff <kbd>5</kbd></button>
       </nav>

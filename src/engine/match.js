@@ -9,6 +9,7 @@ import { clamp, dist, segDist, inBox, sigmoid } from './geom.js';
 import { decideHolder, xgEstimate, pressureOn } from './decisions.js';
 import { updateTeamShape, assignChasers, predictBall } from './movement.js';
 import { runAIManager } from './manager.js';
+import { pickTarget, canCross } from './control.js';
 
 const LEVEL = { bas: 0.22, moyen: 0.5, haut: 0.78, patient: 0.22, 'équilibré': 0.5, direct: 0.78 };
 export function tacticValues(t) {
@@ -41,6 +42,7 @@ export class Match {
     this.teams = [home, away].map((id, idx) => this.#buildTeam(id, idx));
     this.ball = { x: 52.5, y: 34, z: 0, vx: 0, vy: 0, vz: 0, owner: null, lastTouch: null, lastTeam: null, pass: null, shot: null, cross: false, prevX: 52.5, prevY: 34 };
     this.restart = null;
+    this.control = null; // pilotage direct : { id, dx, dy, sprint, buffer }
     this.nextChaseUpdate = 0;
     this.kickoffTeamFirstHalf = this.rng.chance(0.5) ? 0 : 1;
     this.#log('coup_envoi', null, `Coup d'envoi. ${this.teams[0].name} – ${this.teams[1].name}.`, { major: true });
@@ -132,7 +134,69 @@ export class Match {
       else if (c.type === 'cancelInstruction') this.#cancelInstruction(c.team, c.id);
       else if (c.type === 'sub') this.#requestSub(c.team, c.outId, c.inId, c.source);
       else if (c.type === 'cancelSub') this.#cancelSub(c.team, c.id);
+      else if (c.type === 'control') this.#setControl(c.playerId, c.on);
+      else if (c.type === 'ctrl') { if (this.control) { this.control.dx = clamp(c.dx || 0, -1, 1); this.control.dy = clamp(c.dy || 0, -1, 1); this.control.sprint = !!c.sprint; } }
+      else if (c.type === 'act') this.#userAction(c.action, c.dx || 0, c.dy || 0);
     }
+  }
+
+  // ---------------------------------------------------------------- pilotage direct
+  #setControl(playerId, on) {
+    const p = this.players[playerId];
+    if (!on || !p || p.role === 'GK') { this.control = null; return; } // gardien : piloté par l'IA dans ce lot
+    this.control = { id: p.id, dx: 0, dy: 0, sprint: false, buffer: null, feedback: null };
+    p.carry = null;
+  }
+
+  // Le joueur est-il réellement piloté à cet instant ? (pas pendant un arrêt de jeu)
+  isControlled(p) {
+    return !!this.control && this.control.id === p.id && p.onPitch && this.phase === 'play';
+  }
+
+  #feedback(text) { if (this.control) this.control.feedback = { text, t: this.t }; }
+
+  #userAction(action, dx, dy) {
+    const c = this.control;
+    if (!c) return;
+    const p = this.players[c.id];
+    if (!p.onPitch || this.phase !== 'play') return;
+    if (this.t < p.stunUntil) { this.#feedback('Déséquilibré'); return; }
+    const b = this.ball;
+    const hasBall = b.owner === p.id;
+    if (!hasBall) {
+      if (action === 'tackle') { this.#userTackle(p); return; }
+      if (action === 'call') { p.callUntil = this.t + 2.5; this.#feedback('Tu demandes le ballon'); return; }
+      // geste avec ballon demandé juste avant de le recevoir : court tampon, jamais transformé en tacle
+      if (['pass', 'through', 'long', 'shoot'].includes(action)) c.buffer = { action, dx, dy, until: this.t + 0.45 };
+      return;
+    }
+    c.buffer = null;
+    if (action === 'shoot') {
+      const team = this.teams[p.team];
+      if (this.relX(team, p.x) < 0.45) { this.#feedback('Trop loin pour frapper'); return; }
+      this.shoot(p, { aimDy: Math.abs(dy) > 0.3 ? dy : null });
+      return;
+    }
+    if (action === 'long' && canCross(this, p)) {
+      const team = this.teams[p.team];
+      const gx = this.oppGoalX(team);
+      this.pass(p, gx - team.dir * this.rng.range(7, 11), 34 + this.rng.range(-5, 5), { lofted: true, cross: true });
+      return;
+    }
+    const kind = action === 'through' ? 'through' : action === 'long' ? 'long' : 'short';
+    const tg = pickTarget(this, p, dx, dy, kind);
+    if (!tg) { this.#feedback('Aucun partenaire'); return; }
+    this.pass(p, tg.tx, tg.ty, { to: tg.player.id, lofted: tg.lofted, through: kind === 'through' });
+  }
+
+  #userTackle(p) {
+    const b = this.ball;
+    if (this.t < p.tackleCooldown) return;
+    const h = b.owner != null ? this.players[b.owner] : null;
+    if (!h || h.team === p.team || h.gkHolding) { this.#feedback('Personne à tacler'); return; }
+    const d = dist(p.x, p.y, h.x, h.y);
+    if (d > 2.2) { p.tackleCooldown = this.t + 0.5; this.#feedback('Trop loin'); return; }
+    this.#duel(p, h);
   }
 
   // Validation pure (aucun effet) : utilisée par l'interface pour l'état « validée ».
@@ -241,7 +305,7 @@ export class Match {
       }
       const slot = out.slot;
       out.onPitch = false; out.slot = null;
-      inn.onPitch = true; inn.used = true; inn.slot = slot;
+      inn.onPitch = true; inn.used = true; inn.slot = slot; inn.enteredAt = this.t;
       // L'entrant arrive par la ligne de touche, il n'est pas téléporté à son poste.
       inn.x = 52.5 + (teamIdx === 0 ? -3 : 3); inn.y = out.y < 34 ? 0.5 : 67.5; inn.vx = inn.vy = 0;
       out.x = -20; out.y = -20;
@@ -327,7 +391,11 @@ export class Match {
     // décision du porteur
     if (this.phase === 'play' && this.ball.owner != null) {
       const h = this.players[this.ball.owner];
-      if (this.t >= h.nextDecision) decideHolder(this, h, null);
+      if (this.isControlled(h)) {
+        // geste demandé juste avant la réception
+        const buf = this.control.buffer;
+        if (buf) { this.control.buffer = null; if (this.t <= buf.until && this.t >= h.touchCooldown) this.#userAction(buf.action, buf.dx, buf.dy); }
+      } else if (this.t >= h.nextDecision) decideHolder(this, h, null);
     }
 
     if (this.phase === 'play') { this.#updatePressers(); this.#defensiveDuels(dt); }
@@ -426,6 +494,14 @@ export class Match {
       if (b.owner === p.id) {
         if (p.carry) { tx = p.x + p.carry.dx * 6; ty = p.y + p.carry.dy * 6; urg = p.carry.speed; }
         else { tx = p.x; ty = p.y; urg = 0.2; }
+      }
+      if (this.control && this.control.id === p.id && this.isControlled(p)) {
+        // pilotage direct : l'entrée fixe l'intention de course (inertie et capacités inchangées)
+        const c = this.control;
+        const mag = Math.hypot(c.dx, c.dy);
+        if (mag > 0.15) { tx = p.x + (c.dx / mag) * 6; ty = p.y + (c.dy / mag) * 6; urg = c.sprint ? 1 : 0.5 + 0.25 * Math.min(1, mag); p.carry = null; }
+        else if (b.owner === p.id) { tx = p.x; ty = p.y; urg = 0.2; p.carry = null; }
+        // sans entrée et sans ballon : placement assisté (cible de l'organisation collective)
       }
       const stunned = this.t < p.stunUntil;
       let vmax = this.maxSpeed(p) * (stunned ? 0.3 : 1);
@@ -741,7 +817,7 @@ export class Match {
     const gk = this.gk(1 - p.team);
     const gkY = gk ? gk.y : 34;
     // visée : côté opposé au gardien, marge selon le sang-froid
-    const sideHigh = gkY < 34 ? true : gkY > 34 ? false : this.rng.chance(0.5);
+    const sideHigh = opts.aimDy != null ? opts.aimDy > 0 : gkY < 34 ? true : gkY > 34 ? false : this.rng.chance(0.5);
     const margin = this.rng.range(0.6, 1.5) + (1 - p.attrs.composure) * 0.6;
     let aimY = sideHigh ? PITCH.goalY2 - margin : PITCH.goalY1 + margin;
     let aimZ = opts.header ? this.rng.range(0.2, 1.6) : this.rng.range(0.15, 2.0);
@@ -827,6 +903,7 @@ export class Match {
     if (h.gkHolding) return;
     for (const def of this.onPitch(1 - h.team)) {
       if (def.role === 'GK' || def.injured || this.t < def.tackleCooldown || this.t < def.stunUntil) continue;
+      if (this.isControlled(def)) continue; // le tacle du joueur piloté est sa décision
       const d = dist(def.x, def.y, h.x, h.y);
       if (d > 1.3) continue;
       const tv = this.teams[def.team].tv;

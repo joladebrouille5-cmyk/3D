@@ -6,18 +6,24 @@ import { Match } from '../engine/match.js';
 import { SIM, INSTRUCTION_OPTIONS, INSTRUCTION_LABELS, ROLE_LABELS, DEFAULT_COMPETITION } from '../engine/config.js';
 import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
+import { Pad } from './pad.js';
+import { pickTarget, canCross } from '../engine/control.js';
+import { matchRating } from '../career/career.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ROLE_ABBR = { GK: 'G', CB: 'DC', FB: 'DL', DM: 'MD', CM: 'MC', AM: 'MO', W: 'AIL', ST: 'BU' };
 const FEED_TYPES = new Set(['but', 'tir', 'arret', 'carton', 'penalty', 'blessure', 'mi_temps', 'fin', 'coup_envoi', 'temps_additionnel', 'remplacement', 'consigne', 'hors_jeu', 'corner', 'tir_rate', 'contre', 'faute']);
 
+let toastTimer = null;
 const S = {
   m: null, renderer: null, paused: true, speed: 1, acc: 0, last: 0,
   replay: null, selectedId: null, tab: 'consignes',
   draft: null, draftHistory: [], draftError: null, validated: [],
   subMode: false, subDraft: { outId: null, inId: null }, subError: null,
   seenEvents: 0, prev: null, accelDead: true, modalOpen: false, quick: false, config: null, uiDirty: true, lastUi: 0,
+  // pilotage direct (carrière) : manuel ou délégué à l'IA
+  ctl: { enabled: false, manual: true, engaged: false, zoom: 1.7, sent: '', userId: null, wasOn: false, fbT: -1 },
 };
 
 // ------------------------------------------------------------------ démarrage
@@ -32,6 +38,15 @@ export function startMatch(cfg) {
   S.paused = false; S.acc = 0; S.replay = null; S.selectedId = null; S.seenEvents = 0;
   S.draft = null; S.draftHistory = []; S.draftError = null; S.validated = [];
   S.subMode = false; S.subDraft = { outId: null, inId: null }; S.subError = null; S.quick = false;
+  const u = S.career ? S.m.players.find((p) => p.isUser) : null;
+  const canControl = !!u && u.role !== 'GK';
+  S.ctl = { enabled: canControl, manual: canControl, engaged: false, zoom: 1.7, sent: '', userId: u?.id ?? null, wasOn: !!u?.onPitch, fbT: -1 };
+  Pad.reset(); Pad.setVisible(false);
+  S.renderer.cam.zoom = 1;
+  S.tab = 'consignes';
+  $('#tab1-label').textContent = S.career ? 'Mon match' : 'Consignes';
+  $('#goal-banner').hidden = true;
+  $('#toast').hidden = true; clearTimeout(toastTimer);
   S.prev = snapshot();
   $('#feed').innerHTML = '';
   $('#comp-name').textContent = S.career ? S.career.competition : `${S.m.competition.name} · graine « ${S.m.seed} »`;
@@ -72,7 +87,8 @@ function frame(now) {
         if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; }
       }
     } else if (!S.paused && !S.modalOpen && !S.quick && m.phase !== 'fulltime') {
-      const mult = S.speed * (S.accelDead && m.phase === 'dead' ? 4 : 1);
+      updateControl();
+      const mult = S.speed * (S.accelDead && m.phase === 'dead' ? (controlActive() ? 2.5 : 4) : 1);
       S.acc += dt * mult;
       let n = 0;
       while (S.acc >= SIM.dt && n < 400) {
@@ -102,6 +118,7 @@ function draw() {
     const t = A[0];
     const firstHalf = t < (m.events.find((e) => e.type === 'mi_temps')?.t ?? Infinity);
     teams.forEach((tt, i) => { tt.dir = (i === 0 ? 1 : -1) * (firstHalf ? 1 : -1); });
+    S.renderer.follow(52.5, 34, 1);
     S.renderer.draw({ teams, players, ball: { x: lerp(1), y: lerp(2), z: lerp(3) }, ownerId: A[4] >= 0 ? A[4] : null, selectedId: S.selectedId });
     const sec = Math.max(0, t);
     $('#replay-time').textContent = `· ${fmtTime(sec).split(' ')[0]}`;
@@ -109,10 +126,70 @@ function draw() {
   }
   const alpha = S.paused || m.phase === 'fulltime' ? 1 : Math.min(1, S.acc / SIM.dt);
   const P = S.prev, k = m.players.length * 2;
+  // carrière : ton équipe attaque toujours vers la droite de l'écran (affichage seulement)
+  S.renderer.mirror = !!S.career && m.teams[S.career.followTeam].dir < 0;
   const players = m.players.map((p, i) => ({ ...p, x: P && Number.isFinite(P[i * 2]) ? P[i * 2] + (p.x - P[i * 2]) * alpha : p.x, y: P && Number.isFinite(P[i * 2 + 1]) ? P[i * 2 + 1] + (p.y - P[i * 2 + 1]) * alpha : p.y }));
   const ball = P ? { x: P[k] + (m.ball.x - P[k]) * alpha, y: P[k + 1] + (m.ball.y - P[k + 1]) * alpha, z: P[k + 2] + (m.ball.z - P[k + 2]) * alpha } : m.ball;
   if (Math.hypot(ball.x - m.ball.x, ball.y - m.ball.y) > 15) { ball.x = m.ball.x; ball.y = m.ball.y; } // replacement arbitral
-  S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx() });
+  // caméra : suit ton joueur quand il est sur le terrain
+  const u = S.ctl.userId != null ? players[S.ctl.userId] : null;
+  let aim = null;
+  if (u && u.onPitch && S.career) {
+    const z = S.ctl.zoom;
+    S.renderer.follow(u.x * 0.65 + ball.x * 0.35, u.y * 0.65 + ball.y * 0.35, z);
+    if (controlActive() && m.ball.owner === u.id && m.phase === 'play') {
+      const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
+      const tg = pickTarget(m, m.players[u.id], w.dx, w.dy, 'short');
+      if (tg) aim = { x0: u.x, y0: u.y, x1: tg.player.x, y1: tg.player.y };
+    }
+  } else S.renderer.follow(52.5, 34, 1);
+  S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim });
+}
+
+// ------------------------------------------------------------------ pilotage direct
+function controlActive() { return S.ctl.enabled && S.ctl.manual && S.ctl.engaged; }
+
+// Synchronise l'état de pilotage avec le moteur et transmet les entrées (commandes horodatées)
+function updateControl() {
+  const m = S.m, c = S.ctl;
+  if (!c.enabled) return;
+  const u = m.players[c.userId];
+  const on = u.onPitch;
+  if (on && !c.wasOn) toast('Tu entres en jeu : à toi de jouer !');
+  c.wasOn = on;
+  const want = on && c.manual;
+  if (want && !c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: true }); c.engaged = true; c.sent = ''; S.speed = 1; S.uiDirty = true; }
+  if (!want && c.engaged) { m.queueCommand({ type: 'control', playerId: u.id, on: false }); c.engaged = false; Pad.reset(); S.uiDirty = true; }
+  Pad.setVisible(c.engaged);
+  if (!c.engaged) return;
+  Pad.poll();
+  const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
+  const q = `${Math.round(w.dx * 8)}|${Math.round(w.dy * 8)}|${Pad.sprint ? 1 : 0}`;
+  if (q !== c.sent) { c.sent = q; m.queueCommand({ type: 'ctrl', dx: w.dx, dy: w.dy, sprint: Pad.sprint }); }
+  const has = m.ball.owner === u.id;
+  Pad.setLabels(has ? { A: 'Passe', B: 'Tir', X: canCross(m, u) ? 'Centre' : 'Longue', Y: 'Profondeur' } : { A: 'Tacle', B: '', X: '', Y: 'Appel' });
+  const fb = m.control?.feedback;
+  if (fb && fb.t !== c.fbT) { c.fbT = fb.t; const h = $('#pad-hint'); h.textContent = fb.text; h.hidden = false; clearTimeout(S.hintTimer); S.hintTimer = setTimeout(() => { h.hidden = true; }, 1200); }
+}
+
+function padAction(btn) {
+  const m = S.m;
+  if (!m || !controlActive() || S.paused || S.modalOpen || S.replay) return;
+  const u = m.players[S.ctl.userId];
+  const has = m.ball.owner === u.id;
+  const action = btn === 'C' ? 'call' : has ? { A: 'pass', B: 'shoot', X: 'long', Y: 'through' }[btn] : { A: 'tackle', Y: 'call', B: 'shoot', X: 'long' }[btn];
+  if (!action) return;
+  const w = S.renderer.dirToWorld(Pad.dx, Pad.dy);
+  m.queueCommand({ type: 'act', action, dx: w.dx, dy: w.dy });
+}
+
+function setManual(v) {
+  const c = S.ctl;
+  if (!c.enabled) return;
+  c.manual = v;
+  if (v) S.speed = 1;
+  toast(v ? 'Pilotage manuel : tu contrôles ton joueur.' : 'Pilotage délégué : l\'IA joue pour toi (les vitesses rapides sont disponibles).');
+  refreshUI(true);
 }
 
 function fmtTime(t) {
@@ -127,13 +204,24 @@ function handleNewEvents() {
   for (; S.seenEvents < m.events.length; S.seenEvents++) {
     const ev = m.events[S.seenEvents];
     addFeed(ev);
+    if (ev.type === 'but' && !S.quick) goalBanner(ev);
     if (ev.pause && (ev.type !== 'blessure' || ev.team === userTeamIdx())) {
-      S.paused = true; stop = true;
+      S.paused = true; stop = true; Pad.reset();
       toast(ev.decision ? `${ev.text} Décision requise : préparez un remplacement ou laissez-le sur le terrain.` : ev.text);
     }
     if (ev.type === 'fin') { stop = true; setTimeout(showSummary, 400); }
   }
   return stop;
+}
+
+function goalBanner(ev) {
+  const m = S.m, el = $('#goal-banner');
+  const t = m.teams[ev.team];
+  const mine = S.career && ev.player === S.ctl.userId && !ev.own;
+  el.innerHTML = `<strong>${mine ? 'TU MARQUES !' : 'BUT !'}</strong><span>${esc(t.name)} · ${esc(m.teams[0].short)} ${m.score[0]} – ${m.score[1]} ${esc(m.teams[1].short)}</span>`;
+  el.style.setProperty('--team', t.colors.primary);
+  el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  clearTimeout(S.goalTimer); S.goalTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
 function addFeed(ev) {
@@ -185,19 +273,31 @@ function refreshUI(force) {
   if (!m) return;
   $('#score').textContent = `${m.score[0]} – ${m.score[1]}`;
   const reds = m.teams.map((t) => t.stats.reds);
-  $('#clock').textContent = `${m.clock()} · ${m.period === 1 ? '1re' : '2e'} mi-temps${m.added[m.period - 1] ? ` (+${m.added[m.period - 1]})` : ''}${reds[0] || reds[1] ? ` · rouges ${reds[0]}-${reds[1]}` : ''}`;
+  $('#clock-t').textContent = m.clock();
+  $('#clock-x').textContent = ` · ${m.period === 1 ? '1re' : '2e'} mi-temps${m.added[m.period - 1] ? ` (+${m.added[m.period - 1]})` : ''}${reds[0] || reds[1] ? ` · rouges ${reds[0]}-${reds[1]}` : ''}`;
   const badge = $('#mode-badge');
   if (S.replay) { badge.textContent = 'REPLAY'; badge.className = 'badge replay'; }
   else if (m.phase === 'fulltime') { badge.textContent = 'TERMINÉ'; badge.className = 'badge'; }
   else if (S.paused) { badge.textContent = 'PAUSE'; badge.className = 'badge pause'; }
   else { badge.textContent = `DIRECT ${S.speed}×`; badge.className = 'badge live'; }
-  $('#btn-play').textContent = S.paused ? '▶ Reprendre' : '⏸ Pause';
+  $('#btn-play').innerHTML = S.paused ? '<span class="ico">▶</span><span class="lbl"> Reprendre</span>' : '<span class="ico">⏸</span><span class="lbl"> Pause</span>';
+  document.body.classList.toggle('ctl-manual', S.ctl.enabled && S.ctl.manual);
   $('#btn-play').disabled = !!S.replay || m.phase === 'fulltime';
   $('#btn-live').hidden = !S.replay;
   $('#btn-replay').hidden = !!S.replay;
   $('#replay-banner').hidden = !S.replay;
   $('#btn-quick').disabled = m.phase === 'fulltime' || !!S.replay;
-  document.querySelectorAll('.speed button').forEach((b) => b.classList.toggle('active', Number(b.dataset.speed) === S.speed));
+  const manual = S.ctl.enabled && S.ctl.manual;
+  document.querySelectorAll('.speed button').forEach((b) => {
+    b.classList.toggle('active', Number(b.dataset.speed) === S.speed);
+    b.disabled = manual && Number(b.dataset.speed) > 1; // pilotage direct limité à 1×
+  });
+  const bc = $('#btn-ctl'), bz = $('#btn-zoom');
+  bc.hidden = !S.ctl.enabled; bz.hidden = !S.career || S.ctl.userId == null;
+  bc.innerHTML = S.ctl.manual ? '<span class="ico">🎮</span><span class="lbl"> Manuel</span>' : '<span class="ico">🤖</span><span class="lbl"> Auto</span>';
+  bc.classList.toggle('active', S.ctl.manual);
+  bz.innerHTML = `<span class="ico">🔍</span><span class="lbl"> ${S.ctl.zoom <= 1 ? 'Large' : S.ctl.zoom < 2 ? 'Moyen' : 'Proche'}</span>`;
+  if (S.paused || S.replay || m.phase === 'fulltime') Pad.setVisible(false);
   renderLeft();
   renderRight();
 }
@@ -215,6 +315,7 @@ function renderLeft() {
   const ti = viewTeamIdx();
   const team = m.teams[ti];
   const own = userTeamIdx() === ti;
+  const seeState = own || (S.career && S.career.followTeam === ti); // coéquipiers : état estimé visible
   $('#left-team').textContent = team.short;
   const xi = team.slotPlayer.map((id, slot) => ({ id, slot }));
   const xiEl = $('#xi');
@@ -229,7 +330,7 @@ function renderLeft() {
     const p = m.players[id];
     const [lbl, cls] = energyState(p);
     if (S.selectedId === p.id || S.subDraft.outId === p.id) li.classList.add('sel');
-    li.innerHTML = `<span class="num">${p.num}</span><span>${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.yellow ? '<span class="card-y" title="Averti"></span>' : ''}${p.injured ? '<span class="inj" title="Gêne physique signalée">+</span>' : ''}</span>${own ? `<span class="state ${cls}" title="Estimation du staff">${lbl}</span>` : '<span class="state" title="État non connu">—</span>'}`;
+    li.innerHTML = `<span class="num">${p.num}</span><span>${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.yellow ? '<span class="card-y" title="Averti"></span>' : ''}${p.injured ? '<span class="inj" title="Gêne physique signalée">+</span>' : ''}</span>${seeState ? `<span class="state ${cls}" title="Estimation du staff">${lbl}</span>` : '<span class="state" title="État non connu">—</span>'}`;
     li.addEventListener('click', () => onPlayerClick(p.id, 'xi'));
     li.addEventListener('dragover', (e) => { if (own) e.preventDefault(); });
     li.addEventListener('drop', (e) => { e.preventDefault(); const inId = Number(e.dataTransfer.getData('text/plain')); S.subMode = true; S.subDraft = { outId: p.id, inId }; S.subError = null; renderLeft(); });
@@ -319,10 +420,47 @@ function confirmSub() {
 function renderRight() {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === S.tab));
   for (const t of ['consignes', 'analyse', 'staff']) $(`#tab-${t}`).hidden = S.tab !== t;
-  if (S.tab === 'consignes') renderConsignes();
+  if (S.tab === 'consignes') { if (S.career) renderMine(); else renderConsignes(); }
   if (S.tab === 'analyse') renderAnalyse();
   if (S.tab === 'staff') renderStaff();
   renderPlayerCard();
+}
+
+// Carrière : ton match en direct (faits observés, note provisoire)
+function renderMine() {
+  const m = S.m, el = $('#tab-consignes');
+  const u = S.ctl.userId != null ? m.players[S.ctl.userId] : null;
+  if (!u) { el.innerHTML = '<p class="muted">Tu suis ce match depuis la tribune : tu n\'es pas dans le groupe.</p>'; return; }
+  const team = m.teams[u.team];
+  const st = u.stats;
+  const mins = u.used ? Math.max(1, Math.round(st.distance > 0 ? Math.min(95, (m.t - (u.enteredAt ?? 0)) / 60) : 0)) : 0;
+  const diff = Math.sign(m.score[u.team] - m.score[1 - u.team]);
+  const rating = u.used && st.distance > 50 ? matchRating({ ...st, saves: 0 }, diff, Math.max(1, mins), u.role) : null;
+  const status = u.sentOff ? 'Expulsé' : u.onPitch ? 'Sur le terrain' : u.used ? 'Remplacé' : 'Sur le banc — le coach peut te faire entrer';
+  const e = Math.round(u.energy * 100);
+  const touch = matchMedia('(pointer: coarse)').matches;
+  el.innerHTML = `
+    <div class="me-head"><strong>n° ${u.num} ${esc(u.name)}</strong><span class="muted">${esc(ROLE_LABELS[u.role])} · ${esc(team.short)}</span></div>
+    <p><span class="st ${u.onPitch ? 'active' : 'transmise'}">${esc(status)}</span>${u.yellow ? ' <span class="card-y"></span> averti' : ''}${u.injured ? ' <span class="inj">+</span> gêné' : ''}</p>
+    <div class="me-grid">
+      <div><b>${rating ? rating.toFixed(1) : '—'}</b><span>note provisoire</span></div>
+      <div><b>${st.goals}</b><span>but(s)</span></div>
+      <div><b>${st.passesOk}/${st.passes}</b><span>passes</span></div>
+      <div><b>${st.shots}</b><span>tir(s)</span></div>
+      <div><b>${st.tackles}</b><span>tacle(s)</span></div>
+      <div><b>${(st.distance / 1000).toFixed(1)}</b><span>km</span></div>
+    </div>
+    <div class="gauge"><span>Énergie</span><span class="bar"><i class="${e > 66 ? 'good' : e > 45 ? 'mid' : 'low'}" style="width:${e}%"></i></span></div>
+    ${S.ctl.enabled ? `<h2>Commandes</h2>
+    <table class="help-table">
+      <tr><td>${touch ? 'Stick (zone gauche)' : '<kbd>ZQSD</kbd> / flèches'}</td><td>Se déplacer${touch ? ' ; pousser à fond pour sprinter' : ' ; <kbd>Maj</kbd> pour sprinter'}</td></tr>
+      <tr><td>${touch ? 'Passe' : '<kbd>E</kbd>'}</td><td>Passe vers le partenaire visé · sans ballon : tacle</td></tr>
+      <tr><td>${touch ? 'Tir' : '<kbd>F</kbd>'}</td><td>Frapper (incliner le stick pour choisir le côté)</td></tr>
+      <tr><td>${touch ? 'Longue / Centre' : '<kbd>R</kbd>'}</td><td>Jeu long, ou centre depuis un couloir</td></tr>
+      <tr><td>${touch ? 'Profondeur / Appel' : '<kbd>A</kbd> (AZERTY) · <kbd>C</kbd>'}</td><td>Passe dans la course · sans ballon : demander le ballon</td></tr>
+    </table>
+    <p class="muted">Sans toucher au stick, ton joueur se replace seul (placement assisté). La ligne dorée montre le partenaire visé : la réussite dépend de ta technique, de la pression et de la fatigue. Coups de pied arrêtés : gérés par l'équipe.</p>`
+    : u.role === 'GK' ? '<p class="muted">Le pilotage direct du gardien n\'est pas encore disponible : l\'IA joue pour toi.</p>' : ''}`;
 }
 
 function effectiveTactics(team) {
@@ -541,10 +679,13 @@ function showHelp(fromSetup = false) {
     ['+ / − (pavé numérique)', 'Accélérer / ralentir (1×, 2×, 4×, 8×).'],
     ['Clic sur le terrain', 'Sélectionner un joueur et ouvrir sa fiche autorisée.'],
     ['Glisser un remplaçant sur un titulaire', 'Préparer un remplacement, puis confirmer.'],
+    ['Carrière — ZQSD / flèches, Maj', 'Déplacer ton joueur, sprinter. Sur téléphone : stick dans la moitié gauche de l\'écran.'],
+    ['Carrière — E · F · R · A · C', 'Passe (ou tacle sans ballon) · tir · jeu long ou centre · passe dans la course · demander le ballon.'],
+    ['Carrière — bouton Manuel / Auto', 'Piloter ton joueur ou le confier à l\'IA (nécessaire pour accélérer le temps).'],
   ];
   openModal(`<h1>Commandes du manager</h1>
     <table class="help-table">${rows.map(([k, v]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(v)}</td></tr>`).join('')}</table>
-    <p class="note">Les raccourcis ne se déclenchent pas quand un champ de saisie ou une fenêtre a le focus. Le pilotage direct d'un joueur (lot P1) n'est pas encore disponible.</p>
+    <p class="note">Les raccourcis ne se déclenchent pas quand un champ de saisie ou une fenêtre a le focus. Le pilotage direct concerne les joueurs de champ ; le gardien et les coups de pied arrêtés restent gérés par l'IA.</p>
     <div class="actions"><button class="primary" id="help-close">Fermer</button></div>`, { onClose: () => { if (fromSetup) showSetup(); } });
   $('#help-close').addEventListener('click', closeModal);
 }
@@ -583,6 +724,8 @@ function quickResult() {
   $('#q-yes').addEventListener('click', () => {
     closeModal();
     if (ti != null && !m.aiTeams.includes(ti)) m.aiTeams.push(ti);
+    if (S.ctl.engaged) { m.queueCommand({ type: 'control', playerId: S.ctl.userId, on: false }); S.ctl.engaged = false; }
+    S.ctl.manual = false; Pad.setVisible(false);
     S.quick = true;
     const chunk = () => {
       for (let i = 0; i < 3000 && m.phase !== 'fulltime'; i++) { m.step(); }
@@ -595,7 +738,6 @@ function quickResult() {
   });
 }
 
-let toastTimer = null;
 function toast(text) {
   const el = $('#toast');
   el.textContent = text; el.hidden = false;
@@ -618,12 +760,14 @@ function onKeyDown(e) {
     return;
   }
   if (!S.m) return;
-  const inConsignes = $('#right').contains(document.activeElement) && S.tab === 'consignes';
+  // pilotage direct : touches de déplacement et de geste (jamais pendant une pause ou un replay)
+  if (controlActive() && !S.paused && !S.replay && !e.ctrlKey && !e.metaKey && !e.altKey && Pad.keyDown(e)) { e.preventDefault(); return; }
+  const inConsignes = !S.career && $('#right').contains(document.activeElement) && S.tab === 'consignes';
   switch (e.key) {
     case ' ':
       e.preventDefault();
       if (S.replay) { S.replay.playing = !S.replay.playing; return; }
-      if (S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; refreshUI(true); }
+      if (S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; Pad.reset(); refreshUI(true); }
       return;
     case 'Escape':
       e.preventDefault();
@@ -692,7 +836,12 @@ function bind() {
   window.addEventListener('resize', () => S.renderer.resize());
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);
-  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m && S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; refreshUI(true); } });
+  window.addEventListener('keyup', (e) => Pad.keyUp(e));
+  Pad.init();
+  Pad.onAction = padAction;
+  $('#btn-ctl').addEventListener('click', (e) => { e.currentTarget.blur(); setManual(!S.ctl.manual); });
+  $('#btn-zoom').addEventListener('click', (e) => { e.currentTarget.blur(); S.ctl.zoom = S.ctl.zoom <= 1 ? 1.7 : S.ctl.zoom < 2 ? 2.4 : 1; refreshUI(true); });
+  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m && S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; Pad.reset(); refreshUI(true); } });
   document.querySelectorAll('.speed button').forEach((b) => b.addEventListener('click', () => { S.speed = Number(b.dataset.speed); b.blur(); refreshUI(true); }));
   $('#btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m) openReplay(); });
   $('#btn-live').addEventListener('click', (e) => { e.currentTarget.blur(); closeReplay(); });

@@ -35,6 +35,37 @@ L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements,
    - Ta note et tes minutes font évoluer la confiance du coach, ton moral et ta progression.
 6. **Fin de saison** : un bilan, puis des offres. Selon ton niveau, tu restes en formation (U17, puis U19), tu signes ton premier contrat pro ou un contrat stagiaire en réserve, ou tu es libéré et dois rebondir dans un autre centre ou un autre club. La carrière continue jusqu'à la retraite.
 
+### Pilotage direct de ton joueur
+
+Quand tu es sur le terrain (joueur de champ), tu pilotes ton joueur. Tu peux aussi le confier à l'IA à tout moment avec le bouton **Manuel / Auto**.
+
+| Geste | Téléphone | Clavier (positions physiques) |
+|---|---|---|
+| Se déplacer / sprinter | Stick dans la moitié gauche de l'écran ; poussé à fond = sprint | ZQSD (AZERTY) ou WASD, flèches ; Maj = sprint |
+| Passe · sans ballon : tacle | Bouton principal | E |
+| Tir (incliner le stick pour choisir le côté) | Tir | F |
+| Jeu long, ou centre depuis un couloir | Longue / Centre | R |
+| Passe dans la course · sans ballon : demander le ballon | Profondeur / Appel | A (AZERTY) / Q (QWERTY) ; C pour l'appel |
+
+- **Caméra** : elle suit ton joueur, avec trois niveaux de zoom, et ton équipe attaque toujours vers la droite de l'écran (affichage seulement).
+- **Aide de visée** : une ligne dorée montre le partenaire visé. La réussite du geste reste résolue par le moteur selon ta technique, la pression et la fatigue.
+- **Placement assisté** : sans toucher au stick et sans ballon, ton joueur se replace seul. Avec le ballon, rien ne part sans toi. Le tacle est toujours ta décision.
+- **Vitesse** : le pilotage direct est limité à 1×. Pour accélérer, il faut déléguer explicitement (Auto). La pause relâche toutes les commandes maintenues.
+- **Hors de ce lot** : le gardien et les coups de pied arrêtés restent gérés par l'IA.
+- Les entrées sont des commandes horodatées : un match piloté reste reproductible (`tests/control.test.js`).
+
+### Programme de la semaine et bilan mensuel
+
+- **Aperçu avant de valider** : chaque choix (thème, intensité, hors terrain) met à jour les « effets attendus » : niveau, attributs travaillés, fraîcheur, moral, confiance, potentiel et risque de blessure.
+- **Compte rendu de la semaine** : les variations réelles s'affichent en pastilles, effet du match compris.
+- **Bilan du mois** (pop-up toutes les 4 semaines, consultable ensuite) :
+  - niveau et potentiel estimé, matchs joués, classement ;
+  - d'où vient ta progression (entraînement, hors terrain, matchs) ;
+  - le détail **mesuré** de chaque choix d'entraînement et de chaque activité hors terrain ;
+  - l'évolution de chaque attribut avec la part de chaque source ;
+  - les remarques du staff, fondées sur ces faits.
+- Les chiffres ne sont pas estimés après coup : chaque effet est enregistré au moment où il se produit, et la somme des sources explique exactement chaque variation (`tests/career.test.js`).
+
 ### Données réelles utilisées
 
 `tools/build-catalog.mjs` génère `src/data/catalog.js` à partir du CSV (`npm run catalog`).
@@ -45,7 +76,7 @@ L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements,
 - **Effectifs professionnels** : les **noms publiés par les clubs** sont repris (statut `liste_publiee` uniquement, quarantaine exclue). Les **notes sont des estimations du jeu** dérivées du niveau de la division, pas des valeurs réelles.
 - **Jeunes** : les effectifs U17 et U19 réels (des mineurs) ne sont **pas** importés. Les coéquipiers et adversaires du centre de formation sont fictifs, conformément au concept.
 - **Classement** : les matchs de ton équipe passent par le moteur, les autres rencontres par un modèle agrégé. Le volume de buts de ce modèle est aligné sur celui du moteur (≈ 6 buts par match, calibration en cours) pour que le classement reste cohérent.
-- **Hors de ce lot** : le pilotage direct de ton joueur pendant le match (pour l'instant tu le regardes jouer), et la carrière féminine (le catalogue ne contient pas de championnat féminin de jeunes).
+- **Hors de ce lot** : la carrière féminine (le catalogue ne contient pas de championnat féminin de jeunes).
 
 ## APK Android
 
@@ -134,7 +165,7 @@ Ces écarts sont assumés pour un prototype. Le concept demande de mesurer avant
 
 ## Hors de ce lot
 
-- Pilotage direct d'un joueur (lot P1) : commandes ZQSD/WASD, gestes chargés, profils d'assistance, manette.
+- Pilotage direct : gardien, coups de pied arrêtés, gestes chargés et remappage des touches.
 - Éditeur tactique par glisser-déposer des positions cibles, coups de pied arrêtés préparés.
 - Carrière, saison, monde : le moteur de match est le socle, pas encore le jeu complet.
 - Import des clubs et joueurs réels : bloqué tant que les identités, les droits et les questions liées aux mineurs ne sont pas validés (voir `docs/effectifs-v1.md`).

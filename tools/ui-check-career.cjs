@@ -39,21 +39,46 @@ const SHOTS = process.argv[3] || null;
   assert.match(await page.textContent('.hub-head'), /U17/);
   await shot('c3-hub');
 
-  // semaines : entraînement, événements, matchs simulés
-  let simulated = 0;
-  for (let i = 0; i < 12 && simulated < 2; i++) {
+  // programme de la semaine : l'aperçu des effets suit les choix, sans rien valider
+  const prev1 = await page.textContent('#w-preview');
+  assert.match(prev1, /Effets attendus/);
+  await page.click('[data-focus="physique"]');
+  await page.click('[data-int="intense"]');
+  await page.click('[data-off="sortie"]');
+  const prev2 = await page.textContent('#w-preview');
+  assert.notEqual(prev1, prev2, 'l\'aperçu change avec les choix');
+  assert.match(prev2, /Risque blessure/);
+  assert.match(prev2, /Vitesse/);
+  assert.match(await page.textContent('.week h2'), /Semaine 1\//, 'rien n\'est validé par un simple choix');
+
+  // semaines : entraînement, événements, matchs simulés, bilan mensuel
+  let simulated = 0, reviews = 0;
+  for (let i = 0; i < 30 && (simulated < 2 || reviews < 1); i++) {
+    if (await page.$('#mr-close')) {
+      const txt = await page.textContent('.modal.review');
+      assert.match(txt, /Bilan du mois 1/);
+      assert.match(txt, /Tes choix d'entraînement/i);
+      assert.match(txt, /Hors du terrain/i);
+      assert.match(txt, /Sortie entre amis/);
+      assert.match(txt, /Potentiel/);
+      assert.match(txt, /Le staff te dit/);
+      await shot('c4b-review');
+      await page.click('#mr-close'); reviews++; continue;
+    }
     if (await page.$('[data-ev]')) { await page.click('[data-ev="0"]'); continue; }
-    if (await page.$('#w-go')) { await page.click('[data-int="intense"]'); await page.click('#w-go'); continue; }
+    if (await page.$('#w-go')) { await page.click('#w-go'); continue; }
     if (await page.$('#w-bye')) { await page.click('#w-bye'); continue; }
     if (await page.$('#w-sim')) { await page.click('#w-sim'); await page.waitForSelector('.hub', { timeout: 60000 }); simulated++; continue; }
   }
   assert.ok(simulated >= 1, 'au moins un match simulé');
-  assert.match(await page.textContent('.report'), /\d+-\d+/);
+  assert.equal(reviews, 1, 'un bilan mensuel après quatre semaines');
+  assert.ok(await page.$('#hub-review'), 'le dernier bilan reste consultable');
   await shot('c4-after-sim');
 
   // match en vue 2D jusqu'au bilan, puis retour à la carrière
   for (let i = 0; i < 8 && !(await page.$('#w-watch')); i++) {
-    if (await page.$('[data-ev]')) await page.click('[data-ev="0"]');
+    if (await page.$('#mr-close')) await page.click('#mr-close');
+    else if (await page.$('[data-ev]')) await page.click('[data-ev="0"]');
     else if (await page.$('#w-go')) await page.click('#w-go');
     else if (await page.$('#w-bye')) await page.click('#w-bye');
   }
@@ -79,6 +104,44 @@ const SHOTS = process.argv[3] || null;
   await page.waitForSelector('.hub');
   assert.match(await page.textContent('.hub-head'), /RC Lens/);
   await shot('c6-loaded');
+
+  // pilotage direct : une partie préparée où le joueur est titulaire
+  await page.evaluate(async () => {
+    const C = await import('/src/career/career.js'); const S = await import('/src/career/save.js');
+    const st = C.createCareer({ firstName: 'Léa', lastName: 'Pilote', role: 'CM', clubId: 'fc-nantes', seed: 'pilot' });
+    for (const k in st.player.attrs) if (k !== 'gk') st.player.attrs[k] = Math.min(0.9, st.player.attrs[k] + 0.2);
+    st.player.trust = 1;
+    while (st.phase !== 'matchday' || st.matchday.bye) { if (st.phase === 'week') C.submitWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'repos' }); else if (st.phase === 'event') C.resolveEvent(st, 0); else if (st.phase === 'month_review') C.closeMonthReview(st); else C.applyMatchResult(st, {}); }
+    S.saveCareer(3, st);
+  });
+  await page.click('#hub-home');
+  await page.click('#h-load');
+  await page.click('[data-load="3"]');
+  await page.waitForSelector('#w-watch');
+  assert.match(await page.textContent('.week'), /titulaire/);
+  await page.click('#w-watch');
+  await page.waitForFunction(() => !document.getElementById('pad').hidden, null, { timeout: 30000 });
+  assert.match(await page.textContent('#btn-ctl'), /Manuel/);
+  assert.equal(await page.isDisabled('.speed button[data-speed="4"]'), true, 'pilotage direct limité à 1×');
+  const labels = () => page.evaluate(() => [...document.querySelectorAll('.pb span')].map((x) => x.textContent).join('|'));
+  assert.match(await labels(), /Tacle|Passe/);
+  await page.keyboard.down('KeyD'); await page.waitForTimeout(600); await page.keyboard.up('KeyD');
+  await page.keyboard.press('KeyE');
+  assert.match(await page.textContent('#tab-consignes'), /Pilote/);
+  await shot('c7-control');
+  await page.keyboard.press(' ');
+  assert.equal(await page.isHidden('#pad'), true, 'en pause, plus de commandes');
+  await page.keyboard.press(' ');
+  await page.click('#btn-ctl'); // déléguer à l'IA
+  await page.waitForFunction(() => document.getElementById('pad').hidden);
+  assert.match(await page.textContent('#btn-ctl'), /Auto/);
+  assert.equal(await page.isDisabled('.speed button[data-speed="4"]'), false, 'en Auto, les vitesses rapides reviennent');
+  await page.click('#btn-quick');
+  await page.click('#q-yes');
+  await page.waitForSelector('#sum-career', { timeout: 60000 });
+  await page.click('#sum-career');
+  await page.waitForSelector('.hub');
+  assert.match(await page.textContent('.report'), /min, note/);
 
   assert.deepEqual(errors, []);
   console.log('ui-check-career : OK');
