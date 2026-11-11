@@ -22,7 +22,7 @@ async function get(url, kind = 'json', tries = 4) {
   for (let i = 0; i < tries; i++) {
     let res;
     try { res = await fetch(url, { headers: { 'User-Agent': UA, 'Api-User-Agent': UA } }); } catch { await sleep(2000); continue; }
-    if (res.status === 429 || res.status >= 500) {
+    if (res.status === 429 || res.status === 403 || res.status >= 500) {
       throttled++;
       const wait = Number(res.headers.get('retry-after')) * 1000 || 3000 * 2 ** i;
       await sleep(Math.min(wait, 20000));
@@ -57,12 +57,17 @@ async function findQid(club) {
   return null;
 }
 
+// Nature « club de football » (et variantes) : évite les blasons de villes ou d'autres sports
+const FOOTBALL = new Set(['Q476028', 'Q15944511', 'Q103229495', 'Q1478437', 'Q847017', 'Q17270000', 'Q6979593']);
 async function logoFile(qid) {
   const d = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims&ids=${qid}`);
   await sleep(400);
   const c = d?.entities?.[qid]?.claims ?? {};
-  // P154 : logo ; P8972 : petit logo ou icône ; P94 : armoiries (dernier recours)
-  for (const prop of ['P154', 'P8972', 'P94']) {
+  const kinds = (c.P31 ?? []).map((x) => x.mainsnak?.datavalue?.value?.id);
+  const sport = (c.P641 ?? []).map((x) => x.mainsnak?.datavalue?.value?.id);
+  if (!kinds.some((k) => FOOTBALL.has(k)) && !sport.includes('Q2736')) return null;
+  // P154 : logo ; P8972 : petit logo ou icône
+  for (const prop of ['P154', 'P8972']) {
     const v = c[prop]?.find((x) => x.rank === 'preferred') ?? c[prop]?.[0];
     const file = v?.mainsnak?.datavalue?.value;
     // un logo est un dessin (svg/png) : on écarte les photos (jpg) mal renseignées
