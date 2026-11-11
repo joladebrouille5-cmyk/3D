@@ -74,9 +74,12 @@ Observations sans correction :
 
 - Mode « Temps forts » par défaut : ≈ 3 min réelles par match, 10–14 actions revues, ≤ 10 décisions.
 - Affichage téléphone en paysage vérifié par les tests Playwright (hauteur ≤ 520 px).
-- Logos : 41 vrais logos (26 Ligue 1 + 15 via Wikimedia). Le téléchargement automatique (GitHub Actions)
-  pouvait rester bloqué sur une requête réseau sans délai maximal : chaque requête a maintenant un délai
-  de 20 s et l'étape un délai de 42 min, le reste étant commité même en cas d'arrêt.
+- Logos : **41 vrais logos** — les 18 clubs de Ligue 1, 12 des 18 clubs de Ligue 2, plus 11 autres
+  (26 depuis github.com/luukhopman/football-logos, 15 via Wikimedia). Les autres clubs ont un écusson
+  généré aux vraies couleurs. Le téléchargement automatique (GitHub Actions) n'a ramené que 2 logos en
+  35 min, tous deux **faux** (Metz APM ← FC Metz, Montpellier Atlas Paillade ← MHSC) : ils sont retirés,
+  la correspondance exige désormais tous les mots distinctifs du nom, chaque requête a un délai de 20 s,
+  et le workflow ne se lance plus qu'à la main (Wikimedia limite fortement les requêtes).
 
 ## 4. Données et règles
 

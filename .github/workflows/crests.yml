@@ -1,12 +1,8 @@
 # Télécharge les logos des clubs (Wikidata / Wikimedia Commons) et les commite dans la branche.
-# Lancé quand le script change, ou à la main (onglet Actions).
+# Lancé à la main (onglet Actions) : Wikimedia limite fortement les requêtes, inutile de le relancer à chaque push.
 name: Logos des clubs
 
 on:
-  push:
-    paths:
-      - tools/fetch-crests.mjs
-      - .github/workflows/crests.yml
   workflow_dispatch:
 
 permissions:

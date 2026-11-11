@@ -50,7 +50,10 @@ async function findQid(club) {
       const t = norm(p.title);
       if (!p.pageprops?.wikibase_item) continue;
       if (/saison|stade |championnat|coupe|liste|joueur|entraineur/.test(t) && !/^stade /.test(norm(club.name))) continue;
-      if (toks.length && !toks.some((k) => t.includes(k))) continue;
+      // tous les mots distinctifs du nom (au moins 2/3 s'il y en a 3 ou plus) doivent figurer dans le titre :
+      // évite « Metz APM » -> FC Metz ou « Montpellier Atlas Paillade » -> Montpellier HSC
+      const found = toks.filter((k) => t.includes(k)).length;
+      if (toks.length && found < (toks.length >= 3 ? Math.ceil(toks.length * 2 / 3) : toks.length)) continue;
       return { qid: p.pageprops.wikibase_item, title: p.title };
     }
   }
