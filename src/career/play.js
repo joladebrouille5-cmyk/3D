@@ -42,7 +42,7 @@ export function extractResult(m, userTeam) {
   const stats = u ? { ...u.stats, saves: u.role === 'GK' ? m.teams[userTeam].stats.saves : 0 } : null;
   return {
     score: [...m.score], minutes, started, goals: u?.stats.goals ?? 0,
-    rating: u && minutes ? matchRating(stats, Math.sign(mine - theirs), minutes, u.role) : null,
+    rating: u && minutes ? matchRating(stats, Math.sign(mine - theirs), minutes, u.role, theirs) : null,
     fingerprint: m.fingerprint(),
   };
 }

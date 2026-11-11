@@ -138,7 +138,9 @@ export function selectionForecast(st) {
   const club = clubById(st.clubId);
   const rival = rivalFor(club, st.stage, st.season, st.league, p.role);
   const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) - (p.fresh < 0.35 ? 0.02 : 0);
-  let status = me >= rival.ca ? 'titulaire' : me >= rival.ca - 0.065 ? 'remplaçant' : 'non retenu';
+  // en équipe première, un jeune doit nettement dépasser le titulaire en place pour lui prendre sa place
+  const edge = st.stage === 'Pro' ? 0.015 : 0;
+  let status = me >= rival.ca + edge ? 'titulaire' : me >= rival.ca - 0.065 ? 'remplaçant' : 'non retenu';
   // en formation, les éducateurs font tourner : après trois semaines sans convocation, place sur le banc
   const youth = st.stage === 'U17' || st.stage === 'U19';
   if (status === 'non retenu' && youth && (st.seasonStats?.streakOut ?? 0) >= 3 && me >= rival.ca - 0.11) status = 'remplaçant';
@@ -154,7 +156,8 @@ export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Mat
 
 function snap(p) { return { pa: p.pa, morale: p.morale, fresh: p.fresh, trust: p.trust, discipline: p.discipline, school: p.school, attrs: { ...p.attrs } }; }
 function clampAll(p) {
-  p.pa = clamp(p.pa, 0.35, 0.95);
+  // le potentiel ne descend jamais sous le niveau déjà atteint
+  p.pa = clamp(p.pa, Math.max(0.35, roleCA(p.role, p.attrs) + 0.005), 0.95);
   for (const k of GAUGES) p[k] = clamp(p[k], 0, 1);
 }
 function initMonth(st) {
@@ -216,14 +219,14 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
     p.fresh += it.fresh + (focus === 'recuperation' ? 0.12 : 0);
     p.trust += it.trust;
     // surmenage : s'entraîner épuisé abîme le potentiel
-    if (intensity === 'intense' && p.fresh < 0.3) { p.pa -= 0.002; rep.lines.push('Le préparateur physique s\'inquiète : tu t\'entraînes trop fatigué.'); }
+    if (intensity === 'intense' && p.fresh < 0.3) { p.pa -= 0.0012; rep.lines.push('Le préparateur physique s\'inquiète : tu t\'entraînes trop fatigué.'); }
     progress(st, focus, trainGrowth, r);
   });
   // hors du terrain
   track(st, `off:${offpitch}`, () => {
     if (offpitch === 'ecole') { p.school += 0.04; p.discipline += 0.01; p.morale -= 0.01; p.pa += 0.0006; }
     if (offpitch === 'video') { p.pa += 0.0008; p.discipline += 0.01; p.attrs.decisions = clamp(p.attrs.decisions + 0.0015, 0.05, 0.97); progress(st, 'tactique', 0.05, r); }
-    if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.002; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
+    if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.001; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
     if (offpitch === 'repos') { p.fresh += 0.15; p.morale += 0.04; }
     if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; }
     if (youth && offpitch !== 'ecole') p.school -= 0.012; // la scolarité s'érode si on la néglige
@@ -726,12 +729,24 @@ export function summary(st) {
 }
 
 // Note de match à partir des statistiques du moteur (bornée)
-export function matchRating(stats, outcome, minutes, role) {
+// Note sur 10 normalisée par poste (références mesurées sur le moteur) : un match moyen ≈ 6,6-6,8.
+const RATING_NORM = {
+  GK: { pass: 0.76, tack: 0, shots: 0 }, FB: { pass: 0.72, tack: 4.5, shots: 0.2 }, CB: { pass: 0.77, tack: 5, shots: 0.1 },
+  DM: { pass: 0.75, tack: 10, shots: 0.1 }, CM: { pass: 0.78, tack: 6.5, shots: 0.7 }, AM: { pass: 0.73, tack: 9, shots: 0.8 },
+  W: { pass: 0.67, tack: 6, shots: 1.2 }, ST: { pass: 0.65, tack: 12, shots: 4.4 },
+};
+export function matchRating(stats, outcome, minutes, role, conceded = null) {
   if (!minutes) return null;
-  const passPct = stats.passes ? stats.passesOk / stats.passes : 0.75;
-  let r = 6.0 + stats.goals * 1.0 + (passPct - 0.72) * 3 + stats.tackles * 0.18 + stats.shots * 0.08 + (outcome > 0 ? 0.3 : outcome < 0 ? -0.3 : 0);
-  if (role === 'GK') r += 0.1 * (stats.saves ?? 0);
-  r *= minutes < 30 ? 0.97 : 1;
+  const n = RATING_NORM[role] ?? RATING_NORM.CM;
+  const share = Math.min(1, minutes / 90);
+  const passPct = stats.passes >= 5 ? stats.passesOk / stats.passes : n.pass;
+  let r = 6.6 + stats.goals * 0.9 + (passPct - n.pass) * 3
+    + (stats.tackles - n.tack * share) * (n.tack ? 0.5 / n.tack : 0)
+    + (stats.shots - n.shots * share) * 0.05
+    + (outcome > 0 ? 0.3 : outcome < 0 ? -0.3 : 0);
+  if (role === 'GK') r += 0.15 * (stats.saves ?? 0) - 0.35 + (conceded != null ? -0.2 * conceded + 0.25 : 0);
+  if (role === 'CB' || role === 'FB') r += conceded != null ? -0.12 * conceded + 0.15 : 0;
+  if (minutes < 30) r = 6.3 + (r - 6.6) * 0.6;
   return clamp(r, 3, 10);
 }
 

@@ -5,6 +5,7 @@
 //   des estimations du jeu dérivées du niveau de la division, jamais des valeurs réelles.
 // - Effectifs jeunes et réserves : coéquipiers FICTIFS (pas de données de mineurs réels).
 
+import { CLUB_PRESTIGE, ACADEMY_BONUS } from '../data/club-prestige.js';
 import { CATALOG } from '../data/catalog.js';
 import { ATTRS, ROLE_TEMPLATES, FIRST, LAST_A, LAST_B, FORMATIONS } from '../engine/teams.js';
 import { Rng } from '../engine/rng.js';
@@ -56,7 +57,7 @@ export function clubLevel(c) { return c.senior?.level ?? (c.reserve ? c.reserve.
 // Qualité du centre de formation (0-1) : niveau de l'équipe première + équipes nationales de jeunes.
 export function academyQuality(c) {
   const base = { 1: 0.9, 2: 0.79, 3: 0.68, 4: 0.6, 5: 0.54, 6: 0.47 }[clubLevel(c)];
-  return clamp(base + (c.u19 ? 0.03 : 0) + (c.u17 ? 0.03 : 0), 0.4, 0.97);
+  return clamp(base + (c.u19 ? 0.03 : 0) + (c.u17 ? 0.03 : 0) + (ACADEMY_BONUS[c.id] ?? 0), 0.4, 0.97);
 }
 export const academyStars = (c) => Math.round(((academyQuality(c) - 0.4) / 0.57) * 10) / 2;
 
@@ -66,7 +67,7 @@ export function youthCA(q, stage) { return (stage === 'U19' ? 0.37 : 0.3) + 0.22
 export function teamCA(club, stage) {
   if (stage === 'U17' || stage === 'U19') return youthCA(academyQuality(club), stage);
   if (stage === 'Réserve') return SENIOR_CA[club.reserve?.level ?? 5] - 0.01;
-  return SENIOR_CA[clubLevel(club)];
+  return SENIOR_CA[clubLevel(club)] + (club.senior ? CLUB_PRESTIGE[club.id] ?? 0 : 0);
 }
 
 export const STAGE_LABEL = { U17: 'U17', U19: 'U19', 'Réserve': 'Réserve', Pro: 'Équipe première' };
@@ -119,7 +120,7 @@ export function teamName(club, stage, league) {
 
 // Force utilisée par le modèle agrégé des autres rencontres
 export function teamStrength(club, stage, league) {
-  if (stage === 'Réserve' && league?.reserveOf && club.id !== league.reserveOf) return SENIOR_CA[clubLevel(club)];
+  if (stage === 'Réserve' && league?.reserveOf && club.id !== league.reserveOf) return teamCA(club, 'Pro');
   return teamCA(club, stage);
 }
 
@@ -148,7 +149,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
   const rng = new Rng(`squad:${club.id}:${stage}:${season}`);
   const isReserveTeam = stage === 'Réserve' && league?.reserveOf === club.id;
   const effStage = stage === 'Réserve' && !isReserveTeam ? 'Pro' : stage;
-  const target = isReserveTeam ? teamCA(club, 'Réserve') : effStage === 'Pro' ? SENIOR_CA[clubLevel(club)] : teamCA(club, effStage);
+  const target = isReserveTeam ? teamCA(club, 'Réserve') : teamCA(club, effStage);
   const used = new Set();
   const realList = effStage === 'Pro' && club.senior?.players?.length >= 11 ? club.senior.players : null;
   const pool = []; // [name, role, num, real]

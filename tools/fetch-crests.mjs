@@ -21,7 +21,7 @@ let throttled = 0;
 async function get(url, kind = 'json', tries = 4) {
   for (let i = 0; i < tries; i++) {
     let res;
-    try { res = await fetch(url, { headers: { 'User-Agent': UA, 'Api-User-Agent': UA } }); } catch { await sleep(2000); continue; }
+    try { res = await fetch(url, { headers: { 'User-Agent': UA, 'Api-User-Agent': UA }, signal: AbortSignal.timeout(20000) }); } catch { await sleep(2000); continue; }
     if (res.status === 429 || res.status === 403 || res.status >= 500) {
       throttled++;
       const wait = Number(res.headers.get('retry-after')) * 1000 || 3000 * 2 ** i;
@@ -29,7 +29,7 @@ async function get(url, kind = 'json', tries = 4) {
       continue;
     }
     if (!res.ok) return null;
-    return kind === 'json' ? res.json() : Buffer.from(await res.arrayBuffer());
+    try { return kind === 'json' ? await res.json() : Buffer.from(await res.arrayBuffer()); } catch { await sleep(2000); continue; }
   }
   return null;
 }

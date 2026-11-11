@@ -22,9 +22,10 @@ jobs:
         with:
           node-version: 22
       - name: Télécharger les logos
+        timeout-minutes: 42
         run: node tools/fetch-crests.mjs
         env:
-          CREST_BUDGET_MIN: '40'
+          CREST_BUDGET_MIN: '35'
       - name: Commiter les logos
         if: always()
         run: |

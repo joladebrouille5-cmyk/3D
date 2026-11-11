@@ -1080,8 +1080,10 @@ export class Match {
     const inOwnBox = inBox(att.x, att.y, this.ownGoalX(dteam));
     this.#log('faute', def.team, `Faute de ${def.name} (${dteam.short}) sur ${att.name}${inOwnBox ? ' dans la surface' : ''}.`, { player: def.id, major: inOwnBox });
     let red = false;
-    if (sev > 1.6) red = true;
-    else if (sev > 0.7) {
+    // rouge direct : tacle glissé violent du dernier défenseur (annulation d'une occasion nette)
+    if (sev > 1.32 && slide && !goalSide) red = true;
+    // un joueur déjà averti lève le pied (et l'arbitre hésite davantage avant le second jaune)
+    else if (sev > (def.yellow ? 0.9 : 0.7)) {
       def.yellow++; dteam.stats.yellows++;
       this.stoppage[this.period - 1] += 10;
       if (def.yellow >= 2) { red = true; this.#log('carton', def.team, `Second avertissement pour ${def.name} : expulsion.`, { player: def.id, card: 'red', major: true }); }
