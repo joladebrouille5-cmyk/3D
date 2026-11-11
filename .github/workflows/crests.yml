@@ -15,6 +15,7 @@ permissions:
 jobs:
   crests:
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -22,7 +23,10 @@ jobs:
           node-version: 22
       - name: Télécharger les logos
         run: node tools/fetch-crests.mjs
+        env:
+          CREST_BUDGET_MIN: '40'
       - name: Commiter les logos
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

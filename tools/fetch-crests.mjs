@@ -6,6 +6,7 @@ import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CATALOG } from '../src/data/catalog.js';
+import { CREST_LOCAL } from '../src/data/crest-local.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(root, 'assets/crests');
@@ -13,12 +14,18 @@ const UA = 'GenerationFootballPersonal/0.2 (personal single-player game; crest f
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 mkdirSync(OUT, { recursive: true });
 
-async function get(url, kind = 'json', tries = 6) {
+// Budget de temps : on s'arrête proprement (et on garde ce qui est acquis) avant la limite du job
+const BUDGET_MS = Number(process.env.CREST_BUDGET_MIN || 40) * 60000;
+const T0 = Date.now();
+let throttled = 0;
+async function get(url, kind = 'json', tries = 4) {
   for (let i = 0; i < tries; i++) {
-    const res = await fetch(url, { headers: { 'User-Agent': UA, 'Api-User-Agent': UA } });
+    let res;
+    try { res = await fetch(url, { headers: { 'User-Agent': UA, 'Api-User-Agent': UA } }); } catch { await sleep(2000); continue; }
     if (res.status === 429 || res.status >= 500) {
-      const wait = Number(res.headers.get('retry-after')) * 1000 || 2000 * 2 ** i;
-      await sleep(Math.min(wait, 60000));
+      throttled++;
+      const wait = Number(res.headers.get('retry-after')) * 1000 || 3000 * 2 ** i;
+      await sleep(Math.min(wait, 20000));
       continue;
     }
     if (!res.ok) return null;
@@ -58,7 +65,8 @@ async function logoFile(qid) {
   for (const prop of ['P154', 'P8972', 'P94']) {
     const v = c[prop]?.find((x) => x.rank === 'preferred') ?? c[prop]?.[0];
     const file = v?.mainsnak?.datavalue?.value;
-    if (file) return file;
+    // un logo est un dessin (svg/png) : on écarte les photos (jpg) mal renseignées
+    if (file && /\.(svg|png|gif)$/i.test(file)) return file;
   }
   return null;
 }
@@ -68,25 +76,32 @@ const previous = existsSync(manifestPath) ? JSON.parse((readFileSync(manifestPat
 const files = {}, sources = { ...previous };
 let ok = 0, miss = [];
 const only = process.argv.slice(2);
+function writeManifest() {
+  for (const id of Object.keys(sources)) if (!files[id] && existsSync(join(OUT, `${id}.png`))) files[id] = `assets/crests/${id}.png`;
+  writeFileSync(manifestPath, `// Généré par tools/fetch-crests.mjs — logos officiels téléchargés pour un usage personnel.\nexport const CREST_FILES = ${JSON.stringify(files, null, 0)};\nexport const CREST_SOURCES = ${JSON.stringify(sources)};\n`);
+}
+let consecutiveFail = 0;
 for (const club of CATALOG.clubs) {
   if (only.length && !only.includes(club.id)) continue;
+  if (CREST_LOCAL[club.id]) continue; // déjà couvert par les logos locaux
+  if (Date.now() - T0 > BUDGET_MS) { console.log('Budget de temps atteint : arrêt propre.'); break; }
+  if (consecutiveFail >= 12) { console.log('Trop d\'échecs consécutifs (limitation probable) : arrêt propre.'); break; }
   const dest = join(OUT, `${club.id}.png`);
   if (existsSync(dest) && previous[club.id]) { files[club.id] = `assets/crests/${club.id}.png`; ok++; continue; }
   try {
     const hit = await findQid(club);
     const file = hit && await logoFile(hit.qid);
-    if (!file) { miss.push(club.name); continue; }
+    if (!file) { miss.push(club.name); consecutiveFail = hit ? 0 : consecutiveFail + 1; continue; }
     const png = await get(`https://commons.wikimedia.org/w/index.php?title=Special:FilePath/${encodeURIComponent(file)}&width=128`, 'bin');
     await sleep(400);
-    if (!png || png.length < 200) { miss.push(club.name); continue; }
+    if (!png || png.length < 200) { miss.push(club.name); consecutiveFail++; continue; }
     writeFileSync(dest, png);
     files[club.id] = `assets/crests/${club.id}.png`;
     sources[club.id] = { article: hit.title, wikidata: hit.qid, file };
-    ok++;
+    ok++; consecutiveFail = 0;
+    writeManifest(); // sauvegarde au fil de l'eau
     console.log(`✓ ${club.name} — ${hit.title} — ${file}`);
   } catch (e) { miss.push(`${club.name} (${e.message})`); }
 }
-// conserver les logos déjà présents pour les clubs non traités cette fois
-for (const id of Object.keys(previous)) if (!files[id] && existsSync(join(OUT, `${id}.png`))) files[id] = `assets/crests/${id}.png`;
-writeFileSync(manifestPath, `// Généré par tools/fetch-crests.mjs — logos officiels téléchargés pour un usage personnel.\nexport const CREST_FILES = ${JSON.stringify(files, null, 0)};\nexport const CREST_SOURCES = ${JSON.stringify(sources)};\n`);
-console.log(`${ok} logos, ${miss.length} introuvables${miss.length ? ` : ${miss.join(', ')}` : ''}`);
+writeManifest();
+console.log(`${ok} logos (${throttled} réponses de limitation), ${miss.length} introuvables${miss.length ? ` : ${miss.join(', ')}` : ''}`);
