@@ -9,7 +9,7 @@ const URL = process.argv[2] || 'http://localhost:8000/index.html';
   await page.clock.install();
   await page.goto(URL);
   await page.evaluate(async () => {
-    localStorage.clear();
+    localStorage.clear(); localStorage.setItem('generation-football.matchLength', 'court');
     const C = await import('/src/career/career.js'); const S = await import('/src/career/save.js');
     const st = C.createCareer({ firstName: 'Léo', lastName: 'Rythme', role: 'CM', clubId: 'fc-nantes', seed: 'pace' });
     for (const k in st.player.attrs) if (k !== 'gk') st.player.attrs[k] = Math.min(0.9, st.player.attrs[k] + 0.2);

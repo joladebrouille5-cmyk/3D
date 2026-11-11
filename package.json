@@ -12,6 +12,7 @@
     "ui-check": "node tools/ui-check.cjs",
     "catalog": "node tools/build-catalog.mjs",
     "ui-check-career": "node tools/ui-check-career.cjs",
-    "ui-check-pace": "node tools/ui-check-pace.cjs"
+    "ui-check-pace": "node tools/ui-check-pace.cjs",
+    "ui-check-tf": "node tools/ui-check-tf.cjs"
   }
 }

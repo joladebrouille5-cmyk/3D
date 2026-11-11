@@ -559,3 +559,8 @@ label.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; f
   .ch-opt .ch-ic { font-size: 1.05em; } .ch-t b { font-size: 0.84em; } .ch-t small { font-size: 0.68em; }
   .ch-foot { margin-top: auto; padding-top: 4px; }
 }
+
+/* mode temps forts */
+#pitch.ff { filter: saturate(0.6) brightness(0.75); transition: filter 0.3s; }
+#replay-banner { display: flex; gap: 8px; align-items: center; max-width: calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 6px solid var(--team, #111); }
+#replay-banner span { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }

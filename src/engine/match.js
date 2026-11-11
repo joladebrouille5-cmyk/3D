@@ -18,6 +18,18 @@ export function tacticValues(t) {
 
 let EVENT_ID = 0;
 
+// Maillots trop proches : l'équipe extérieure passe à sa tenue alternative (présentation seulement)
+function hexRgb(h) { const n = parseInt(String(h).slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function colorDist(a, b) { const [r1, g1, b1] = hexRgb(a), [r2, g2, b2] = hexRgb(b); return Math.hypot(r1 - r2, g1 - g2, b1 - b2); }
+function resolveKitClash(teams) {
+  const [h, a] = teams;
+  if (colorDist(h.colors.primary, a.colors.primary) > 110) return;
+  const alt = [a.colors.secondary, '#f5f5f4', '#111827', '#1d4ed8', '#facc15'].find((c) => c && colorDist(c, h.colors.primary) > 140 && colorDist(c, h.colors.secondary) > 60) ?? '#f5f5f4';
+  const [r, g, bb] = hexRgb(alt);
+  const light = 0.299 * r + 0.587 * g + 0.114 * bb > 150;
+  a.colors = { ...a.colors, primary: alt, secondary: light ? '#111827' : '#ffffff', text: light ? '#111111' : '#ffffff', away: true };
+}
+
 export class Match {
   constructor({ home, away, seed = 'graine', userTeam = 0, competition = DEFAULT_COMPETITION, aiTeams = null, delegateUser = false } = {}) {
     this.seed = String(seed);
@@ -40,6 +52,7 @@ export class Match {
     this.commandLog = [];    // commandes appliquées (reproductibilité)
     this.players = [];
     this.teams = [home, away].map((id, idx) => this.#buildTeam(id, idx));
+    resolveKitClash(this.teams);
     this.ball = { x: 52.5, y: 34, z: 0, vx: 0, vy: 0, vz: 0, owner: null, lastTouch: null, lastTeam: null, pass: null, shot: null, cross: false, prevX: 52.5, prevY: 34 };
     this.restart = null;
     this.control = null; // pilotage direct : { id, dx, dy, sprint, buffer }

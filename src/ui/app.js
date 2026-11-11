@@ -36,7 +36,8 @@ export function startMatch(cfg) {
   const aiTeams = [0, 1].filter((i) => i !== userTeam || cfg.delegate);
   S.m = cfg.match ?? new Match({ home: cfg.home, away: cfg.away, seed: cfg.seed, userTeam, aiTeams, competition: DEFAULT_COMPETITION });
   S.speed = 1;
-  S.pace = { mode: matchLength(), real: 0, live: 0, cur: 1, isLive: false };
+  S.pace = { mode: matchLength(), real: 0, live: 0, cur: 1, isLive: false, ffReal: 0 };
+  S.hl = { queue: [], shown: 0, follow: 0 };
   S.paused = false; S.acc = 0; S.replay = null; S.selectedId = null; S.seenEvents = 0;
   S.draft = null; S.draftHistory = []; S.draftError = null; S.validated = [];
   S.subMode = false; S.subDraft = { outId: null, inId: null }; S.subError = null; S.quick = false;
@@ -86,13 +87,16 @@ function frame(now) {
   if (m) {
     if (S.replay) {
       if (S.replay.playing) {
-        S.replay.cursor += dt * 5; // 5 images de replay par seconde réelle = vitesse 1×
-        if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; }
-      }
+        S.replay.cursor += dt * 5 * (S.replay.hl ? 1.3 : 1); // 5 images par seconde réelle = 1×
+        if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; S.replay.doneAt = now; }
+      } else if (S.replay.hl && now - (S.replay.doneAt ?? now) > 500) endHighlight();
+    } else if (S.pace.mode === 'tf' && !S.paused && !S.modalOpen && !S.quick && !S.choice && startHighlight()) {
+      /* un temps fort démarre */
     } else if (!S.paused && !S.modalOpen && !S.quick && !S.choice && m.phase !== 'fulltime') {
       updateControl();
       let mult;
-      if (S.pace.mode === 'court') mult = paceSpeed(dt);
+      if (S.pace.mode === 'tf') mult = tfSpeed(dt);
+      else if (S.pace.mode === 'court') mult = paceSpeed(dt);
       else mult = S.speed * (S.accelDead && m.phase === 'dead' ? 4 : 1);
       S.acc += dt * mult;
       let n = 0;
@@ -124,10 +128,14 @@ function draw() {
     const t = A[0];
     const firstHalf = t < (m.events.find((e) => e.type === 'mi_temps')?.t ?? Infinity);
     teams.forEach((tt, i) => { tt.dir = (i === 0 ? 1 : -1) * (firstHalf ? 1 : -1); });
-    S.renderer.follow(52.5, 34, 1);
+    document.getElementById('pitch').classList.remove('ff');
+    if (S.replay.hl) {
+      S.renderer.mirror = !!S.career && teams[S.career.followTeam].dir < 0;
+      S.renderer.follow(lerp(1), lerp(2), 2.3, 0.1);
+    } else S.renderer.follow(52.5, 34, 1);
     S.renderer.draw({ teams, players, ball: { x: lerp(1), y: lerp(2), z: lerp(3) }, ownerId: A[4] >= 0 ? A[4] : null, selectedId: S.selectedId });
     const sec = Math.max(0, t);
-    $('#replay-time').textContent = `· ${fmtTime(sec).split(' ')[0]}`;
+    const rt = $('#replay-time'); if (rt) rt.textContent = `· ${fmtTime(sec).split(' ')[0]}`;
     return;
   }
   const alpha = S.paused || m.phase === 'fulltime' ? 1 : Math.min(1, S.acc / SIM.dt);
@@ -140,7 +148,10 @@ function draw() {
   // caméra : suit ton joueur quand il est sur le terrain
   const u = S.ctl.userId != null ? players[S.ctl.userId] : null;
   let aim = null;
-  if (u && u.onPitch && S.career) {
+  const ff = S.pace.mode === 'tf' && !S.choice && S.hl.follow <= m.t - 0.01 && !S.paused;
+  document.getElementById('pitch').classList.toggle('ff', ff && m.phase !== 'fulltime');
+  if (ff) S.renderer.follow(52.5, 34, 1);
+  else if (u && u.onPitch && S.career) {
     const z = S.ctl.zoom;
     // choix ouvert sur écran bas (téléphone) : le panneau occupe la droite, on décale la vue
     const shift = S.choice && innerHeight <= 520 ? 14 / z * (S.renderer.mirror ? -1 : 1) : 0;
@@ -158,8 +169,66 @@ function controlActive() { return S.ctl.enabled && S.ctl.manual; }
 // pendant les temps forts, avec un budget qui fait tenir la rencontre dans la durée visée.
 export const PACE = { target: 250, liveBudget: 115, totalSim: 5640 };
 const LS_KEY = 'generation-football.matchLength';
-export function matchLength() { try { return localStorage.getItem(LS_KEY) || 'court'; } catch { return 'court'; } }
+export function matchLength() { try { return localStorage.getItem(LS_KEY) || 'tf'; } catch { return 'tf'; } }
 export function setMatchLength(v) { try { localStorage.setItem(LS_KEY, v); } catch { /* stockage indisponible */ } if (S.pace) S.pace.mode = v; }
+
+// ------------------------------------------------------------------ mode « temps forts »
+// La rencontre défile très vite ; chaque action clé est rejouée (lecture seule, étiquetée),
+// et les choix du joueur arrivent aux moments importants, suivis de la fin de l'action à 1×.
+export const TF = { fastReal: 50 };
+function tfSpeed(dt) {
+  const m = S.m, P = S.pace;
+  if (m.t < S.hl.follow) return 1.6; // suite de l'action après un choix
+  const simDone = (m.period - 1) * 2700 + Math.min(m.periodTime, 2700 + (m.added[m.period - 1] ?? 0) * 60);
+  const remaining = Math.max(30, PACE.totalSim - simDone);
+  const left = Math.max(5, TF.fastReal - P.ffReal);
+  P.ffReal += dt;
+  P.cur = Math.min(260, Math.max(25, remaining / left));
+  return P.cur;
+}
+
+// Actions clés retenues pour un temps fort
+function isKeyEvent(ev) {
+  const m = S.m;
+  if (ev.hidden) return false;
+  if (ev.type === 'but' || ev.type === 'penalty') return true;
+  if (ev.type === 'carton' && ev.card === 'red') return true;
+  if (ev.type === 'tir') return ev.xg >= 0.15 || (ev.onTarget && ev.xg >= 0.06) || (ev.player != null && m.players[ev.player]?.isUser);
+  return false;
+}
+function queueHighlight(ev) {
+  const q = S.hl.queue;
+  const last = q[q.length - 1];
+  const label = ev.type === 'but' ? ev.text.replace(/\s*\(.*\)\s*$/, '') : ev.type === 'tir' ? ev.text.split(' — ')[0] : ev.text;
+  // un but qui suit un tir de près : même séquence, étiquette « but »
+  if (last && !last.played && ev.frame - last.frame < 25) { if (ev.type === 'but') { last.label = label; last.goal = true; last.team = ev.team; } last.frame = Math.max(last.frame, ev.frame); return; }
+  // au plus ~12 temps forts répartis sur la rencontre ; les buts passent toujours
+  const m2 = S.m, done = (m2.period - 1) * 2700 + Math.min(m2.periodTime, 2700);
+  const nonGoal = q.filter((x) => !x.goal).length;
+  if (ev.type !== 'but' && nonGoal >= Math.min(10, 2 + Math.floor(9 * done / 5400))) return;
+  q.push({ frame: ev.frame, label, goal: ev.type === 'but', team: ev.team, played: false });
+}
+function startHighlight() {
+  const m = S.m;
+  const h = S.hl.queue.find((x) => !x.played);
+  if (!h || m.frames.length < h.frame + 10) return false;
+  h.played = true;
+  S.hl.shown++;
+  const start = Math.max(0, h.frame - 30), end = Math.min(m.frames.length - 1, h.frame + 8);
+  S.replay = { start, end, cursor: start, playing: true, hl: true, label: h.label, goal: h.goal };
+  const t = m.teams[h.team];
+  $('#replay-banner').innerHTML = `${h.goal ? '⚽ ' : '🎬 '}TEMPS FORT · <span>${esc(h.label)}</span>`;
+  $('#replay-banner').style.setProperty('--team', t?.colors.primary ?? '#f5c542');
+  refreshUI(true);
+  return true;
+}
+function endHighlight() {
+  const r = S.replay;
+  S.replay = null;
+  if (r?.goal) { const ev = [...S.m.events].reverse().find((e) => e.type === 'but'); if (ev) goalBanner(ev); }
+  $('#replay-banner').innerHTML = 'REPLAY — lecture seule <span id="replay-time"></span>';
+  refreshUI(true);
+}
 
 function isLiveMoment() {
   const m = S.m, b = m.ball;
@@ -217,10 +286,12 @@ function updateControl() {
 // partenaire porteur qui peut te trouver. Le match est figé pendant le choix (aucun bonus,
 // aucun malus de temps). Entre deux choix, l'IA joue pour toi « à l'instinct ».
 const CHOICE_GAP = { ball: 7, off: 22 };
+const CHOICE_GAP_TF = { ball: 160, off: 300 }; // temps forts : seulement les situations clés
 function checkChoice() {
   const m = S.m, c = S.ctl;
   if (!c.enabled || !c.manual || m.phase !== 'play' || S.replay) return false;
   if (S.pace.mode === 'court' && !S.pace.isLive) return false; // seulement pendant les temps forts
+  const G = S.pace.mode === 'tf' ? CHOICE_GAP_TF : CHOICE_GAP;
   const u = m.players[c.userId];
   if (!u.onPitch || u.injured) return false;
   const b = m.ball;
@@ -228,14 +299,22 @@ function checkChoice() {
   const justGot = owner && owner.id === u.id && c.lastOwner !== u.id;
   c.lastOwner = owner?.id ?? null;
   let ch = null;
-  if (justGot && m.t - c.lastBallChoice >= CHOICE_GAP.ball && !u.gkHolding) {
+  const tf = S.pace.mode === 'tf';
+  const team = m.teams[u.team];
+  c.skipped ??= 0;
+  if (tf) {
+    // au plus ~10 choix, répartis sur toute la rencontre
+    const simDone = (m.period - 1) * 2700 + Math.min(m.periodTime, 2700);
+    if (c.made + c.skipped >= Math.min(10, 1 + Math.floor(10 * simDone / 5400))) return false;
+  }
+  const relU = m.relX(team, u.x);
+  if (justGot && m.t - c.lastBallChoice >= G.ball && !u.gkHolding && (!tf || relU > 0.6)) {
     ch = ballChoices(m, u); c.lastBallChoice = m.t;
-  } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= CHOICE_GAP.off) {
+  } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= G.off) {
     const d = Math.hypot(owner.x - u.x, owner.y - u.y);
-    if (owner.team !== u.team && d < 9 && !owner.gkHolding) { ch = defendChoices(m, u, owner); c.lastOffChoice = m.t; }
+    if (owner.team !== u.team && d < 9 && !owner.gkHolding && (!tf || m.relX(team, owner.x) < 0.35)) { ch = defendChoices(m, u, owner); c.lastOffChoice = m.t; }
     else if (owner.team === u.team && d < 28 && d > 6) {
-      const team = m.teams[u.team];
-      if (m.relX(team, u.x) > m.relX(team, owner.x) - 0.04 && m.relX(team, u.x) > 0.45) { ch = supportChoices(m, u, owner); c.lastOffChoice = m.t; }
+      if (relU > m.relX(team, owner.x) - 0.04 && relU > (tf ? 0.66 : 0.45)) { ch = supportChoices(m, u, owner); c.lastOffChoice = m.t; }
     }
   }
   if (!ch || !ch.list.length) return false;
@@ -253,7 +332,7 @@ function openChoice(ch, u) {
   box.hidden = false;
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
   box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
-  S.uiDirty = true;
+  refreshUI(true); // l'horloge et le score affichés correspondent à l'instant du choix
 }
 
 function pickChoice(i) {
@@ -261,11 +340,13 @@ function pickChoice(i) {
   if (!ch) return;
   const u = m.players[S.ctl.userId];
   const c = ch.list[i];
+  if (!c) S.ctl.skipped = (S.ctl.skipped ?? 0) + 1;
   if (c) {
     if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
     else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent });
     S.ctl.made++;
     flashHint(`${c.icon} ${c.label}`);
+    if (S.pace.mode === 'tf') S.hl.follow = m.t + 4; // on regarde la suite de l'action
   }
   S.choice = null;
   $('#choices').hidden = true;
@@ -299,7 +380,8 @@ function handleNewEvents() {
   for (; S.seenEvents < m.events.length; S.seenEvents++) {
     const ev = m.events[S.seenEvents];
     addFeed(ev);
-    if (ev.type === 'but' && !S.quick) goalBanner(ev);
+    if (ev.type === 'but' && !S.quick && S.pace.mode !== 'tf') goalBanner(ev);
+    if (S.pace.mode === 'tf' && !S.quick && isKeyEvent(ev)) queueHighlight(ev);
     if (ev.pause && (ev.type !== 'blessure' || ev.team === userTeamIdx())) {
       S.paused = true; stop = true;
       toast(ev.decision ? `${ev.text} Décision requise : préparez un remplacement ou laissez-le sur le terrain.` : ev.text);
@@ -371,7 +453,7 @@ function refreshUI(force) {
   $('#clock-t').textContent = m.clock();
   $('#clock-x').textContent = ` · ${m.period === 1 ? '1re' : '2e'} mi-temps${m.added[m.period - 1] ? ` (+${m.added[m.period - 1]})` : ''}${reds[0] || reds[1] ? ` · rouges ${reds[0]}-${reds[1]}` : ''}`;
   const badge = $('#mode-badge');
-  if (S.replay) { badge.textContent = 'REPLAY'; badge.className = 'badge replay'; }
+  if (S.replay && !S.replay.hl) { badge.textContent = 'REPLAY'; badge.className = 'badge replay'; }
   else if (m.phase === 'fulltime') { badge.textContent = 'TERMINÉ'; badge.className = 'badge'; }
   else if (S.paused) { badge.textContent = 'PAUSE'; badge.className = 'badge pause'; }
   else { badge.textContent = `DIRECT ${S.speed}×`; badge.className = 'badge live'; }
@@ -384,8 +466,11 @@ function refreshUI(force) {
   $('#btn-quick').disabled = m.phase === 'fulltime' || !!S.replay;
   const manual = S.ctl.enabled && S.ctl.manual;
   const court = S.pace.mode === 'court';
-  document.querySelector('.speed').hidden = court;
-  if (court && !S.replay && !S.paused && m.phase !== 'fulltime') {
+  document.querySelector('.speed').hidden = court || S.pace.mode === 'tf';
+  if (S.pace.mode === 'tf' && !S.paused && m.phase !== 'fulltime') {
+    badge.textContent = S.replay?.hl ? '🎬 TEMPS FORT' : S.choice ? '🎯 À TOI DE CHOISIR' : m.t < S.hl.follow ? '▶ SUITE DE L\'ACTION' : `⏩ ×${Math.round(S.pace.cur)}`;
+    badge.className = `badge ${S.replay?.hl || S.choice ? 'live' : 'fast'}`;
+  } else if (court && !S.replay && !S.paused && m.phase !== 'fulltime') {
     badge.textContent = S.choice ? '🎯 À TOI DE CHOISIR' : S.pace.isLive ? '▶ TEMPS FORT' : `⏩ ×${Math.round(S.pace.cur)}`;
     badge.className = `badge ${S.pace.isLive ? 'live' : 'fast'}`;
   }
@@ -741,7 +826,7 @@ function showSetup() {
       <label>Rôle<select id="su-role"><option value="0">Manager de l'équipe A</option><option value="1">Manager de l'équipe B</option><option value="observer">Observateur</option></select></label>
       <label>Graine (reproductibilité)<input type="text" id="su-seed" value="${esc(prev.seed)}"></label>
     </div>
-    <label>Durée du match<select id="su-length"><option value="court">Match court (≈ 4 min 30, temps forts au ralenti)</option><option value="reel">Temps réel (vitesses 1× à 8×)</option></select></label>
+    <label>Durée du match<select id="su-length"><option value="tf">Temps forts (≈ 2 min, actions clés au ralenti)</option><option value="court">Match court (≈ 4 min 30)</option><option value="reel">Temps réel (vitesses 1× à 8×)</option></select></label>
     <label><input type="checkbox" id="su-delegate" ${prev.delegate ? 'checked' : ''}> Déléguer les remplacements au staff</label>
     <p class="note">Profils synthétiques : aucun club ni joueur réel n'est utilisé dans ce prototype. Le catalogue réel (docs/) reste bloqué à l'import tant que les identités et les droits ne sont pas vérifiés.</p>
     <div class="actions"><button id="su-help">Commandes</button><button class="primary" id="su-go">Lancer le match</button></div>`, { closable: !!S.m });
@@ -920,7 +1005,7 @@ function showMenu() {
   openModal(`<h1>Menu du match</h1>
     <div class="actions" style="justify-content:flex-start">
       <button class="primary" id="mn-resume">Reprendre</button>
-      <label class="inline">Durée <select id="mn-length"><option value="court" ${S.pace.mode === 'court' ? 'selected' : ''}>Match court (≈ 4 min 30)</option><option value="reel" ${S.pace.mode === 'reel' ? 'selected' : ''}>Temps réel</option></select></label>
+      <label class="inline">Durée <select id="mn-length"><option value="tf" ${S.pace.mode === 'tf' ? 'selected' : ''}>Temps forts (≈ 2 min)</option><option value="court" ${S.pace.mode === 'court' ? 'selected' : ''}>Match court (≈ 4 min 30)</option><option value="reel" ${S.pace.mode === 'reel' ? 'selected' : ''}>Temps réel</option></select></label>
       <button id="mn-help">Aide</button>
       ${career ? '<button id="mn-quick">Simuler la fin du match</button>' : '<button id="mn-new">Nouveau match</button><button id="mn-home">Accueil</button>'}
     </div>`);
