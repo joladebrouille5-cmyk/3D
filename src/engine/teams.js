@@ -49,11 +49,11 @@ export const FORMATIONS = {
   ],
 };
 
-const ATTRS = ['pace', 'accel', 'stamina', 'passing', 'vision', 'decisions', 'firstTouch',
+export const ATTRS = ['pace', 'accel', 'stamina', 'passing', 'vision', 'decisions', 'firstTouch',
   'dribbling', 'tackling', 'positioning', 'shooting', 'aerial', 'aggression', 'gk', 'composure'];
 
 // Gabarits par rôle (0 à 1). Ce sont des intentions de profil, pas des valeurs réelles.
-const ROLE_TEMPLATES = {
+export const ROLE_TEMPLATES = {
   GK: { pace: 0.35, accel: 0.45, stamina: 0.5, passing: 0.45, vision: 0.4, decisions: 0.55, firstTouch: 0.45, dribbling: 0.2, tackling: 0.2, positioning: 0.6, shooting: 0.1, aerial: 0.6, aggression: 0.3, gk: 0.68, composure: 0.55 },
   CB: { pace: 0.5, accel: 0.48, stamina: 0.6, passing: 0.5, vision: 0.42, decisions: 0.58, firstTouch: 0.5, dribbling: 0.35, tackling: 0.68, positioning: 0.66, shooting: 0.25, aerial: 0.7, aggression: 0.55, gk: 0.05, composure: 0.55 },
   FB: { pace: 0.66, accel: 0.62, stamina: 0.7, passing: 0.56, vision: 0.5, decisions: 0.54, firstTouch: 0.56, dribbling: 0.52, tackling: 0.6, positioning: 0.58, shooting: 0.3, aerial: 0.5, aggression: 0.5, gk: 0.05, composure: 0.5 },
@@ -64,9 +64,9 @@ const ROLE_TEMPLATES = {
   ST: { pace: 0.66, accel: 0.66, stamina: 0.6, passing: 0.5, vision: 0.5, decisions: 0.56, firstTouch: 0.64, dribbling: 0.6, tackling: 0.3, positioning: 0.66, shooting: 0.68, aerial: 0.6, aggression: 0.5, gk: 0.05, composure: 0.62 },
 };
 
-const FIRST = ['Malo', 'Ilian', 'Sacha', 'Noé', 'Timéo', 'Eliott', 'Yanis', 'Rayan', 'Lenny', 'Kylian', 'Nolan', 'Bastien', 'Joachim', 'Anis', 'Mathis', 'Elias', 'Tidiane', 'Corentin', 'Gaspard', 'Ismaël', 'Loïc', 'Aurélien', 'Félix', 'Moussa', 'Thibaut', 'Kenzo', 'Ruben', 'Samy', 'Évan', 'Lucas', 'Romain', 'Sékou', 'Jules', 'Gabin', 'Aymeric', 'Nathan'];
-const LAST_A = ['Ber', 'Lan', 'Mar', 'Del', 'Fon', 'Gau', 'Cha', 'Ros', 'Vil', 'Mon', 'Tal', 'Quen', 'Bou', 'Lam', 'Pel', 'Cor', 'Dar', 'Sal', 'Ker', 'Bré'];
-const LAST_B = ['vaux', 'det', 'tin', 'cour', 'lier', 'rac', 'mond', 'gnac', 'ville', 'zec', 'quin', 'rieu', 'nel', 'bert', 'lou', 'ny', 'vet', 'han', 'loz', 'zard'];
+export const FIRST = ['Malo', 'Ilian', 'Sacha', 'Noé', 'Timéo', 'Eliott', 'Yanis', 'Rayan', 'Lenny', 'Kylian', 'Nolan', 'Bastien', 'Joachim', 'Anis', 'Mathis', 'Elias', 'Tidiane', 'Corentin', 'Gaspard', 'Ismaël', 'Loïc', 'Aurélien', 'Félix', 'Moussa', 'Thibaut', 'Kenzo', 'Ruben', 'Samy', 'Évan', 'Lucas', 'Romain', 'Sékou', 'Jules', 'Gabin', 'Aymeric', 'Nathan'];
+export const LAST_A = ['Ber', 'Lan', 'Mar', 'Del', 'Fon', 'Gau', 'Cha', 'Ros', 'Vil', 'Mon', 'Tal', 'Quen', 'Bou', 'Lam', 'Pel', 'Cor', 'Dar', 'Sal', 'Ker', 'Bré'];
+export const LAST_B = ['vaux', 'det', 'tin', 'cour', 'lier', 'rac', 'mond', 'gnac', 'ville', 'zec', 'quin', 'rieu', 'nel', 'bert', 'lou', 'ny', 'vet', 'han', 'loz', 'zard'];
 
 export const TEAM_DEFS = [
   {

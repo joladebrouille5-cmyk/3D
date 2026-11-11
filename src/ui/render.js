@@ -100,13 +100,19 @@ export class PitchRenderer {
       else { const h = r * 0.92; ctx.rect(X - h, Y - h, h * 2, h * 2); } // équipe B : carrés (lisible en niveaux de gris)
       ctx.fill(); ctx.stroke();
       if (p.id === ownerId) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, 0.12 * s); ctx.beginPath(); ctx.arc(X, Y, r * 1.55, 0, Math.PI * 2); ctx.stroke(); }
+      if (p.isUser) {
+        // joueur de l'utilisateur : double anneau, repérable sans dépendre de la couleur
+        ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(2, 0.25 * s);
+        ctx.beginPath(); ctx.arc(X, Y, r * 1.45, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(X, Y, r * 1.85, 0, Math.PI * 2); ctx.stroke();
+      }
       if (p.id === selectedId) { ctx.setLineDash([3, 3]); ctx.strokeStyle = '#f5c542'; ctx.lineWidth = Math.max(1.5, 0.2 * s); ctx.beginPath(); ctx.arc(X, Y, r * 1.9, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
       ctx.fillStyle = p.role === 'GK' ? '#ffffff' : t.colors.text;
       ctx.font = `bold ${Math.max(9, 1.15 * s)}px system-ui`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(String(p.num), X, Y + 0.05 * s);
       if (p.yellow) { ctx.fillStyle = '#facc15'; ctx.fillRect(X + r * 0.7, Y - r * 1.4, 0.45 * s, 0.65 * s); }
       if (p.injured) { ctx.fillStyle = '#f87171'; ctx.font = `bold ${Math.max(9, 1.2 * s)}px system-ui`; ctx.fillText('+', X - r * 1.2, Y - r * 1.2); }
-      if (showNames || p.id === selectedId) {
+      if (showNames || p.id === selectedId || p.isUser) {
         ctx.fillStyle = 'rgba(0,0,0,0.65)';
         ctx.font = `${Math.max(9, 1.0 * s)}px system-ui`;
         const w = ctx.measureText(p.name).width + 6;

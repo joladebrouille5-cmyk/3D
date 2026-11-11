@@ -21,19 +21,22 @@ const S = {
 };
 
 // ------------------------------------------------------------------ démarrage
-function startMatch(cfg) {
+// cfg.match : match déjà construit (carrière) ; cfg.career : { followTeam, label, onFinish(match) }
+export function startMatch(cfg) {
   S.config = cfg;
-  const userTeam = cfg.role === 'observer' ? null : Number(cfg.role);
+  S.career = cfg.career ?? null;
+  const userTeam = cfg.role === 'observer' || cfg.match ? null : Number(cfg.role);
   const aiTeams = [0, 1].filter((i) => i !== userTeam || cfg.delegate);
-  S.m = new Match({ home: cfg.home, away: cfg.away, seed: cfg.seed, userTeam, aiTeams, competition: DEFAULT_COMPETITION });
+  S.m = cfg.match ?? new Match({ home: cfg.home, away: cfg.away, seed: cfg.seed, userTeam, aiTeams, competition: DEFAULT_COMPETITION });
+  S.speed = 1;
   S.paused = false; S.acc = 0; S.replay = null; S.selectedId = null; S.seenEvents = 0;
   S.draft = null; S.draftHistory = []; S.draftError = null; S.validated = [];
   S.subMode = false; S.subDraft = { outId: null, inId: null }; S.subError = null; S.quick = false;
   S.prev = snapshot();
   $('#feed').innerHTML = '';
-  $('#comp-name').textContent = `${S.m.competition.name} · graine « ${S.m.seed} »`;
+  $('#comp-name').textContent = S.career ? S.career.competition : `${S.m.competition.name} · graine « ${S.m.seed} »`;
   const team = userTeam == null ? null : S.m.teams[userTeam];
-  $('#role-label').textContent = team ? `Rôle : manager — ${team.name}${cfg.delegate ? ' (remplacements délégués au staff)' : ''}` : 'Rôle : observateur';
+  $('#role-label').textContent = S.career ? S.career.label : team ? `Rôle : manager — ${team.name}${cfg.delegate ? ' (remplacements délégués au staff)' : ''}` : 'Rôle : observateur';
   for (const i of [0, 1]) {
     const t = S.m.teams[i];
     const el = $(`#team${i}-name`);
@@ -46,7 +49,7 @@ function startMatch(cfg) {
 }
 
 function userTeamIdx() { return S.m?.userTeam ?? null; }
-function viewTeamIdx() { return userTeamIdx() ?? 0; }
+function viewTeamIdx() { return userTeamIdx() ?? S.career?.followTeam ?? 0; }
 
 // ------------------------------------------------------------------ boucle
 function snapshot() {
@@ -542,7 +545,7 @@ function showHelp(fromSetup = false) {
   openModal(`<h1>Commandes du manager</h1>
     <table class="help-table">${rows.map(([k, v]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(v)}</td></tr>`).join('')}</table>
     <p class="note">Les raccourcis ne se déclenchent pas quand un champ de saisie ou une fenêtre a le focus. Le pilotage direct d'un joueur (lot P1) n'est pas encore disponible.</p>
-    <div class="actions"><button class="primary" id="help-close">Fermer</button></div>`, { onClose: () => { if (fromSetup || !S.m) showSetup(); } });
+    <div class="actions"><button class="primary" id="help-close">Fermer</button></div>`, { onClose: () => { if (fromSetup) showSetup(); } });
   $('#help-close').addEventListener('click', closeModal);
 }
 
@@ -557,10 +560,16 @@ function showSummary() {
     <h3>Bilan</h3>
     <p>Tirs ${a.shots} – ${b.shots} · cadrés ${a.onTarget} – ${b.onTarget} · xG pré-tir ${a.xg.toFixed(2)} – ${b.xg.toFixed(2)} · passes ${a.passesOk}/${a.passes} – ${b.passesOk}/${b.passes}</p>
     <p class="note">Un total d'occasions élevé n'est pas une dette de buts : le résultat a émergé des actions, sans score décidé à l'avance.</p>
-    <div class="actions"><button id="sum-close">Revoir le match</button><button id="sum-same">Rejouer avec la même graine</button><button class="primary" id="sum-new">Nouveau match</button></div>`);
+    ${S.career ? '<div class="actions"><button id="sum-close">Revoir le match</button><button class="primary" id="sum-career">Retour à la carrière</button></div>'
+    : '<div class="actions"><button id="sum-close">Revoir le match</button><button id="sum-home">Accueil</button><button id="sum-same">Rejouer avec la même graine</button><button class="primary" id="sum-new">Nouveau match</button></div>'}`);
   $('#sum-close').addEventListener('click', closeModal);
+  if (S.career) {
+    $('#sum-career').addEventListener('click', () => { closeModal(); const c = S.career; S.career = null; S.m = null; c.onFinish(m); });
+    return;
+  }
   $('#sum-same').addEventListener('click', () => startMatch({ ...S.config }));
   $('#sum-new').addEventListener('click', () => { closeModal(); showSetup(); });
+  $('#sum-home').addEventListener('click', () => { closeModal(); S.m = null; S.onHome?.(); });
 }
 
 function quickResult() {
@@ -622,7 +631,7 @@ function onKeyDown(e) {
       if (S.replay) { closeReplay(); return; }
       if (S.selectedId != null) { S.selectedId = null; refreshUI(true); return; }
       if (S.subMode) { S.subMode = false; S.subDraft = { outId: null, inId: null }; refreshUI(true); return; }
-      S.paused = true; showSetup();
+      S.paused = true; refreshUI(true); showMenu();
       return;
     case 'F1': e.preventDefault(); S.paused = true; refreshUI(true); showHelp(); return;
     case 'F8': e.preventDefault(); openReplay(); return;
@@ -658,17 +667,37 @@ function changeSpeed(d) {
   refreshUI(true);
 }
 
+// Menu du match (Échap sans couche ouverte, ou Retour sur Android)
+function showMenu() {
+  const career = !!S.career;
+  openModal(`<h1>Menu du match</h1>
+    <div class="actions" style="justify-content:flex-start">
+      <button class="primary" id="mn-resume">Reprendre</button>
+      <button id="mn-help">Aide</button>
+      ${career ? '<button id="mn-quick">Simuler la fin du match</button>' : '<button id="mn-new">Nouveau match</button><button id="mn-home">Accueil</button>'}
+    </div>`);
+  $('#mn-resume').addEventListener('click', () => { closeModal(); S.paused = false; refreshUI(true); });
+  $('#mn-help').addEventListener('click', () => showHelp());
+  $('#mn-quick')?.addEventListener('click', () => { closeModal(); quickResult(); });
+  $('#mn-new')?.addEventListener('click', () => showSetup());
+  $('#mn-home')?.addEventListener('click', () => { closeModal(); S.m = null; S.onHome?.(); });
+}
+
+export function showQuickMatchSetup() { showSetup(); }
+export function setHomeHandler(fn) { S.onHome = fn; }
+export function initMatchUI() { bind(); }
+
 function bind() {
   S.renderer = new PitchRenderer($('#pitch'));
   window.addEventListener('resize', () => S.renderer.resize());
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);
-  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; refreshUI(true); } });
+  $('#btn-play').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m && S.m.phase !== 'fulltime') { S.paused = !S.paused; S.acc = 0; refreshUI(true); } });
   document.querySelectorAll('.speed button').forEach((b) => b.addEventListener('click', () => { S.speed = Number(b.dataset.speed); b.blur(); refreshUI(true); }));
-  $('#btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); openReplay(); });
+  $('#btn-replay').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m) openReplay(); });
   $('#btn-live').addEventListener('click', (e) => { e.currentTarget.blur(); closeReplay(); });
   $('#btn-help').addEventListener('click', (e) => { e.currentTarget.blur(); S.paused = true; refreshUI(true); showHelp(); });
-  $('#btn-quick').addEventListener('click', (e) => { e.currentTarget.blur(); quickResult(); });
+  $('#btn-quick').addEventListener('click', (e) => { e.currentTarget.blur(); if (S.m) quickResult(); });
   document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => { S.tab = b.dataset.tab; renderRight(); }));
   $('#btn-left').addEventListener('click', (e) => { e.currentTarget.blur(); toggleDrawer('left'); });
   $('#btn-right').addEventListener('click', (e) => { e.currentTarget.blur(); toggleDrawer('right'); });
@@ -687,10 +716,7 @@ function bind() {
     refreshUI(true);
   });
   requestAnimationFrame(frame);
-  showSetup();
   // appelé par la coque Android quand l'application passe en arrière-plan
   window.gfPause = () => { if (S.m && !S.paused) { S.paused = true; S.acc = 0; refreshUI(true); } };
   document.addEventListener('visibilitychange', () => { if (document.hidden) window.gfPause(); });
 }
-
-bind();

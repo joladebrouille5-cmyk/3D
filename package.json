@@ -9,6 +9,8 @@
     "calibrate": "node tools/calibrate.js 40",
     "serve": "python3 -m http.server 8000",
     "apk": "bash tools/build-apk.sh",
-    "ui-check": "node tools/ui-check.cjs"
+    "ui-check": "node tools/ui-check.cjs",
+    "catalog": "node tools/build-catalog.mjs",
+    "ui-check-career": "node tools/ui-check-career.cjs"
   }
 }

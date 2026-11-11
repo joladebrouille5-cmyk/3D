@@ -12,6 +12,8 @@ const URL = process.argv[2] || 'http://localhost:8000/index.html';
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(URL);
+  await page.waitForSelector('#h-quick'); // accueil : match amical
+  await page.click('#h-quick');
   await page.waitForSelector('#su-go');
 
   // Focus : taper dans le champ de graine ne déclenche aucun raccourci

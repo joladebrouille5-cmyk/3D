@@ -14,10 +14,38 @@ npm run serve            # serveur statique sur http://localhost:8000 (python3 -
 Il n'y a aucune dépendance à installer. Le moteur est en JavaScript (modules ES) et tourne aussi bien dans le navigateur que dans Node ≥ 20.
 
 ```bash
-npm test                 # 13 tests du moteur (node --test)
+npm test                 # tests du moteur et de la carrière (node --test)
 npm run calibrate        # mesure de calibration sur 40 matchs simulés sans rendu
 node tools/ui-check.cjs http://localhost:8000/index.html   # recette d'interface (Playwright)
 ```
+
+## Mode carrière
+
+L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements, sauvegarde automatique chaque semaine) et **Match amical**.
+
+1. **Nouveau joueur** : prénom, nom, poste, pied fort. Il a 15 ans.
+2. **Choix du club** parmi les 218 clubs masculins du catalogue (`data/joueurs-v1.csv`). Tu peux chercher un club et filtrer par division. La carrière commence dans le **centre de formation** du club choisi.
+3. **Niveau et potentiel** :
+   - Le **niveau actuel** dépend du centre choisi. Un grand centre donne un meilleur niveau de départ, mais la concurrence y est plus rude.
+   - Le **potentiel** est tiré au hasard, indépendamment du club, puis caché. Le staff n'en donne qu'une fourchette, qui se resserre avec le temps.
+   - Ce potentiel **évolue selon tes choix** : études, analyse vidéo, séances supplémentaires, surmenage, sorties, temps de jeu, blessures et événements de vie.
+4. **Chaque semaine**, tu choisis un thème d'entraînement, une intensité et une activité hors du terrain. Des événements de vie à choix peuvent survenir. Le coach annonce ensuite si tu es titulaire, remplaçant, non retenu ou blessé.
+5. **Les matchs** :
+   - Si tu es dans le groupe, tu peux **jouer le match en vue 2D** (ton joueur est entouré d'un double anneau doré) ou le **simuler** avec le même moteur.
+   - Ta note et tes minutes font évoluer la confiance du coach, ton moral et ta progression.
+6. **Fin de saison** : un bilan, puis des offres. Selon ton niveau, tu restes en formation (U17, puis U19), tu signes ton premier contrat pro ou un contrat stagiaire en réserve, ou tu es libéré et dois rebondir dans un autre centre ou un autre club. La carrière continue jusqu'à la retraite.
+
+### Données réelles utilisées
+
+`tools/build-catalog.mjs` génère `src/data/catalog.js` à partir du CSV (`npm run catalog`).
+
+- **Clubs, compétitions et groupes** : repris du catalogue. Les réserves (« Club 2 ») sont rattachées à leur club, et les noms entre équipes jeunes et seniors sont rapprochés prudemment.
+  - Si le club a une équipe en U17 ou U19 nationaux, ce championnat est son **groupe réel**.
+  - Sinon, le jeu compose un **groupe régional simulé**, signalé comme tel à l'écran.
+- **Effectifs professionnels** : les **noms publiés par les clubs** sont repris (statut `liste_publiee` uniquement, quarantaine exclue). Les **notes sont des estimations du jeu** dérivées du niveau de la division, pas des valeurs réelles.
+- **Jeunes** : les effectifs U17 et U19 réels (des mineurs) ne sont **pas** importés. Les coéquipiers et adversaires du centre de formation sont fictifs, conformément au concept.
+- **Classement** : les matchs de ton équipe passent par le moteur, les autres rencontres par un modèle agrégé. Le volume de buts de ce modèle est aligné sur celui du moteur (≈ 6 buts par match, calibration en cours) pour que le classement reste cohérent.
+- **Hors de ce lot** : le pilotage direct de ton joueur pendant le match (pour l'instant tu le regardes jouer), et la carrière féminine (le catalogue ne contient pas de championnat féminin de jeunes).
 
 ## APK Android
 

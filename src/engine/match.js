@@ -20,7 +20,8 @@ let EVENT_ID = 0;
 export class Match {
   constructor({ home, away, seed = 'graine', userTeam = 0, competition = DEFAULT_COMPETITION, aiTeams = null, delegateUser = false } = {}) {
     this.seed = String(seed);
-    this.rng = new Rng(`match:${home}:${away}:${this.seed}`);
+    const hid = typeof home === 'string' ? home : home.def.id, aid = typeof away === 'string' ? away : away.def.id;
+    this.rng = new Rng(`match:${hid}:${aid}:${this.seed}`);
     this.competition = competition;
     this.userTeam = userTeam; // 0, 1 ou null (observateur)
     this.aiTeams = aiTeams ?? [0, 1].filter((i) => i !== userTeam || delegateUser);
@@ -47,12 +48,13 @@ export class Match {
   }
 
   // ---------------------------------------------------------------- construction
+  // `id` : identifiant d'une équipe de test, ou effectif déjà construit (carrière)
   #buildTeam(id, idx) {
-    const squad = buildSquad(id);
+    const squad = typeof id === 'string' ? buildSquad(id) : id;
     const slots = FORMATIONS[squad.def.formation];
     const tactics = { ...squad.def.tactics };
     const team = {
-      idx, id, def: squad.def, name: squad.def.name, short: squad.def.short, colors: squad.def.colors,
+      idx, id: squad.def.id, def: squad.def, name: squad.def.name, short: squad.def.short, colors: squad.def.colors,
       formation: squad.def.formation, slots, dir: idx === 0 ? 1 : -1,
       tactics, tv: tacticValues(tactics), tvTarget: tacticValues(tactics),
       slotPlayer: [], bench: [], subsUsed: 0, windowsUsed: 0, windowOpenAt: -1,
@@ -63,7 +65,7 @@ export class Match {
     const mk = (pl, onPitch, slot) => {
       const p = {
         id: this.players.length, team: idx, num: pl.num, name: pl.name, role: pl.role, attrs: pl.attrs,
-        synthetic: true, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
+        synthetic: !pl.real, real: !!pl.real, isUser: !!pl.isUser, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
         x: -10, y: -10, vx: 0, vy: 0, fx: idx === 0 ? 1 : -1, fy: 0, energy: 1,
         tx: 0, ty: 0, urgency: 0.5, stunUntil: 0, nextDecision: 0, touchCooldown: 0, tackleCooldown: 0,
         runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, tackles: 0, distance: 0 },
@@ -249,7 +251,7 @@ export class Match {
       req.status = 'effectué'; req.doneAt = this.t;
       done++;
       this.stoppage[this.period - 1] += 20;
-      this.#log('remplacement', teamIdx, `${team.short} : remplacement effectué, entrée de ${inn.name} (n° ${inn.num}) à la place de ${out.name} (n° ${out.num}).`, { request: req.id, status: 'effectué', major: true });
+      this.#log('remplacement', teamIdx, `${team.short} : remplacement effectué, entrée de ${inn.name} (n° ${inn.num}) à la place de ${out.name} (n° ${out.num}).`, { request: req.id, status: 'effectué', major: true, inId: inn.id, outId: out.id });
     }
     if (done && !atHalftime && team.windowOpenAt !== this.tick) { team.windowsUsed++; team.windowOpenAt = this.tick; }
   }
