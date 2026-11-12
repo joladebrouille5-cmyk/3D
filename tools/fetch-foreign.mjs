@@ -25,6 +25,13 @@ export const LEAGUES = [
   { id: 'por1', country: 'Portugal', name: 'Liga Portugal', level: 1, article: `${SEASON} Primeira Liga`, expect: 18 },
   { id: 'ned1', country: 'Pays-Bas', name: 'Eredivisie', level: 1, article: `${SEASON} Eredivisie`, expect: 18 },
   { id: 'bel1', country: 'Belgique', name: 'Pro League', level: 1, article: `${SEASON} Belgian Pro League`, expect: 16 },
+  { id: 'por2', country: 'Portugal', name: 'Liga Portugal 2', level: 2, article: `${SEASON} Liga Portugal 2`, expect: 18 },
+  { id: 'ned2', country: 'Pays-Bas', name: 'Eerste Divisie', level: 2, article: `${SEASON} Eerste Divisie`, expect: 20 },
+  { id: 'bel2', country: 'Belgique', name: 'Challenger Pro League', level: 2, article: `${SEASON} Challenger Pro League`, expect: 16, min: 12 },
+  { id: 'sco1', country: 'Écosse', name: 'Premiership', level: 1, article: `${SEASON} Scottish Premiership`, expect: 12, min: 10 },
+  { id: 'tur1', country: 'Turquie', name: 'Süper Lig', level: 1, article: `${SEASON} Süper Lig`, expect: 18 },
+  { id: 'ksa1', country: 'Arabie saoudite', name: 'Saudi Pro League', level: 1, article: `${SEASON} Saudi Pro League`, expect: 18 },
+  { id: 'usa1', country: 'États-Unis', name: 'MLS', level: 1, article: `${SEASON.slice(0, 4)} Major League Soccer season`, expect: 30, min: 24 },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -98,11 +105,13 @@ export function playerName(raw) {
 }
 
 // Clubs d'un championnat : première colonne du premier tableau de la section des équipes
-export function clubsFromSeason(text) {
+// `need` : nombre minimal de clubs ; une ligue en conférences (MLS) les répartit sur plusieurs tableaux
+export function clubsFromSeason(text, need = 16) {
   const start = text.search(/^==+\s*(Teams|Clubs|Stadiums and locations|Participants)[^=]*==+\s*$/im);
   const from = start >= 0 ? start : 0;
   const tables = text.slice(from).split(/\n\{\|/).slice(1);
-  for (const t of tables.slice(0, 3)) {
+  const merged = new Map();
+  for (const t of tables.slice(0, 4)) {
     const body = t.split(/\n\|\}/)[0];
     const rows = body.split(/\n\|-/).slice(1);
     const clubs = [];
@@ -114,7 +123,9 @@ export function clubsFromSeason(text) {
       }
     }
     const uniq = [...new Map(clubs.map((c) => [c.title, c])).values()];
-    if (uniq.length >= 16) return uniq;
+    if (uniq.length >= need) return uniq;
+    for (const c of uniq) merged.set(c.title, c);
+    if (merged.size >= need) return [...merged.values()];
   }
   return [];
 }
@@ -186,7 +197,7 @@ if (process.argv[1]?.endsWith('fetch-foreign.mjs')) {
     if (ONLY.length && !ONLY.includes(lg.id)) { const old = prev.leagues.find((x) => x.id === lg.id); if (old) leagues.push(old); continue; }
     const page = await wikitext(lg.article);
     if (!page) { console.log(`✗ article introuvable : ${lg.article}`); continue; }
-    const clubs = clubsFromSeason(page.text);
+    const clubs = clubsFromSeason(page.text, lg.min ?? 16);
     console.log(`${lg.name} (${page.title}) : ${clubs.length} clubs (attendu ${lg.expect})`);
     const out = { ...lg, articleTitle: page.title, clubs: [] };
     for (const c of clubs) {
