@@ -255,3 +255,25 @@ Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sa
 
 Dans l'ordre : sauvegardes exportables (rapide, protège tes carrières), promotions et relégations, phases
 finales d'Euro et de Coupe du monde, puis nationalité et objectifs de saison.
+
+## 9. Suivi de l'audit 8 (13 novembre 2026)
+
+Tout a été traité :
+
+1. Montées et descentes : fait (France niveaux 1 à 5, étranger deux divisions ; tailles stables sur six saisons).
+2. Phases finales en sélection : fait (Euro, Coupe du monde, Ligue des nations, JO, Espoirs, U20, U17/U19).
+3. Sauvegardes hors du téléphone : export / import de fichier (sélecteur de fichiers Android).
+4. Nationalité : 21 sélections, compétitions par confédération, langue maternelle.
+5. Objectifs de saison : fait.
+6. Gestes signature (8) et changement de poste : fait.
+7. Contrats : primes, clause libératoire, demande de transfert.
+8. Destinations : Écosse, Turquie, Arabie saoudite, MLS, D2 Portugal et Pays-Bas. La D2 belge (Challenger Pro
+   League) n'a pas pu être lue sur Wikipédia (aucun tableau de clubs reconnu).
+9. Après-carrière : entraîneur jouable, consultant, retraite.
+10. Ambiance : derbys, météo, commentaire audio.
+11. Moteur (120 matchs) : buts 2,86 · nuls 29 % (32 % avant ; 26 % en réalité, les quatre équipes de
+    calibrage sont de force très proche) · hors-jeu 2,85 (1,6 au départ) · corners 9,4 · rouges 0,15.
+12. Vue 3D en direct : qualité adaptative, toujours pas mesurée sur un vrai téléphone.
+13. Code : `career-ui.js` découpé (écrans de fin de saison, d'argent, de palmarès et d'après-carrière dans
+    `career-end.js`) ; nouveaux modules `world.js`, `objectives.js`, `traits.js`, `coach.js`, `ambiance.js`,
+    `countries.js`. Restent longs : `match.js` (1 340), `app.js` (1 330), `career.js` (1 320).

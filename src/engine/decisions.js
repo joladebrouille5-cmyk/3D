@@ -172,7 +172,7 @@ export function holderOptions(m, p, restartType = null) {
           // perception du hors-jeu : un bon décideur l'évite plus souvent
           const oppRels = m.onPitch(1 - p.team).map((o) => m.relX(team, o.x)).sort((a, c) => c - a);
           const offLine = Math.max(oppRels[1] ?? 0, rel, 0.5);
-          if (qRel > offLine) riskT += 0.12 * p.attrs.decisions;
+          if (qRel > offLine) riskT += 0.03 * p.attrs.decisions;
           const gainT = threat(m, team, tx, ty) + RETAIN + 0.012 * tv.direct + (userRun ? 0.02 : 0);
           const uT = (1 - riskT * riskW) * gainT - riskT * riskW * lossCostAt(tx, ty) * 0.8 - here;
           opts.push({ kind: 'pass', to: q.id, tx, ty, lofted: loftedT, through: true, u: uT, risk: clamp(riskT, 0, 1), forward: trel - rel });
@@ -278,7 +278,7 @@ export function decideHolder(m, p, restartType) {
   }
 
   // la passe dans l'espace se voit… ou pas : c'est la vision du passeur qui décide
-  if (!restartType) for (let i = opts.length - 1; i >= 0; i--) if (opts[i].through && !rng.chance(0.2 + 0.55 * p.attrs.vision)) opts.splice(i, 1);
+  if (!restartType) for (let i = opts.length - 1; i >= 0; i--) if (opts[i].through && !rng.chance(0.2 + 0.55 * p.attrs.vision + (p.traits?.has('passeur') ? 0.2 : 0))) opts.splice(i, 1);
   if (!opts.length) { m.pass(p, m.absX(team, Math.min(0.9, rel + 0.35)), 34 + rng.range(-15, 15), { lofted: true, clear: true }); return; }
   // perception imparfaite + sélection pondérée (softmax)
   const noise = 0.006 * (1.25 - p.attrs.vision);

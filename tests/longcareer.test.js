@@ -79,3 +79,20 @@ test('montées et descentes : divisions de taille stable, mouvements gardés dan
   C.ensureState(JSON.parse(JSON.stringify(st)));
   if (levelNow != null) assert.equal(FR.find((c) => c.id === moved).senior.level, levelNow);
 });
+
+test('après-carrière : entraîneur, saisons jouées, réputation et offres', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'coach' });
+  st.history.push({ caEnd: 0.72, season: 2040 });
+  st.retired = true; st.phase = 'retired';
+  C.startCoaching(st);
+  assert.equal(st.phase, 'coach');
+  assert.ok(st.coach.offers.length >= 1, 'des clubs proposent un banc');
+  C.takeCoachJob(st, st.coach.offers[0]);
+  const s0 = st.season;
+  for (let i = 0; i < 3 && st.coach.clubId; i++) {
+    const e = C.playCoachSeason(st, 'offensif', 'jeunes');
+    assert.ok(e.pos >= 1 && e.pos <= e.teams);
+  }
+  assert.ok(st.season > s0 && st.coach.seasons.length >= 1);
+  assert.ok(st.coach.skill > 0.3 && st.coach.rep > 0);
+});

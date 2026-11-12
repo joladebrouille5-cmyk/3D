@@ -56,3 +56,21 @@ test('mercato d\'hiver : prêt d\'un joueur qui ne joue pas, classement repris, 
   assert.equal(st.player.loan, null);
   assert.equal(st.player.contract.clubId, 'paris-saint-germain');
 });
+
+test('contrats : primes, clause libératoire, demande de transfert', async () => {
+  const { contractTerms, winterOffers } = await import('../src/career/market.js');
+  const { clubById } = await import('../src/career/clubs.js');
+  const { Rng } = await import('../src/engine/rng.js');
+  const young = contractTerms(clubById('fc-nantes'), 'Pro', 0.66, 20), old = contractTerms(clubById('fc-nantes'), 'Pro', 0.66, 31);
+  assert.ok(young.goalBonus > 0 && young.winBonus > 0);
+  assert.ok(young.clause > old.clause, 'un jeune prometteur coûte plus cher');
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'transfert' });
+  st.stage = 'Pro'; st.player.age = 24;
+  const t0 = st.player.trust;
+  C.requestTransfer(st);
+  assert.ok(st.player.trust < t0);
+  assert.throws(() => C.requestTransfer(st), /déjà/);
+  st.seasonStats.apps = 10; st.week = 15;
+  const offers = winterOffers(st, 0.66, new Rng('w'));
+  assert.ok(offers.some((o) => /demande de transfert/.test(o.kind)), offers.map((o) => o.kind).join(' | '));
+});

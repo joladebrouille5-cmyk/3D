@@ -32,6 +32,8 @@ export function runAIManager(m, teamIdx, atHalftime, injured = null) {
     let want = null;
     if (minute >= 60 && diff < 0 && (team.tactics.style !== 'direct' || team.tactics.pressing !== 'haut')) want = { style: 'direct', pressing: 'haut' };
     else if (minute >= 72 && diff > 0 && team.tactics.bloc !== 'bas') want = { bloc: 'bas', pressing: 'moyen' };
+    // à domicile, un nul ne suffit pas : on pousse pour la victoire dans le dernier quart d'heure
+    else if (minute >= 72 && diff === 0 && teamIdx === 0 && team.tactics.style !== 'direct') want = { style: 'direct' };
     if (want && m.validateInstruction(teamIdx, want).ok) m.queueCommand({ type: 'instruction', team: teamIdx, changes: want, source: 'staff' });
   }
 

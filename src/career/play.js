@@ -7,6 +7,9 @@ const TICKS_PER_MIN = 600;
 // Crée le match de la semaine (même construction pour le direct 2D et la simulation sans rendu)
 export function createCareerMatch(setup) {
   const m = new Match({ home: setup.home, away: setup.away, seed: setup.seed, userTeam: null, aiTeams: [0, 1] });
+  // ambiance : derby (plus d'engagement) et météo du jour
+  m.derby = setup.derby ?? null;
+  m.weather = setup.weather ?? null;
   if (setup.subPlan) {
     const user = m.players.find((p) => p.isUser);
     if (user && !user.onPitch) {

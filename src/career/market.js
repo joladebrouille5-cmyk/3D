@@ -47,7 +47,18 @@ export function contractType(club, stage) {
 
 export function contractTerms(club, stage, ca, age, { first = false } = {}) {
   const years = stage === 'U17' || stage === 'U19' ? 1 : first ? 3 : age >= 31 ? 1 + (age < 33 ? 1 : 0) : age <= 23 ? 4 : 3;
-  return { type: contractType(club, stage), years, salary: salaryFor(club, stage, ca, age) };
+  const salary = salaryFor(club, stage, ca, age);
+  const terms = { type: contractType(club, stage), years, salary };
+  if (stage === 'Pro') Object.assign(terms, contractExtras(salary, age, ca, club));
+  return terms;
+}
+// Primes (par but marqué, par victoire en ayant joué) et clause libératoire (k€) d'un contrat professionnel.
+// La clause dépend du salaire et de l'âge : plus tu es jeune et prometteur, plus elle est élevée.
+export function contractExtras(salary, age, ca, club) {
+  const goalBonus = Math.round(Math.max(0.2, salary * 0.08) * 10) / 10;
+  const winBonus = Math.round(Math.max(0.1, salary * 0.05) * 10) / 10;
+  const clause = Math.round(salary * 12 * (age <= 23 ? 6 : age <= 28 ? 4 : 2.5) * (1 + 2 * Math.max(0, ca - divisionCA(club))));
+  return { goalBonus, winBonus, clause };
 }
 
 export const CONTRACT_LABEL = { aspirant: 'Contrat aspirant', stagiaire: 'Contrat stagiaire', professionnel: 'Contrat professionnel', 'fédéral': 'Contrat fédéral', 'prêt': 'Prêt' };
@@ -74,6 +85,16 @@ export function winterOffers(st, ca, r) {
   const club = clubById(st.clubId);
   const here = countryOf(club), power = teamCA(club, 'Pro');
   const out = [];
+  // demande de transfert : le club accepte de vendre, les prétendants se signalent
+  if (p.transferRequest === st.season) {
+    const cands = PRO_CLUBS().filter((c) => c.id !== club.id && ca >= divisionCA(c) - 0.03 && teamCA(c, 'Pro') >= power - 0.04);
+    for (const c of mixByCountry(cands, here, r, 3)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Transfert (demande de transfert)', contract: contractTerms(c, 'Pro', ca, p.age) });
+  }
+  // clause libératoire : un club bien plus huppé peut la payer, ton club ne peut pas refuser
+  if (p.contract?.clause && avg >= 7.0 && share >= 0.5) {
+    const rich = PRO_CLUBS().filter((c) => c.id !== club.id && teamCA(c, 'Pro') > power + 0.04 && ca >= divisionCA(c) - 0.03 && p.contract.clause <= 2500 * (teamCA(c, 'Pro') - 0.55) * 40);
+    if (rich.length && r.chance(0.4)) { const c = r.pick(rich); out.push({ clubId: c.id, stage: 'Pro', kind: `Clause libératoire payée (${p.contract.clause >= 1000 ? `${Math.round(p.contract.clause / 100) / 10} M€` : `${p.contract.clause} k€`})`, contract: contractTerms(c, 'Pro', ca, p.age) }); }
+  }
   if (share < 0.35 || p.wantsLoan === st.season) {
     // peu de temps de jeu : prêt dans un club un peu plus modeste où il jouera (en France ou à l'étranger)
     const cands = PRO_CLUBS().filter((c) => c.id !== club.id && teamCA(c, 'Pro') < power - 0.015 && teamCA(c, 'Pro') >= power - 0.12 && ca >= divisionCA(c) - 0.02);

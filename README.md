@@ -352,3 +352,28 @@ mercato d'hiver et les prêts.
 - **Mettre à jour** : relancer l'action (onglet Actions du dépôt), puis
   `node tools/build-foreign.mjs <dossier des logos>` qui écrit `src/data/foreign.js` et `assets/crests-foreign/`.
 
+
+## Carrière : le monde autour de toi
+
+- **Sauvegardes** : « Exporter » enregistre un fichier de la carrière (hors du téléphone) ; « Importer un
+  fichier », dans « Charger la partie », la récupère, même sur un nouveau téléphone.
+- **Montées et descentes** chaque saison, en France (Ligue 1 à National 2) et dans les championnats étrangers
+  (deux divisions) : ton championnat selon son vrai classement, les autres par le modèle agrégé ; un promu
+  investit, un relégué s'affaiblit ; annoncé au bilan de fin de saison (`src/career/world.js`).
+- **Phases finales l'été** : Euro, Coupe du monde, Ligue des nations, Jeux olympiques, Euro Espoirs, Coupe du
+  monde U20, Euros U17 et U19 (ou leurs équivalents : CAN, Copa América…) ; poules puis élimination directe.
+- **Nationalité** au choix (21 sélections) : sélection, compétitions de la confédération, langue maternelle.
+- **Objectifs de saison** fixés par le club selon ta place prévue (titularisations, buts, passes, rang du club,
+  scolarité chez les jeunes) : prime et confiance, ou déception (`src/career/objectives.js`).
+- **Gestes signature** débloqués par tes qualités (frappe enroulée, coups francs, dribbleur, passeur de génie,
+  jeu de tête, sprinteur, défenseur rugueux, réflexes de chat), avec un effet réel dans le moteur ;
+  **changement de poste** une fois par saison (niveau projeté à chaque poste, six semaines d'adaptation).
+- **Contrats** : primes par but et par victoire, clause libératoire (un club plus huppé peut la payer au
+  mercato), demande de transfert (le club écoute les offres, le vestiaire et les supporters grincent).
+- **Après-carrière** : consultant, retraite… ou **entraîneur** : style de jeu et priorité chaque saison,
+  championnat simulé, talent et réputation, titres, limogeage, offres d'autres clubs (`src/career/coach.js`).
+- **Ambiance** : derbys (Le Classique, El Clásico, Old Firm…), météo du jour selon le pays et la saison (pluie
+  et neige visibles, effets légers sur le jeu), commentaire audio des temps forts (synthèse vocale du
+  téléphone ; bouton à côté du son).
+- **Championnats** : 17, dont l'Écosse, la Turquie, l'Arabie saoudite, la MLS et les deuxièmes divisions du
+  Portugal et des Pays-Bas (équipes B jamais promues) ; 332 clubs étrangers.

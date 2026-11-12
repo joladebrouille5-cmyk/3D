@@ -20,6 +20,13 @@ import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABE
 import { langLevel } from './countries.js';
 import { pickEvent, eventById, abroad, clubCountry } from './events.js';
 import { emptyWorld, applyWorld, resetWorld, advanceWorld } from './world.js';
+import { setObjectives, objectiveProgress, settleObjectives } from './objectives.js';
+import { TRAITS, traitById, unlockTraits } from './traits.js';
+export { COACH_STYLES, COACH_PRIORITIES, startCoaching, takeCoachJob, playCoachSeason } from './coach.js';
+import { derbyOf, weatherFor, WEATHER } from './ambiance.js';
+export { WEATHER, derbyOf };
+export { TRAITS, traitById };
+export { objectiveProgress };
 export { SPECIALS, specialById, drillZone, DRILL_LABEL };
 import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy, ageingMul, passiveIncome, servicesFor, purchasesFor, boughtState, LEGACY } from './spending.js';
 export { SERVICES, PURCHASES, monthlyCost, canBuy, passiveIncome, servicesFor, purchasesFor, boughtState };
@@ -150,6 +157,8 @@ export function startSeason(st) {
   st.cups = buildCups(st, st.league.rounds.length);
   st.weekExtras = null;
   st.callup = null;
+  // objectifs du club pour la saison, selon la place prévue dans l'effectif
+  st.objectives = setObjectives(st, selectionForecast(st).status);
   initMonth(st);
   st.phase = 'week';
   log(st, `Saison ${st.season}-${st.season + 1} : ${STAGE_LABEL[st.stage]} de ${club.name}, ${lg.name}.${st.cups.length ? ` Coupes : ${st.cups.map((c) => c.name).join(', ')}.` : ''}`);
@@ -174,6 +183,34 @@ function weekStart(st) {
   if (st.window && st.week !== st.window.week) st.window = null; // la fenêtre se referme
   saveRng(st, r);
   if (st.callup) log(st, `Convocation : ${st.callup.label}.`);
+}
+
+// Demande de transfert : une fois par saison, en professionnel ; le club accepte de vendre au mercato
+// et en fin de saison, au prix de la confiance du coach, du vestiaire et des supporters.
+export function requestTransfer(st) {
+  const p = st.player;
+  if (st.stage !== 'Pro' || p.loan) throw new Error('Possible seulement en équipe première, hors prêt.');
+  if (p.transferRequest === st.season) throw new Error('Demande déjà faite cette saison.');
+  p.transferRequest = st.season;
+  p.trust -= 0.08; p.team -= 0.04; p.fans -= 0.06; p.morale += 0.02;
+  log(st, 'Demande de transfert déposée : le club accepte d\'écouter les offres.');
+  return 'Ta demande est sur le bureau du président. Le vestiaire grince, les supporters aussi ; les offres arriveront au mercato.';
+}
+
+// Changement de poste durable : une fois par saison, avec une période d'adaptation (le coach hésite)
+export const roleLevels = (st) => Object.keys(ROLES).map((r) => ({ role: r, label: ROLES[r], ca: roleCA(r, st.player.attrs) }));
+export function changeRole(st, role) {
+  const p = st.player;
+  if (!ROLES[role] || role === p.role) throw new Error('Poste inchangé.');
+  if (st.phase !== 'week') throw new Error('Change de poste en début de semaine.');
+  if (p.roleChange?.season === st.season) throw new Error('Un seul changement de poste par saison.');
+  if ((role === 'GK') !== (p.role === 'GK')) throw new Error('Passer de gardien à joueur de champ (ou l\'inverse) n\'est pas possible.');
+  const from = p.role;
+  p.role = role;
+  p.roleChange = { season: st.season, from, until: st.week + 6 };
+  p.trust -= 0.04;
+  log(st, `Changement de poste : ${ROLES[from]} → ${ROLES[role]}. Six semaines d'adaptation.`);
+  return `Te voilà ${ROLES[role].toLowerCase()}. Le coach te laisse six semaines pour t'adapter.`;
 }
 
 // Argent : abonnements (activer / arrêter) et achats
@@ -220,7 +257,7 @@ function midSeasonMove(st, o) {
     p.contract = { clubId: o.clubId, type: 'prêt', until: st.season, salary: p.contract.salary };
   } else {
     p.loan = null;
-    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years - 1, salary: o.contract.salary };
+    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years - 1, salary: o.contract.salary, goalBonus: o.contract.goalBonus, winBonus: o.contract.winBonus, clause: o.contract.clause };
   }
   const frac = st.week / st.league.rounds.length;
   st.clubId = o.clubId; st.stage = o.stage; p.trust = 0.45; p.team = 0.45; p.fans = Math.max(0.12, p.fans * 0.4);
@@ -396,7 +433,8 @@ export function selectionForecast(st) {
     if (s2.ca + s2.form > rival.ca + rival.form) rival = s2;
   }
   const form = recentForm(st);
-  const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) + 0.02 * ((p.team ?? 0.5) - 0.5)
+  const adapting = p.roleChange?.season === st.season && st.week < p.roleChange.until ? 0.02 : 0;
+  const me = currentCA(st) - adapting + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) + 0.02 * ((p.team ?? 0.5) - 0.5)
     + clamp(form * 0.03, -0.025, 0.025) - (p.fresh < 0.35 ? 0.02 : 0);
   const them = rival.ca + rival.form;
   // en équipe première, un jeune doit nettement dépasser le titulaire en place pour lui prendre sa place
@@ -491,6 +529,7 @@ export function ensureState(st) {
   applyWorld(st.world);
   const p = st.player;
   p.nation ??= 'france';
+  if (!st.objectives && st.league) st.objectives = setObjectives(st, 'remplaçant');
   p.money ??= 0;
   p.loan ??= null;
   p.team ??= 0.5;
@@ -545,6 +584,8 @@ function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
     const lang = langLevel(p, clubCountry(st));
     if (lang < 0.6) track(st, 'relations', () => { p.team -= 0.006 * (1 - lang); }, false);
   }
+  // gestes signature : débloqués quand les qualités atteignent leur palier
+  if (r) for (const id of unlockTraits(p)) { const t = TRAITS[id]; rep.lines.push(`Nouveau geste signature : ${t.label}. ${t.desc}`); log(st, `Geste signature débloqué : ${t.label}.`); }
   // défi du coach (voie de rattrapage) : trois semaines sérieuses de suite, puis une titularisation promise
   if (r && st.chance && !st.chance.earned) {
     const serious = focus === st.weekly?.coachFocus && intensity !== 'légère' && offpitch !== 'sortie';
@@ -780,7 +821,9 @@ export function matchSetup(st) {
     const r = new Rng(`sub:${st.seed}:${st.season}:${st.week}`);
     if (r.chance(0.7)) subPlan = { minute: r.int(58, 75) };
   }
-  return { home, away, userTeam, seed: `${st.seed}-${st.season}-${st.week}`, subPlan, inSquad, homeName: home.def.name, awayName: away.def.name };
+  const seed = `${st.seed}-${st.season}-${st.week}`;
+  const homeClub = md.home ? st.clubId : md.opponentId;
+  return { home, away, userTeam, seed, subPlan, inSquad, homeName: home.def.name, awayName: away.def.name, derby: derbyOf(st.clubId, md.opponentId), weather: weatherFor(seed, st.week / Math.max(1, st.league.rounds.length), homeClub) };
 }
 
 // Résultat d'un match joué par le moteur (ou résumé simulé) -> carrière
@@ -823,6 +866,16 @@ export function applyMatchResult(st, res) {
       saveRng(st, r);
     });
     rep.lines.push(`${outcome[0].toUpperCase()}${outcome.slice(1)} ${gMine}-${gOpp} contre ${oppName}. ${res.minutes} min, note ${rating.toFixed(1)}${res.goals ? `, ${res.goals} but(s)` : ''}.`);
+    // derby : l'émotion compte double
+    const derby = derbyOf(st.clubId, md.opponentId);
+    if (derby) {
+      track(st, 'match', () => { p.fans += outcome === 'victoire' ? 0.06 : outcome === 'défaite' ? -0.04 : 0; p.morale += outcome === 'victoire' ? 0.04 : outcome === 'défaite' ? -0.02 : 0; });
+      rep.lines.push(outcome === 'victoire' ? `${derby} gagné : la ville est à vous !` : outcome === 'défaite' ? `${derby} perdu : la semaine va être longue.` : `${derby} : match nul, personne ne se moquera de personne.`);
+    }
+    // primes du contrat : par but, et par victoire en ayant joué
+    const c = p.contract;
+    const prime = (c?.goalBonus ?? 0) * (res.goals ?? 0) + (outcome === 'victoire' ? c?.winBonus ?? 0 : 0);
+    if (prime > 0) { p.money += prime; st.month.earned = (st.month.earned ?? 0) + prime; rep.lines.push(`Primes : ${money(prime)}.`); }
     log(st, `J${st.week + 1} : ${outcome} ${gMine}-${gOpp} contre ${oppName} — ${res.minutes} min, note ${rating.toFixed(1)}${res.goals ? `, ${res.goals} but(s)` : ''}.`);
   } else {
     track(st, 'match', () => {
@@ -1026,6 +1079,10 @@ function endSeason(st) {
   st.awards.push(...awards);
   st.seasonHonours = { trophies: st.trophies.filter((t) => t.season === st.season), awards };
   st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, tier: clubLevel(clubById(st.clubId)), pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
+  // objectifs de la saison : prime et confiance, ou déception
+  const objs = settleObjectives(st);
+  st.history.at(-1).objectives = objs.map((o) => ({ label: o.label, done: o.done, effect: o.effect }));
+  for (const o of objs) log(st, `Objectif ${o.done ? 'atteint' : 'manqué'} : ${o.label}${o.done ? ` (${o.effect})` : ''}.`);
   // montées et descentes dans tous les championnats (le tien selon son vrai classement)
   const moved = advanceWorld(st, table.map((t) => t.id));
   const me = clubById(st.clubId);
@@ -1152,7 +1209,7 @@ function buildOffers(st, pos, n) {
       const host = hosts.length ? r.pick(hosts) : null;
       if (host) offers.push({ clubId: host.id, stage: 'Pro', loan: true, own: true, parentStage: 'Pro', parentContract: terms(club, 'Pro', { first: true }), kind: `Premier contrat à ${club.name}, prêté à ${host.name}` });
     }
-    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0);
+    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0) + (p.transferRequest === st.season ? 2 : 0);
     // clubs professionnels de France et de l'étranger dont le niveau correspond au tien
     const pool = PRO_CLUBS().filter((c) => c.id !== club.id && c.id !== p.loan?.parentId);
     const cands = pool.filter((c) => ca >= proThreshold(c) && ca <= divisionCA(c) + 0.08);
@@ -1204,7 +1261,7 @@ export function acceptOffer(st, idx) {
     p.contract = { clubId: o.clubId, type: 'prêt', until: st.season + 1, salary: parentContract.salary };
   } else if (o.contract) {
     p.loan = null;
-    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years, salary: o.contract.salary };
+    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years, salary: o.contract.salary, goalBonus: o.contract.goalBonus, winBonus: o.contract.winBonus, clause: o.contract.clause };
     if (p.agent && !o.own) { p.money -= o.contract.salary; log(st, `Commission de l'agent : ${money(o.contract.salary)}.`); }
   }
   const changed = o.clubId !== st.clubId;

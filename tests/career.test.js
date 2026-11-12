@@ -216,3 +216,45 @@ test('sauvegarde : export en fichier puis import dans un autre emplacement', asy
   assert.throws(() => S.importCareer('pas du json', 2), /lisible/);
   delete globalThis.localStorage;
 });
+
+test('objectifs de saison : fixés au départ, suivis, réglés au bilan', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'objectifs' });
+  assert.ok(st.objectives.length >= 2 && st.objectives.length <= 3, JSON.stringify(st.objectives));
+  for (const o of st.objectives) { const pr = C.objectiveProgress(st, o); assert.ok(pr.ratio >= 0 && pr.ratio <= 1); }
+  let g = 0;
+  while (st.phase !== 'season_end' && g++ < 5000) {
+    if (st.phase === 'week') C.submitWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'ecole' });
+    else if (st.phase === 'event') C.resolveEvent(st, 0);
+    else if (st.phase === 'month_review') C.closeMonthReview(st);
+    else C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
+  }
+  const h = st.history.at(-1);
+  assert.equal(h.objectives.length, st.objectives.length);
+  assert.ok(h.objectives.some((o) => !o.done), 'sans jouer, les objectifs individuels sont manqués');
+  assert.ok(st.journal.some((j) => /Objectif (atteint|manqué)/.test(j.text ?? j)));
+});
+
+test('gestes signature et changement de poste', async () => {
+  const { unlockTraits } = await import('../src/career/traits.js');
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'W', clubId: 'fc-nantes', seed: 'gestes' });
+  const p = st.player;
+  Object.assign(p.attrs, { dribbling: 0.85, accel: 0.8, shooting: 0.8, composure: 0.75 });
+  const got = unlockTraits(p);
+  assert.ok(got.includes('dribbleur') && got.includes('enroulee'), got.join(','));
+  assert.deepEqual(unlockTraits(p), [], 'un geste ne se débloque qu\'une fois');
+  // le geste arrive jusqu'au moteur
+  const { Match } = await import('../src/engine/match.js');
+  const { buildTeamSquad, clubById } = await import('../src/career/clubs.js');
+  const mine = buildTeamSquad(clubById('fc-nantes'), 'U17', 2026, null, p, 'titulaire');
+  const u = mine.starters.find((x) => x.isUser);
+  assert.ok(u.traits.includes('dribbleur'));
+  void Match;
+  // changement de poste : une fois par saison, période d'adaptation
+  const before = C.currentCA(st);
+  const msg = C.changeRole(st, 'AM');
+  assert.match(msg, /Milieu offensif|milieu offensif/);
+  assert.equal(p.role, 'AM');
+  assert.notEqual(C.currentCA(st), before);
+  assert.throws(() => C.changeRole(st, 'ST'), /Un seul changement/);
+  assert.throws(() => { st.player.roleChange = null; C.changeRole(st, 'GK'); }, /gardien/);
+});

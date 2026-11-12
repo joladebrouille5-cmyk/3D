@@ -10,6 +10,8 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.speech.tts.TextToSpeech;
+import java.util.Locale;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -32,6 +34,8 @@ public class MainActivity extends Activity {
     private static final int REQ_EXPORT = 41, REQ_IMPORT = 42;
     private String pendingExport = null;
     private ValueCallback<Uri[]> pendingChooser = null;
+    private TextToSpeech tts = null;
+    private boolean ttsReady = false;
 
     /** Pont JavaScript : enregistrer un fichier (sauvegarde exportée) là où l'utilisateur le choisit. */
     public class Bridge {
@@ -46,6 +50,16 @@ public class MainActivity extends Activity {
                 startActivityForResult(i, REQ_EXPORT);
             });
         }
+
+        /** Commentaire audio : synthèse vocale du téléphone, en français. */
+        @JavascriptInterface
+        public void speak(String text, boolean urgent) {
+            if (tts == null || !ttsReady) return;
+            tts.speak(text, urgent ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD, null, "gf");
+        }
+
+        @JavascriptInterface
+        public void stopSpeaking() { if (tts != null) tts.stop(); }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -90,6 +104,13 @@ public class MainActivity extends Activity {
             }
         });
         webView.addJavascriptInterface(new Bridge(), "GFAndroid");
+        tts = new TextToSpeech(this, status -> {
+            if (status == TextToSpeech.SUCCESS) {
+                int r = tts.setLanguage(Locale.FRENCH);
+                ttsReady = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED;
+                tts.setSpeechRate(1.08f);
+            }
+        });
         setContentView(webView);
         hideSystemBars();
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
@@ -132,6 +153,12 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         webView.saveState(outState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (tts != null) { tts.shutdown(); tts = null; }
+        super.onDestroy();
     }
 
     @Override

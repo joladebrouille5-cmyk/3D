@@ -9,6 +9,7 @@ import { PitchRenderer } from './render.js';
 import { crestSVG } from './crest.js';
 import { icon } from './icons.js';
 import { sound } from './sound.js';
+import { say, commentFor, commentaryOn, setCommentary, commentaryAvailable } from './commentary.js';
 import { avatar, matchFace } from './faces.js';
 import { ballChoices, defendChoices, supportChoices, restartChoices, choiceTargets } from './choices.js';
 import { createPredictor, createJudge, goalOf } from '../engine/predict.js';
@@ -60,6 +61,10 @@ export function startMatch(cfg) {
   S.prev = snapshot();
   $('#feed').innerHTML = '';
   $('#comp-name').textContent = S.career ? S.career.competition : `${S.m.competition.name} · graine « ${S.m.seed} »`;
+  // météo visible sur le terrain (pluie, neige)
+  const wrap = $('#pitch').parentElement;
+  wrap.classList.remove('wx-pluie', 'wx-neige');
+  if (S.career?.weather === 'pluie' || S.career?.weather === 'neige') wrap.classList.add(`wx-${S.career.weather}`);
   const team = userTeam == null ? null : S.m.teams[userTeam];
   $('#role-label').textContent = S.career ? S.career.label : team ? `Rôle : manager — ${team.name}${cfg.delegate ? ' (remplacements délégués au staff)' : ''}` : 'Rôle : observateur';
   for (const i of [0, 1]) {
@@ -577,6 +582,11 @@ function handleNewEvents() {
 function eventSound(ev) {
   if (S.quick) return;
   const live = S.pace.mode === 'reel' ? S.speed <= 4 : S.pace.mode === 'court' ? S.pace.isLive : S.m.t < S.hl.follow + 1;
+  // commentaire audio : les grands moments, ou tout ce qui est regardé en direct
+  if (sound.enabled && (live || ['but', 'mi_temps', 'fin', 'coup_envoi'].includes(ev.type))) {
+    const c = commentFor(ev, S.m, S.ctl?.userId ?? null);
+    if (c) say(c.text, c.urgent);
+  }
   if (ev.type === 'coup_envoi') sound.whistle('long');
   else if (ev.type === 'mi_temps') sound.whistle('half');
   else if (ev.type === 'fin') sound.whistle('end');
@@ -1268,6 +1278,10 @@ function bind() {
   setIco('#btn-left', 'squad'); setIco('#btn-right', 'board'); setIco('#btn-replay', 'replay', 'Replay');
   setIco('#btn-quick', 'skip', 'Résultat rapide'); setIco('#btn-help', 'help', 'Aide'); setIco('#btn-live', 'live', 'Direct');
   const soundIco = () => setIco('#btn-sound', sound.enabled ? 'sound' : 'mute');
+  // commentaire audio (voix du téléphone) : activable à part, seulement quand le son est actif
+  const commIco = () => { const b = $('#btn-comm'); b.hidden = !commentaryAvailable(); setIco('#btn-comm', 'chat'); b.classList.toggle('off', !commentaryOn()); b.title = commentaryOn() ? 'Commentaire audio activé' : 'Commentaire audio coupé'; };
+  commIco();
+  $('#btn-comm').addEventListener('click', (e) => { e.currentTarget.blur(); setCommentary(!commentaryOn()); commIco(); });
   soundIco();
   $('#btn-sound').addEventListener('click', (e) => { e.currentTarget.blur(); sound.toggle(); soundIco(); });
   const viewIco = () => document.querySelectorAll('#btn-view [data-view]').forEach((x) => { const on = (x.dataset.view === '3d') === view3dOn(); x.classList.toggle('active', on); x.setAttribute('aria-pressed', String(on)); });

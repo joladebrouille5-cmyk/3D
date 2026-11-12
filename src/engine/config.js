@@ -54,3 +54,11 @@ export const ROLE_LABELS = {
   GK: 'Gardien', CB: 'Défenseur central', FB: 'Latéral', DM: 'Milieu défensif',
   CM: 'Milieu', AM: 'Milieu offensif', W: 'Ailier', ST: 'Avant-centre',
 };
+
+// Effets de la météo du jour sur le jeu (identifiants : src/career/ambiance.js)
+export const WEATHER_FX = {
+  pluie: { pass: 1.12, control: -0.04 },
+  vent: { lofted: 1.3 },
+  neige: { pass: 1.15, speed: 0.96, control: -0.05 },
+  chaleur: { fatigue: 1.25 },
+};

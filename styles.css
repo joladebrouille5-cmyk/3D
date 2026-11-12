@@ -1079,3 +1079,39 @@ details.report:not([open]) { padding: 6px 12px; margin-bottom: 8px; }
 details.moves { margin: 8px 0; font-size: 0.9em; }
 details.moves summary { cursor: pointer; font-weight: 700; }
 details.moves p { margin: 6px 0; }
+
+/* objectifs de la saison */
+.objectives { margin: 0 0 10px; padding: 8px 10px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
+.objectives h3 { margin: 0 0 6px; font-size: 0.95em; display: flex; gap: 6px; align-items: center; }
+.objectives ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.objectives li { display: grid; grid-template-columns: 1fr 80px 42px; gap: 8px; align-items: center; font-size: 0.86em; }
+.objectives li b { text-align: right; }
+.objectives li.done span:first-child::before { content: '✓ '; color: var(--ok); }
+.obj-bar { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.obj-bar i { display: block; height: 100%; background: var(--flood); }
+.objectives li.done .obj-bar i { background: var(--ok); }
+.obj-result { list-style: none; padding: 0; margin: 6px 0; }
+.obj-result li.ok { color: var(--ok); } .obj-result li.ko { color: var(--bad); }
+.obj-result li .muted { color: var(--muted); }
+
+/* gestes signature et changement de poste */
+.traits { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.trait { display: inline-flex; gap: 4px; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 0.78em; font-weight: 700; background: rgba(78, 224, 138, 0.12); border: 1px solid rgba(78, 224, 138, 0.4); }
+.role-list { list-style: none; padding: 0; margin: 0 0 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.role-list button { width: 100%; display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; text-align: left; }
+.role-list b.up { color: var(--ok); } .role-list b.down { color: var(--muted); }
+.role-list small { color: var(--muted); }
+
+/* ambiance : derby et météo */
+.derby-chip { display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 0.75em; font-weight: 800; background: rgba(255, 103, 103, 0.16); border: 1px solid rgba(255, 103, 103, 0.5); color: #ffb3b3; }
+.wx-pluie, .wx-neige { position: relative; }
+.wx-pluie::after, .wx-neige::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 2; opacity: 0.35; }
+.wx-pluie::after { background-image: repeating-linear-gradient(105deg, transparent 0 14px, rgba(200, 220, 255, 0.55) 14px 15px, transparent 15px 34px); background-size: 120px 120px; animation: wx-rain 0.45s linear infinite; }
+.wx-neige::after { background-image: radial-gradient(circle, rgba(255, 255, 255, 0.9) 1.2px, transparent 1.6px), radial-gradient(circle, rgba(255, 255, 255, 0.7) 1px, transparent 1.4px); background-size: 46px 46px, 73px 73px; animation: wx-snow 6s linear infinite; }
+@keyframes wx-rain { to { background-position: -30px 120px; } }
+@keyframes wx-snow { to { background-position: 20px 46px, -15px 73px; } }
+@media (prefers-reduced-motion: reduce) { .wx-pluie::after, .wx-neige::after { animation: none; } }
+#btn-comm.off { opacity: 0.45; }
+/* entraîneur : choix du style et de la priorité */
+.coach .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.coach .seg button.active { background: var(--flood); color: var(--ink); border-color: var(--flood); }

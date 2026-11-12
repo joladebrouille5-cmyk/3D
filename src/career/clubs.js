@@ -270,7 +270,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
   for (const p of [...starters, ...bench]) if (p.num == null) { while (taken.has(free)) free++; p.num = free; taken.add(free); }
 
   if (user) {
-    const u = { name: `${user.firstName} ${user.lastName}`, role: user.role, num: user.number ?? 27, real: false, isUser: true, attrs: { ...user.attrs } };
+    const u = { name: `${user.firstName} ${user.lastName}`, role: user.role, num: user.number ?? 27, real: false, isUser: true, attrs: { ...user.attrs }, traits: user.traits ?? [] };
     if (taken.has(u.num)) { u.num = 30; while (taken.has(u.num)) u.num++; }
     if (selection === 'titulaire') {
       // remplace le concurrent direct à son poste ; ce dernier passe sur le banc

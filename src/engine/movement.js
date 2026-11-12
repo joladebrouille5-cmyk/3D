@@ -109,7 +109,7 @@ export function updateTeamShape(m, team) {
       if (poss && (slot.role === 'ST' || slot.role === 'W' || slot.role === 'AM' || userRun) && !restart && b.owner != null && b.owner !== p.id) {
         // appel : sur l'épaule du dernier défenseur (hors-jeu évité), en diagonale vers l'intervalle ;
         // la passe est jouée dans l'espace derrière et le coureur la prend de vitesse
-        if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + (p.runEager ? 0.04 : -0.004)); y = y + (34 - y) * 0.3; }
+        if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + (p.runEager ? 0.05 : -0.004)); y = y + (34 - y) * 0.3; }
         else {
           // espace dans le dos d'une ligne haute : les appels deviennent bien plus fréquents
           const space = 1 - offLine;

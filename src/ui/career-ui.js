@@ -13,26 +13,27 @@ import { extrasForWeek } from '../career/competitions.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
 import { sound } from './sound.js';
 import { WHEELS, slicesOf, drawFrom, tierById, LEVEL_TIERS } from '../career/potential.js';
+import { objectivesBlock, renderCoach, renderMoney, renderPalmares, renderRetired, renderSeasonEnd, showRoleChange } from './career-end.js';
 const LEVEL_COLORS = Object.fromEntries(LEVEL_TIERS.map((t) => [t.id, t.color]));
-const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
+export const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const root = () => document.getElementById('screen');
-const stars = (n) => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') + '☆'.repeat(5 - Math.ceil(n));
+export const stars = (n) => '★'.repeat(Math.floor(n)) + (n % 1 ? '½' : '') + '☆'.repeat(5 - Math.ceil(n));
 const ATTR_LABELS = { pace: 'Vitesse', accel: 'Accélération', stamina: 'Endurance', passing: 'Passe', vision: 'Vision', decisions: 'Décisions', firstTouch: 'Contrôle', dribbling: 'Dribble', tackling: 'Tacle', positioning: 'Placement', shooting: 'Frappe', aerial: 'Jeu aérien', aggression: 'Agressivité', gk: 'Gardien', composure: 'Sang-froid' };
 
 const FOCUS_ICON = { technique: 'technique', physique: 'physique', tactique: 'tactique', finition: 'finition', defense: 'defense', gardien: 'gardien', recuperation: 'recuperation' };
 const OFF_ICON = { ecole: 'ecole', video: 'video', extra: 'extra', repos: 'repos', sortie: 'sortie' };
 const ROLE_ABBR = { GK: 'G', CB: 'DC', FB: 'DL', DM: 'MD', CM: 'MC', AM: 'MO', W: 'AIL', ST: 'BU' };
 // couleurs d'un club pour le décor (fond lisible + accent)
-function clubVars(c) {
+export function clubVars(c) {
   const cc = clubColors(c.id);
   const light = cc.text === '#111111';
   return `--club:${light ? cc.secondary : cc.primary};--club2:${light ? cc.primary : cc.secondary}`;
 }
 const INT_DESC = { 'légère': 'Progression réduite, peu de fatigue', normale: 'Équilibre progression / fatigue', intense: 'Progression forte, fatigue et risque de blessure' };
 
-const G = { st: null, slot: null, tab: 'classement', choices: { focus: 'technique', intensity: 'normale', offpitch: 'repos' }, filter: { q: '', level: 'all' }, pick: null, form: null, busy: false, showReview: null };
+export const G = { st: null, slot: null, tab: 'classement', choices: { focus: 'technique', intensity: 'normale', offpitch: 'repos' }, filter: { q: '', level: 'all' }, pick: null, form: null, busy: false, showReview: null };
 
 // pastille de variation : valeur en points (×100), couleur selon le sens
 function chip(label, v, { unit = '', digits = 0, invert = false, title = '' } = {}) {
@@ -44,7 +45,7 @@ function chip(label, v, { unit = '', digits = 0, invert = false, title = '' } = 
 }
 const fmtLvl = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
 
-function show(html) {
+export function show(html) {
   stopHomeScene();
   sound.stop(); // l'ambiance du stade s'arrête en quittant le match
   const el = root();
@@ -56,7 +57,7 @@ function show(html) {
   return el;
 }
 function hideScreen() { stopHomeScene(); root().hidden = true; document.body.classList.remove('in-screen'); }
-function persist() {
+export function persist() {
   if (!G.slot || !G.st) return true;
   const ok = saveCareer(G.slot, G.st);
   if (!ok && !G.saveWarned) { G.saveWarned = true; flash('Sauvegarde impossible (stockage plein ou indisponible).'); }
@@ -501,8 +502,10 @@ function profileCard(st) {
         <h2 class="sr-only">${esc(p.firstName)} ${esc(p.lastName)}</h2>
         <div class="lvl"><span class="label">Niveau actuel${p.levelTier && st.season === 2026 ? ` <span class="tier-chip" style="--tier:${LEVEL_COLORS[p.levelTier.id] ?? 'var(--flood)'}" title="Palier tiré à la roue en arrivant au centre">${esc(p.levelTier.label)}</span>` : ''}</span><span class="value">${C.pct(ca)}</span><span class="delta ${season >= 0 ? 'up' : 'down'}">${fmtLvl(season)} cette saison</span></div>
         <div class="pot"><span class="label">Potentiel estimé par le staff${p.potentialTier ? ` <span class="tier-chip" style="--tier:${tierById(p.potentialTier.id)?.color ?? 'var(--flood)'}" title="Palier tiré à la roue en arrivant au centre">${esc(p.potentialTier.label)}</span>` : ''}</span><span class="stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
-        <p class="role-line">${esc(C.ROLES[p.role])}</p>
-        ${p.contract ? `<p class="contract-line">${icon('save', 14)}<span>${p.loan ? `Prêté par ${esc(clubById(p.loan.parentId).name)} · ` : ''}${esc(C.CONTRACT_LABEL[p.contract.type] ?? 'Contrat')} · <b>${C.money(p.contract.salary)}</b>/mois · fin juin ${p.contract.until + 1}<br>Économies : <b>${C.money(p.money)}</b>${p.agent ? ' · agent' : ''}</span></p>` : ''}
+        <p class="role-line">${esc(C.ROLES[p.role])}${p.roleChange?.season === st.season && st.week < p.roleChange.until ? ' <span class="muted">(en adaptation)</span>' : ''} ${st.phase === 'week' && p.roleChange?.season !== st.season ? '<button class="ghost small" id="hub-role">Changer de poste</button>' : ''}</p>
+        ${p.traits?.length ? `<p class="traits">${p.traits.map((id) => { const t = C.traitById(id); return t ? `<span class="trait" title="${esc(t.desc)}">${icon(t.icon, 14)}${esc(t.label)}</span>` : ''; }).join('')}</p>` : ''}
+        ${p.contract ? `<p class="contract-line">${icon('save', 14)}<span>${p.loan ? `Prêté par ${esc(clubById(p.loan.parentId).name)} · ` : ''}${esc(C.CONTRACT_LABEL[p.contract.type] ?? 'Contrat')} · <b>${C.money(p.contract.salary)}</b>/mois · fin juin ${p.contract.until + 1}${p.contract.goalBonus ? `<br>Primes : ${C.money(p.contract.goalBonus)} par but, ${C.money(p.contract.winBonus)} par victoire · clause ${C.money(p.contract.clause)}` : ''}<br>Économies : <b>${C.money(p.money)}</b>${p.agent ? ' · agent' : ''}</span></p>` : ''}
+        ${st.stage === 'Pro' && !p.loan && st.phase === 'week' ? (p.transferRequest === st.season ? '<p class="muted small">Demande de transfert déposée : offres au mercato et en fin de saison.</p>' : '<button class="ghost small" id="hub-transfer">Demander un transfert</button>') : ''}
       </div>
     </div>
     ${p.injuryWeeks ? `<p class="error">${icon('injury', 16)} Blessé : encore ${p.injuryWeeks} semaine(s).</p>` : ''}
@@ -610,7 +613,7 @@ function weekCard(st) {
     ${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
     ${extrasForWeek(st).map((x) => `<p class="extra-note ${x.kind}">${icon(x.kind === 'nat' ? 'star' : 'trophy', 18)}<span>${x.kind === 'nat' ? `<b>Convoqué !</b> ${esc(x.label)} cette semaine` : `En semaine : <b>${esc(x.label)}</b>`}</span></p>`).join('')}
-    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.reason && C.SELECTION_REASON[sel.reason] ? ` <span class="muted small">${esc(C.SELECTION_REASON[sel.reason])}</span>` : ''}</p>${sel.rival && (sel.status !== 'titulaire' || sel.rival.signing) && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
+    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong>${C.derbyOf(st.clubId, fx.opponentId) ? ` <span class="derby-chip">${esc(C.derbyOf(st.clubId, fx.opponentId))}</span>` : ''} · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.reason && C.SELECTION_REASON[sel.reason] ? ` <span class="muted small">${esc(C.SELECTION_REASON[sel.reason])}</span>` : ''}</p>${sel.rival && (sel.status !== 'titulaire' || sel.rival.signing) && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
     ${wk?.coachFocus ? `<p class="coach-ask">${icon('whistle', 16)}<span><b>Le coach :</b> « ${esc(C.FOCUS[wk.coachFocus]?.label ?? '')} » cette semaine. ${esc(wk.why)}</span></p>` : ''}
@@ -630,7 +633,7 @@ function leagueCard(st) {
   let body = '';
   if (G.tab === 'classement') {
     const t = C.standings(st);
-    body = `<p class="muted">${esc(st.league.name)}${st.league.simulated ? ' — composition simulée' : ''}</p>
+    body = `${objectivesBlock(st)}<p class="muted">${esc(st.league.name)}${st.league.simulated ? ' — composition simulée' : ''}</p>
       <table class="table"><tr><th>#</th><th>Équipe</th><th>J</th><th>Pts</th><th>Diff.</th></tr>${t.map((x, i) => `<tr class="${x.id === st.clubId ? 'me' : ''}"><td class="rk">${i + 1}</td><td class="tn">${crest(clubById(x.id), 18)}${esc(x.name)}</td><td>${x.p}</td><td><strong>${x.pts}</strong></td><td>${x.gf - x.ga > 0 ? '+' : ''}${x.gf - x.ga}</td></tr>`).join('')}</table>
       <p class="muted">Les rencontres où ton équipe joue passent par le moteur de match ; les autres par un modèle agrégé.</p>`;
   } else if (G.tab === 'resultats') {
@@ -733,6 +736,7 @@ export function renderHub() {
   if (!st) return showHome();
   if (st.phase === 'season_end') return renderSeasonEnd();
   if (st.phase === 'retired') return renderRetired();
+  if (st.phase === 'coach') return renderCoach();
   const club = clubById(st.clubId);
   const n = C.seasonLength(st);
   const review = st.phase === 'month_review' ? st.monthReview : G.showReview;
@@ -754,6 +758,12 @@ function bindHub(el) {
   el.querySelector('#hub-save').addEventListener('click', () => { if (persist()) flash('Partie sauvegardée.'); });
   el.querySelector('#hub-palmares').addEventListener('click', () => renderPalmares(renderHub));
   el.querySelector('#hub-money').addEventListener('click', () => renderMoney(renderHub));
+  el.querySelector('#hub-role')?.addEventListener('click', () => showRoleChange());
+  el.querySelector('#hub-transfer')?.addEventListener('click', async () => {
+    if (!(await askConfirm('Demander un transfert ? Le club acceptera d\'écouter les offres (mercato et fin de saison), mais le coach, le vestiaire et les supporters le prendront mal.', 'Demander'))) return;
+    try { flash(C.requestTransfer(G.st)); persist(); } catch (e) { flash(e.message); }
+    renderHub();
+  });
   el.querySelector('#hub-home').addEventListener('click', () => { persist(); showHome(); });
   el.querySelector('#hub-review')?.addEventListener('click', () => { G.showReview = st.lastMonthReview; renderHub(); });
   el.querySelector('#mr-close')?.addEventListener('click', () => {
@@ -836,7 +846,7 @@ function runDrill(z, done) {
 }
 
 let flashTimer;
-function flash(text) {
+export function flash(text) {
   let t = document.getElementById('screen-flash');
   if (!t) { t = document.createElement('div'); t.id = 'screen-flash'; document.body.append(t); }
   t.textContent = text; t.hidden = false;
@@ -876,7 +886,8 @@ function watchWeekMatch() {
     career: {
       followTeam: setup.userTeam,
       face: p.face ?? null,
-      competition: st.matchday.extra ? st.matchday.extra.label : `${st.league.name} · journée ${st.week + 1}`,
+      competition: `${st.matchday.extra ? st.matchday.extra.label : `${st.league.name} · journée ${st.week + 1}`}${setup.derby ? ` · ${setup.derby}` : ''}${setup.weather && C.WEATHER[setup.weather] ? ` · ${C.WEATHER[setup.weather].icon} ${C.WEATHER[setup.weather].label}` : ''}`,
+      weather: setup.weather ?? null,
       label: setup.inSquad ? `Joueur : ${p.firstName} ${p.lastName} (n° ${m.players.find((x) => x.isUser)?.num}) — ${st.matchday.selection}` : `Dans les tribunes : ${p.firstName} ${p.lastName} (${st.matchday.selection})`,
       onFinish: (match) => {
         C.applyMatchResult(st, extractResult(match, setup.userTeam));
@@ -887,142 +898,6 @@ function watchWeekMatch() {
   });
 }
 
-// ------------------------------------------------------------------ fin de saison
-function honoursBlock(h) {
-  const list = [...(h?.trophies ?? []), ...(h?.awards ?? [])];
-  if (!list.length) return '';
-  return `<div class="honours">${list.map((t) => `<span class="honour ${t.kind}">${icon(t.kind === 'award' || t.kind === 'ballon-rank' ? 'star' : 'trophy', 18)}${esc(t.name)}</span>`).join('')}</div>`;
-}
-
-// Palmarès : vitrine, totaux, records, sélections, saison par saison
-// ------------------------------------------------------------------ ton argent
-function renderMoney(back) {
-  const st = G.st;
-  const p = st.player;
-  const club = clubById(st.clubId);
-  const len = st.league.rounds.length;
-  const rent = C.passiveIncome(p);
-  const income = (p.contract?.salary ?? 0) + rent;
-  const cost = C.monthlyCost(p);
-  const services = C.servicesFor(st).map(([id, sv]) => {
-    const on = !!p.services?.[id];
-    return `<li class="${on ? 'on' : ''}"><span class="mi">${icon(sv.icon, 22)}</span><span class="mt"><b>${esc(sv.label)}</b><small>${esc(sv.desc)}</small></span><span class="mp">${C.money(sv.monthly)}<small>/mois</small></span><button data-svc="${id}" class="${on ? 'ghost' : 'primary'} small">${on ? 'Arrêter' : 'Engager'}</button></li>`;
-  }).join('');
-  const purchases = C.purchasesFor(st).map(([id, it]) => {
-    const c = C.canBuy(st, id);
-    const done = C.boughtState(st, id);
-    const count = it.max && p.bought?.[id] ? ` <small class="muted">(${p.bought[id]}/${it.max})</small>` : '';
-    return `<li class="${done ? 'done' : ''}"><span class="mi">${icon(it.icon, 22)}</span><span class="mt"><b>${esc(it.label)}${count}</b><small>${esc(it.desc)}</small></span><span class="mp">${C.money(it.cost)}</span><button data-buy="${id}" class="small" ${c.ok ? '' : 'disabled'} title="${esc(c.ok ? '' : c.why)}">${done ? (it.once ? 'Acheté' : it.max ? 'Complet' : 'Fait') : 'Acheter'}</button></li>`;
-  }).join('');
-  const el = show(`<div class="panel-screen money" style="${clubVars(club)}">
-    <header class="screen-head"><button class="icon-btn" id="mo-back" aria-label="Retour">${icon('back', 20)}</button><div><h1>Ton argent</h1><p class="muted">${esc(p.firstName)} ${esc(p.lastName)} · ${esc(C.CONTRACT_LABEL[p.contract?.type] ?? 'Contrat')}</p></div></header>
-    <div class="mo-kpis"><div><span>Économies</span><b>${C.money(p.money)}</b></div><div><span>${rent ? 'Salaire + loyers' : 'Salaire'}</span><b>${C.money(income)}<small>/mois</small></b></div><div><span>Entourage</span><b>${C.money(cost)}<small>/mois</small></b></div><div><span>Reste chaque mois</span><b class="${income - cost >= 0 ? 'up' : 'down'}">${C.money(income - cost)}</b></div></div>
-    <div class="mo-cols">
-      <section class="card"><h3>${icon('squad', 16)} Ton entourage <small class="muted">prélevé chaque semaine (${len} semaines par saison)</small></h3><ul class="mo-list">${services}</ul></section>
-      <section class="card"><h3>${icon('star', 16)} Achats</h3><ul class="mo-list">${purchases}</ul></section>
-    </div>
-    <p class="muted small">Sans économies, les abonnements s'arrêtent d'eux-mêmes. Les effets apparaissent dans le bilan du mois (« Ton entourage et tes achats »).</p>
-  </div>`);
-  el.querySelector('#mo-back').addEventListener('click', back);
-  el.querySelectorAll('[data-svc]').forEach((b) => b.addEventListener('click', () => {
-    const msg = C.toggleService(st, b.dataset.svc);
-    persist();
-    if (msg) flash(msg);
-    renderMoney(back);
-  }));
-  el.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', () => {
-    try { const out = C.buy(st, b.dataset.buy); persist(); flash(out); } catch (e) { flash(e.message); }
-    renderMoney(back);
-  }));
-}
-
-function renderPalmares(back) {
-  const st = G.st;
-  const p = st.player;
-  const rec = C.careerRecord(st);
-  const T = rec.totals;
-  const club = clubById(st.clubId);
-  const cabinet = [...rec.trophies.map((t) => ({ ...t, big: true })), ...rec.awards.filter((a) => a.kind !== 'award' || /Joueur de la saison|Meilleur buteur/.test(a.name))];
-  const others = rec.awards.filter((a) => !cabinet.includes(a));
-  const caps = Object.entries(rec.intl.caps ?? {});
-  const seasonLabel = (y) => `${y}-${String(y + 1).slice(2)}`;
-  const el = show(`<div class="panel-screen palmares" style="${clubVars(club)}">
-    <header class="screen-head"><button class="icon-btn" id="pm-back" aria-label="Retour">${icon('back', 20)}</button>
-      ${p.face != null ? avatar({ face: p.face }, 56, 'se-face') : ''}<div><h1>Palmarès</h1><p class="muted">${esc(p.firstName)} ${esc(p.lastName)} · ${p.age} ans · ${esc(club.name)}</p></div></header>
-    <div class="pm-totals">
-      <div><b>${T.apps}</b><span>matchs</span></div><div><b>${T.goals}</b><span>buts</span></div><div><b>${T.assists}</b><span>passes déc.</span></div>
-      <div><b>${T.rating ? T.rating.toFixed(2).replace('.', ',') : '—'}</b><span>note moyenne</span></div><div><b>${caps.reduce((a, [, v]) => a + v, 0)}</b><span>sélections</span></div><div><b>${C.pct(rec.records.peak)}</b><span>niveau max.</span></div>
-    </div>
-    <h2>${icon('trophy', 18)} Vitrine</h2>
-    ${cabinet.length ? `<div class="cabinet">${cabinet.map((t) => `<div class="trophy ${t.kind}">${icon(t.kind === 'award' ? 'star' : 'trophy', 34)}<b>${esc(t.name)}</b><span>${seasonLabel(t.season)} · ${esc(t.club ?? '')}</span></div>`).join('')}</div>` : '<p class="muted">Ta vitrine est vide pour l\'instant. Un titre, une coupe, une distinction : tout viendra s\'afficher ici.</p>'}
-    ${others.length ? `<h2>${icon('star', 18)} Distinctions</h2><ul class="plain">${others.map((a) => `<li><span class="muted">${seasonLabel(a.season)}</span> · ${esc(a.name)}</li>`).join('')}</ul>` : ''}
-    <h2>${icon('chart', 18)} Records</h2>
-    <ul class="plain">
-      <li>Meilleure saison au but : ${rec.records.goals ? `<b>${rec.records.goals.goals} buts</b> (${seasonLabel(rec.records.goals.season)}, ${esc(rec.records.goals.club)})` : '—'}</li>
-      <li>Meilleur passeur : ${rec.records.assists && rec.records.assists.assists ? `<b>${rec.records.assists.assists} passes décisives</b> (${seasonLabel(rec.records.assists.season)})` : '—'}</li>
-      <li>Meilleure note sur une saison : ${rec.records.rating ? `<b>${rec.records.rating.rating.toFixed(2).replace('.', ',')}</b> (${seasonLabel(rec.records.rating.season)}, ${esc(rec.records.rating.club)})` : '—'}</li>
-      ${rec.ballonDor.length ? `<li>Ballon d'or : ${rec.ballonDor.map((b) => `${b.rank === 1 ? '<b>lauréat</b>' : `${b.rank}e`} en ${seasonLabel(b.season)}`).join(', ')}</li>` : ''}
-    </ul>
-    <h2>${icon('star', 18)} Sélections · ${esc(C.nationality(st.player.nation).name)}</h2>
-    ${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? `<b>${esc(C.nationality(st.player.nation).name)} A</b>` : k === 'U21' ? 'Espoirs' : k} : <b>${v}</b>`).join(' · ')} · ${rec.intl.goals} but(s)</p>` : '<p class="muted">Pas encore de sélection.</p>'}
-    <h2>${icon('calendar', 18)} Saison par saison</h2>
-    ${st.history.length ? `<table class="table"><tr><th>Saison</th><th>Club</th><th>M</th><th>B</th><th>PD</th><th>Note</th><th>Rang</th></tr>${st.history.map((h) => `<tr><td>${seasonLabel(h.season)}${h.partial ? ' (1)' : ''}</td><td>${esc(h.club)} <span class="muted">${esc(h.stage)}</span></td><td>${h.apps}</td><td>${h.goals}</td><td>${h.assists ?? 0}</td><td>${h.rating ? h.rating.toFixed(1) : '—'}</td><td>${h.pos}/${h.teams}</td></tr>`).join('')}</table>` : '<p class="muted">Première saison en cours.</p>'}
-  </div>`);
-  el.querySelector('#pm-back').addEventListener('click', back);
-}
-
-function renderSeasonEnd() {
-  const st = G.st;
-  const h = st.history[st.history.length - 1];
-  const el = show(`<div class="panel-screen narrow season-end" style="${clubVars(clubById(st.clubId))}">
-    <header class="se-head">${st.player.face != null ? avatar({ face: st.player.face }, 72, 'se-face') : ''}
-      <div><p class="muted">${icon('trophy', 18)} Bilan de la saison</p><h1>Fin de saison ${h.season}-${h.season + 1}</h1></div></header>
-    <p>${esc(h.club)} ${esc(h.stage)} · ${esc(h.league)} : <strong>${h.pos}e sur ${h.teams}</strong></p>
-    <p>${h.apps} matchs (${h.starts} titularisations), ${h.goals} but(s), ${h.minutes} minutes${h.rating ? `, note moyenne ${h.rating.toFixed(1)}` : ''}.</p>
-    <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
-    ${h.move ? `<p class="note move-${h.move === 'promu' ? 'up' : 'down'}">${icon(h.move === 'promu' ? 'trophy' : 'injury', 18)} <b>${esc(h.club)} ${h.move === 'promu' ? 'monte' : 'descend'}</b> : la saison prochaine en ${esc(C.divisionName(clubById(st.clubId)))}.</p>` : ''}
-    ${st.seasonMoves && (st.seasonMoves.up.length || st.seasonMoves.down.length) ? `<details class="moves"><summary>Montées et descentes (${st.seasonMoves.up.length + st.seasonMoves.down.length} clubs)</summary>
-      <p><b>Montent</b> : ${st.seasonMoves.up.map((id) => `${esc(clubById(id).name)} <span class="muted">(${esc(C.divisionName(clubById(id)))})</span>`).join(', ')}</p>
-      <p><b>Descendent</b> : ${st.seasonMoves.down.map((id) => `${esc(clubById(id).name)} <span class="muted">(${esc(C.divisionName(clubById(id)))})</span>`).join(', ')}</p></details>` : ''}
-    ${honoursBlock(st.seasonHonours)}
-    <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
-    <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">
-      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(C.divisionName(clubById(o.clubId)))}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span>
-        ${o.contract ? `<span class="of-terms">${esc(C.CONTRACT_LABEL[o.contract.type])} · <b>${C.money(o.contract.salary)}</b>/mois · ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}${o.negotiated ? ' · négocié' : ''}</span>` : o.loan ? '<span class="of-terms">Prêt : ton contrat actuel continue</span>' : o.keep ? '<span class="of-terms">Tu gardes ton contrat actuel</span>' : ''}</span>
-      <span class="row">${o.withdrawn ? '<span class="error">Offre retirée</span>' : `${st.player.agent && o.contract && !o.negotiated ? `<button class="ghost" data-neg="${i}">${icon('chat', 16)} Négocier</button>` : ''}<button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button>`}</span></li>`).join('')}</ul>
-    ${G.negMsg ? `<p class="note">${esc(G.negMsg)}</p>` : ''}
-    ${st.offers.some((o) => o.own) ? '' : '<p class="note">Ton club ne te conserve pas. L\'échec ouvre d\'autres chemins : choisis où rebondir.</p>'}
-  </div>`);
-  el.querySelectorAll('[data-offer]').forEach((b) => b.addEventListener('click', () => { G.negMsg = null; C.acceptOffer(st, Number(b.dataset.offer)); persist(); renderHub(); }));
-  el.querySelectorAll('[data-neg]').forEach((b) => b.addEventListener('click', () => { G.negMsg = C.negotiateOffer(st, Number(b.dataset.neg)).text; persist(); renderSeasonEnd(); }));
-}
-
-function renderRetired() {
-  const st = G.st;
-  const p = st.player;
-  const tot = st.history.reduce((a, h) => ({ apps: a.apps + h.apps, goals: a.goals + h.goals }), { apps: 0, goals: 0 });
-  const titles = (st.trophies ?? []).length, awards = (st.awards ?? []).length;
-  const rent = C.passiveIncome(p);
-  const legacy = st.legacy ?? [];
-  // l'après-carrière : ce que tes choix (et ton argent) ont construit
-  const after = legacy.find((l) => l.id === 'actionnaire') ? `Tu retrouves ${esc(st.formativeName ?? 'ton club formateur')}, cette fois dans le bureau des actionnaires.`
-    : legacy.find((l) => l.id === 'academie') ? 'Tu te consacres à ton académie : la prochaine génération porte ton nom.'
-    : legacy.find((l) => l.id === 'fondation') ? 'Ta fondation devient ton nouveau terrain de jeu.'
-    : p.money > 5000 ? 'Consultant télé, quelques matchs de gala : ta reconversion est tranquille.'
-    : p.money > 500 ? 'Tu passes tes diplômes d\'entraîneur pour transmettre ce que tu as appris.'
-    : 'Il va falloir trouver un travail : le football ne t\'a pas mis à l\'abri.';
-  const el = show(`<div class="panel-screen narrow retired">
-    <h1>Fin de carrière</h1>
-    <p>${esc(p.firstName)} ${esc(p.lastName)} : ${st.history.length} saisons, ${tot.apps} matchs, ${tot.goals} buts${titles ? `, ${titles} titre${titles > 1 ? 's' : ''}` : ''}${awards ? `, ${awards} distinction${awards > 1 ? 's' : ''}` : ''}.</p>
-    <div class="mo-kpis"><div><span>Patrimoine</span><b>${C.money(p.money)}</b></div><div><span>Loyers</span><b>${C.money(rent)}<small>/mois</small></b></div><div><span>Héritage</span><b>${legacy.length || '—'}</b></div></div>
-    ${legacy.length ? `<div class="honours">${legacy.map((l) => `<span class="honour legacy">${icon('stadium', 18)}${esc(l.name)}</span>`).join('')}</div>` : ''}
-    <p><b>Et maintenant ?</b> ${after}</p>
-    <ul class="plain">${st.history.map((h) => `<li>${h.season} · ${esc(h.club)} ${esc(h.stage)} · ${h.apps} matchs, ${h.goals} buts</li>`).join('')}</ul>
-    <div class="actions"><button id="r-palm">${icon('trophy', 18)} Palmarès</button><button class="primary" id="r-home">Accueil</button></div>
-  </div>`);
-  el.querySelector('#r-home').addEventListener('click', showHome);
-  el.querySelector('#r-palm').addEventListener('click', () => renderPalmares(renderRetired));
-}
 
 export function initCareerUI() {
   setHomeHandler(showHome);

@@ -3,7 +3,7 @@
 // des duels et des tirs résolus pas à pas. Le rendu ne touche jamais cet état.
 
 import { Rng } from './rng.js';
-import { PITCH, SIM, DEFAULT_COMPETITION, INSTRUCTION_OPTIONS } from './config.js';
+import { PITCH, SIM, DEFAULT_COMPETITION, INSTRUCTION_OPTIONS, WEATHER_FX } from './config.js';
 import { buildSquad, FORMATIONS } from './teams.js';
 import { clamp, dist, segDist, inBox, sigmoid } from './geom.js';
 import { decideHolder, xgEstimate, pressureOn, executeOption } from './decisions.js';
@@ -92,7 +92,7 @@ export class Match {
     const mk = (pl, onPitch, slot) => {
       const p = {
         id: this.players.length, team: idx, num: pl.num, name: pl.name, role: pl.role, attrs: pl.attrs,
-        synthetic: !pl.real, real: !!pl.real, isUser: !!pl.isUser, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
+        synthetic: !pl.real, real: !!pl.real, isUser: !!pl.isUser, traits: pl.traits?.length ? new Set(pl.traits) : null, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
         x: -10, y: -10, vx: 0, vy: 0, fx: idx === 0 ? 1 : -1, fy: 0, energy: 1,
         tx: 0, ty: 0, urgency: 0.5, stunUntil: 0, nextDecision: 0, touchCooldown: 0, tackleCooldown: 0,
         runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, assists: 0, tackles: 0, distance: 0, keyPasses: 0, dribbles: 0 },
@@ -136,7 +136,9 @@ export class Match {
     const mm = Math.floor(base / 60), ss = Math.floor(base % 60);
     return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
   }
-  maxSpeed(p) { return (6.0 + 3.0 * p.attrs.pace) * (0.78 + 0.22 * p.energy) * (p.injured ? 0.45 : 1); }
+  maxSpeed(p) { return (6.0 + 3.0 * p.attrs.pace) * (0.78 + 0.22 * p.energy) * (p.injured ? 0.45 : 1) * (p.traits?.has('sprinteur') ? 1.03 : 1) * (this.wfx().speed ?? 1); }
+  // météo du jour (carrière) : effets légers sur les passes, le contrôle, la vitesse et la fatigue
+  wfx() { return (this.weather && WEATHER_FX[this.weather]) || {}; }
 
   // ---------------------------------------------------------------- journal
   #log(type, team, text, data = {}) {
@@ -686,7 +688,7 @@ export class Match {
       const drain = (0.000028 + 0.00011 * (sp / 4) * (sp / 4)) * (1.45 - p.attrs.stamina) * dt;
       const cap = 1 - 0.18 * (this.t / 5400) * (1.3 - p.attrs.stamina);
       if (sp < 2.2) p.energy = Math.min(cap, p.energy + 0.0011 * dt);
-      p.energy = Math.max(0.15, p.energy - drain);
+      p.energy = Math.max(0.15, p.energy - drain * (this.wfx().fatigue ?? 1));
     }
   }
 
@@ -787,7 +789,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      let pSave = clamp(0.94 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(0.94 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6) + (p.traits?.has('reflexes') ? 0.04 : 0), 0.05, 0.97);
       if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
@@ -873,7 +875,7 @@ export class Match {
     const intended = pass && pass.to === p.id;
     // une passe bien dosée par un grand passeur se contrôle plus facilement (et sa vitesse gêne moins)
     const pq = pass && pass.team === p.team ? (this.players[pass.from]?.attrs.passing ?? 0.6) - 0.6 : 0;
-    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9 - 6 * Math.max(0, pq)) * 0.03 - pr * 0.1 + (intended ? 0.12 : -0.06) + (d < 0.5 ? 0.03 : 0) + 0.15 * pq;
+    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9 - 6 * Math.max(0, pq)) * 0.03 - pr * 0.1 + (intended ? 0.12 : -0.06) + (d < 0.5 ? 0.03 : 0) + 0.15 * pq + (this.wfx().control ?? 0);
     if (pass && pass.lofted) pCtrl -= 0.06;
     if (pass && pass.type === 'through') pCtrl -= 0.1;
     if (p.role === 'GK' && pass && pass.team === p.team) pCtrl = Math.max(pCtrl, 0.97); // gardien sur passe d'un partenaire
@@ -963,7 +965,7 @@ export class Match {
     const pr = pressureOn(this, p);
     const fatigue = 1 + 0.5 * (1 - p.energy);
     const d0 = dist(p.x, p.y, tx, ty);
-    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue * (1 - 0.1 * this.home(p)));
+    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue * (1 - 0.1 * this.home(p)) * (opts.through && p.traits?.has('passeur') ? 0.7 : 1) * (this.wfx().pass ?? 1) * (opts.lofted ? this.wfx().lofted ?? 1 : 1));
     const powErr = 1 + this.rng.gauss(0, (0.05 + 0.08 * (1 - p.attrs.passing)) * fatigue);
     const base = Math.atan2(ty - p.y, tx - p.x) + angErr;
     const d = Math.max(2, d0 * powErr);
@@ -1017,7 +1019,9 @@ export class Match {
     const fatigue = 1 + 0.4 * (1 - p.energy);
     const skill = opts.header ? p.attrs.aerial : p.attrs.shooting;
     const sigma = (0.75 + 0.2 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue
-      * (style === 'placed' ? 0.8 : style === 'power' ? 1.25 : style === 'chip' ? 0.95 : 1) * (1 - 0.08 * this.home(p));
+      * (style === 'placed' ? 0.8 : style === 'power' ? 1.25 : style === 'chip' ? 0.95 : 1) * (1 - 0.08 * this.home(p))
+      // gestes signature : frappe enroulée (de loin), coups francs, jeu de tête
+      * (p.traits ? (p.traits.has('enroulee') && !opts.header && d > 16 ? 0.85 : 1) * (p.traits.has('coupsfrancs') && opts.freekick ? 0.78 : 1) * (p.traits.has('tete') && opts.header ? 0.82 : 1) : 1);
     aimY += this.rng.gauss(0, sigma);
     aimZ = Math.max(0.05, aimZ + this.rng.gauss(0, sigma * 0.75));
     let speed = opts.header ? this.rng.range(10, 15) : opts.penalty ? this.rng.range(22, 28) : this.rng.range(17, 22) + 8 * p.attrs.shooting * this.rng.range(0.6, 1);
@@ -1162,8 +1166,9 @@ export class Match {
     // couverture : chaque défenseur supplémentaire à portée réduit l'espace de sortie du dribbleur
     let cover = 0;
     for (const o of this.onPitch(def.team)) if (o !== def && o.role !== 'GK' && dist(o.x, o.y, att.x, att.y) < 3.2) cover++;
-    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.26 * (this.home(def) - this.home(att)));
-    const pFoul = (0.015 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att));
+    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.26 * (this.home(def) - this.home(att))
+      + (def.traits?.has('rugueux') ? 0.35 : 0) - (att.traits?.has('dribbleur') ? 0.35 : 0));
+    const pFoul = (0.015 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att)) * (this.derby ? 1.15 : 1);
     const r = this.rng.next();
     // incident physique : évalué au contact, pas de quota
     const injuryRisk = 0.0025 * (slide ? 3 : 1) * (1.6 - att.energy);

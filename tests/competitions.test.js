@@ -105,3 +105,25 @@ test('nationalité : sélection du pays choisi, langue maternelle, presse', asyn
   assert.ok(call && call.teamId.startsWith('nat-angleterre'), JSON.stringify(call));
   assert.ok(!call.oppId.startsWith('nat-angleterre'));
 });
+
+test('ambiance : derbys, météo selon le pays et la saison, effets en match', async () => {
+  const { derbyOf, weatherFor, WEATHER } = await import('../src/career/ambiance.js');
+  assert.equal(derbyOf('paris-saint-germain', 'olympique-de-marseille'), 'Le Classique');
+  assert.equal(derbyOf('esp-barcelona', 'esp-real-madrid'), 'El Clásico');
+  assert.equal(derbyOf('fc-nantes', 'paris-saint-germain'), null);
+  const count = (club, f) => { const c = {}; for (let i = 0; i < 400; i++) { const w = weatherFor(`s${i}`, f, club); c[w] = (c[w] ?? 0) + 1; } return c; };
+  const london = count('eng-arsenal', 0.5), riyad = count('ksa-al-hilal', 0.1);
+  assert.ok((london.pluie ?? 0) > 60, JSON.stringify(london));
+  assert.ok(!riyad.pluie && !riyad.neige && riyad.chaleur > 100, JSON.stringify(riyad));
+  for (const id of Object.keys(london)) assert.ok(WEATHER[id], id);
+  // la météo arrive jusqu'au match
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'meteo' });
+  while (st.phase !== 'matchday') {
+    if (st.phase === 'week') C.submitWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'repos' });
+    else if (st.phase === 'event') C.resolveEvent(st, 0);
+    else if (st.phase === 'month_review') C.closeMonthReview(st);
+    else C.applyMatchResult(st, C.resultWithoutUser(st));
+  }
+  const setup = C.matchSetup(st);
+  assert.ok(WEATHER[setup.weather], setup.weather);
+});
