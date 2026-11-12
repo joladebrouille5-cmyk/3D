@@ -44,7 +44,7 @@ const RETAIN = 0.012;
 
 function interceptRisk(m, p, tx, ty, opts) {
   const L = dist(p.x, p.y, tx, ty);
-  const vAvg = opts.lofted ? 18 : Math.max(8, Math.sqrt(30 + 6.4 * L) * 0.8);
+  const vAvg = opts.lofted ? 18 : Math.max(8, Math.sqrt(30 + 6.4 * L) * 0.8) * (1 + 0.25 * (p.attrs.passing - 0.6));
   let keep = 1;
   for (const o of m.onPitch(1 - p.team)) {
     const { d, s } = segDist(o.x, o.y, p.x, p.y, tx, ty);
@@ -91,7 +91,8 @@ export function holderOptions(m, p, restartType = null) {
   const dGoal = dist(p.x, p.y, gx, 34);
   const shotAllowed = !restartType || (restartType === 'freekick' && m.restartDirect);
   if ((shotAllowed || (restartType === 'freekick' && dGoal < 30)) && dGoal < 34 && rel > 0.62) {
-    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType, bias: 0.09 });
+    // un bon frappeur se sait capable de marquer de plus loin
+    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType, bias: 0.09 + 1.0 * (p.attrs.shooting - 0.65) });
     // un tir termine presque toujours la possession : on le compare à la valeur de la garder
     // (les frappes lointaines sans angle deviennent plus rares)
     const hesitation = -0.004 + 0.0011 * Math.max(0, dGoal - 12) + 0.016 * pr - 0.014 * (p.attrs.shooting - 0.5);
@@ -171,7 +172,7 @@ export function holderOptions(m, p, restartType = null) {
           // perception du hors-jeu : un bon décideur l'évite plus souvent
           const oppRels = m.onPitch(1 - p.team).map((o) => m.relX(team, o.x)).sort((a, c) => c - a);
           const offLine = Math.max(oppRels[1] ?? 0, rel, 0.5);
-          if (qRel > offLine) riskT += 0.25 * p.attrs.decisions;
+          if (qRel > offLine) riskT += 0.12 * p.attrs.decisions;
           const gainT = threat(m, team, tx, ty) + RETAIN + 0.012 * tv.direct + (userRun ? 0.02 : 0);
           const uT = (1 - riskT * riskW) * gainT - riskT * riskW * lossCostAt(tx, ty) * 0.8 - here;
           opts.push({ kind: 'pass', to: q.id, tx, ty, lofted: loftedT, through: true, u: uT, risk: clamp(riskT, 0, 1), forward: trel - rel });

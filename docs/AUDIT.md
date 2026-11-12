@@ -178,6 +178,17 @@ Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sa
 - Point 2 (argent) : staff privé, maison de récupération, immeubles de rapport, pari sur une start-up, fondation,
   académie, entrée au capital du club formateur ; héritage et reconversion sur l'écran de fin de carrière.
 - Point 5 (rattrapage) : défi du coach après trois matchs sans être retenu.
+- Point 3 (stars) : un grand passeur dose mieux (passe plus appuyée, plus facile à contrôler, lignes de passe
+  jugées plus ouvertes), un bon frappeur ose de plus loin ; la note compte les passes clés et les duels gagnés
+  balle au pied. Milieu central à Saint-Étienne (10 matchs par niveau) : note 6,9 (niveau 63), 7,4 (74),
+  7,9 (86), contre 6,9 → 7,3 avant ; passes clés 1,2 → 2,1 par match.
+- Point 4 (moteur, 120 matchs) : buts 2,73 · tirs 24,0 (10,2 cadrés) · passes 82 % · fautes 24,4 ·
+  jaunes 3,6 · rouges **0,16** (annulation d'une occasion nette par le dernier défenseur) · corners **8,9**
+  (dégagements sous pression plus souvent en corner) · hors-jeu **2,5** (appels trop tôt plus fréquents,
+  ligne moins bien lue par les passeurs) · domicile 42 % / nul 24 % / extérieur 33 %.
+- Point 6 (3D sur téléphone) : qualité adaptative. Si l'image passe sous ~26 images/s sur la durée, la vue 3D
+  baisse sa définition (palier 1 : 1,25 pixel par point ; palier 2 : 0,85), et le palier est mémorisé pour
+  les matchs suivants. Ici, en rendu logiciel, le palier 1 est atteint en une vingtaine de secondes.
 
 ### Championnats étrangers (2 plus hauts niveaux, vrais effectifs) : recommandé, par étapes
 

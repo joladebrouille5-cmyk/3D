@@ -95,7 +95,7 @@ export class Match {
         synthetic: !pl.real, real: !!pl.real, isUser: !!pl.isUser, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
         x: -10, y: -10, vx: 0, vy: 0, fx: idx === 0 ? 1 : -1, fy: 0, energy: 1,
         tx: 0, ty: 0, urgency: 0.5, stunUntil: 0, nextDecision: 0, touchCooldown: 0, tackleCooldown: 0,
-        runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, assists: 0, tackles: 0, distance: 0 },
+        runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, assists: 0, tackles: 0, distance: 0, keyPasses: 0, dribbles: 0 },
       };
       this.players.push(p);
       return p;
@@ -787,7 +787,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      let pSave = clamp(0.99 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(1.01 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
       if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
@@ -871,7 +871,9 @@ export class Match {
     // contrôle au sol
     const pr = pressureOn(this, p);
     const intended = pass && pass.to === p.id;
-    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9) * 0.03 - pr * 0.1 + (intended ? 0.12 : -0.06) + (d < 0.5 ? 0.03 : 0);
+    // une passe bien dosée par un grand passeur se contrôle plus facilement (et sa vitesse gêne moins)
+    const pq = pass && pass.team === p.team ? (this.players[pass.from]?.attrs.passing ?? 0.6) - 0.6 : 0;
+    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9 - 6 * Math.max(0, pq)) * 0.03 - pr * 0.1 + (intended ? 0.12 : -0.06) + (d < 0.5 ? 0.03 : 0) + 0.15 * pq;
     if (pass && pass.lofted) pCtrl -= 0.06;
     if (pass && pass.type === 'through') pCtrl -= 0.1;
     if (p.role === 'GK' && pass && pass.team === p.team) pCtrl = Math.max(pCtrl, 0.97); // gardien sur passe d'un partenaire
@@ -907,7 +909,7 @@ export class Match {
     // sous pression près du but : on dégage où l'on peut, souvent en touche ou en corner
     const ownGX = this.ownGoalX(team);
     const nearGoal = Math.abs(p.x - ownGX) < 14;
-    if (nearGoal && this.rng.chance(0.5)) ang = (team.dir > 0 ? Math.PI : 0) + side * (team.dir > 0 ? -1 : 1) * this.rng.range(0.5, 1.1);
+    if (nearGoal && this.rng.chance(0.62)) ang = (team.dir > 0 ? Math.PI : 0) + side * (team.dir > 0 ? -1 : 1) * this.rng.range(0.5, 1.1);
     else if (this.rng.chance(0.15)) ang = side * Math.PI / 2 + this.rng.gauss(0, 0.3);
     const s = this.rng.range(14, 22);
     b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(4, 8); b.z = Math.max(b.z, 0.2);
@@ -982,7 +984,8 @@ export class Match {
       b.vx = Math.cos(base) * vh; b.vy = Math.sin(base) * vh; b.vz = SIM.gravity * T / 2 * (opts.low ? 0.6 : 1);
       b.z = 0.1;
     } else {
-      const vEnd = opts.through ? 4.5 : 5.5;
+      // un grand passeur donne le bon poids, plus appuyé : moins de temps pour couper la trajectoire
+      const vEnd = Math.max(3, (opts.through ? 4.5 : 5.5) + 5 * (p.attrs.passing - 0.6));
       const v0 = Math.min(26, Math.sqrt(vEnd * vEnd + 2 * SIM.rollDecel * d));
       b.vx = Math.cos(base) * v0; b.vy = Math.sin(base) * v0; b.vz = 0; b.z = 0;
     }
@@ -1046,6 +1049,8 @@ export class Match {
     }
     p.touchCooldown = this.t + 0.6; p.carry = null;
     team.stats.shots++; team.stats.xg += xg; p.stats.shots++;
+    // passe clé : la dernière passe d'un partenaire avant le tir
+    if (p.assistFrom && this.t - p.assistFrom.t < 8 && p.assistFrom.id !== p.id) { const a = this.players[p.assistFrom.id]; if (a && a.team === p.team) a.stats.keyPasses++; }
     if (onTarget) team.stats.onTarget++;
     const kind = opts.penalty ? 'Penalty tiré' : opts.header ? 'Tête' : opts.freekick ? 'Coup franc direct' : 'Frappe';
     this.#log('tir', p.team, `${kind} de ${p.name} (${team.short}) à ${Math.round(d)} m — xG pré-tir ${xg.toFixed(2)}.`, { player: p.id, xg, x: p.x, y: p.y, onTarget, major: true, shot: true });
@@ -1158,7 +1163,7 @@ export class Match {
     let cover = 0;
     for (const o of this.onPitch(def.team)) if (o !== def && o.role !== 'GK' && dist(o.x, o.y, att.x, att.y) < 3.2) cover++;
     const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.26 * (this.home(def) - this.home(att)));
-    const pFoul = (0.018 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att));
+    const pFoul = (0.015 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att));
     const r = this.rng.next();
     // incident physique : évalué au contact, pas de quota
     const injuryRisk = 0.0025 * (slide ? 3 : 1) * (1.6 - att.energy);
@@ -1183,6 +1188,7 @@ export class Match {
     } else {
       // dribblé : celui qui était bien placé se retourne vite, l'autre est éliminé
       def.stunUntil = this.t + (slide ? 1.6 : goalSide ? 0.45 : 0.8);
+      att.stats.dribbles++;
     }
     if (this.rng.chance(injuryRisk)) this.#injury(att);
   }
@@ -1194,8 +1200,13 @@ export class Match {
     const inOwnBox = inBox(att.x, att.y, this.ownGoalX(dteam));
     this.#log('faute', def.team, `${tactical ? 'Faute tactique' : 'Faute'} de ${def.name} (${dteam.short}) sur ${att.name}${inOwnBox ? ' dans la surface' : ''}.`, { player: def.id, major: inOwnBox });
     let red = false;
-    // rouge direct : tacle glissé violent du dernier défenseur (annulation d'une occasion nette)
-    if (sev > 1.32 && slide && !goalSide) red = true;
+    // annulation d'une occasion nette : faute par derrière sur un attaquant lancé vers le but, sans autre défenseur
+    // entre lui et le but (gardien excepté), à moins de 25 m
+    const ownGx = this.ownGoalX(dteam);
+    const lastMan = !goalSide && dist(att.x, att.y, ownGx, 34) < 25 && Math.abs(att.y - 34) < 20
+      && !this.onPitch(def.team).some((o) => o !== def && o.role !== 'GK' && Math.abs(o.x - ownGx) < Math.abs(att.x - ownGx) - 0.5 && Math.abs(o.y - att.y) < 12);
+    // rouge direct : tacle glissé violent, ou dernier défenseur qui annule l'occasion (l'arbitre ne voit pas tout)
+    if ((sev > 1.32 && slide && !goalSide) || (lastMan && this.rng.chance(0.22))) red = true;
     // un joueur déjà averti lève le pied (et l'arbitre hésite davantage avant le second jaune)
     else if (sev > (def.yellow ? 0.9 : 0.7)) {
       def.yellow++; dteam.stats.yellows++;

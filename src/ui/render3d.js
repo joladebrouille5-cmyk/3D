@@ -22,6 +22,10 @@ const SKIN = ['#f1c9a5', '#e0ac82', '#c68a5e', '#9a6340', '#6f4428', '#4a2c1a'];
 const HAIR = ['#17120e', '#2b1d12', '#4a3320', '#7a5a34', '#b8944f', '#111111', '#3a3a3a'];
 const BOOTS = ['#111318', '#f2f2f2', '#e8402c', '#22c0d8', '#f5d21f', '#111318', '#111318'];
 
+const QUALITY_KEY = 'generation-football.q3d';
+// définition de rendu par palier : pleine (écran Retina limité à 2), réduite, minimale
+const PIXEL_RATIO = [(dpr) => Math.min(dpr, 2), (dpr) => Math.min(dpr, 1.25), () => 0.85];
+
 export class Pitch3D {
   constructor(canvas) {
     this.canvas = canvas;
@@ -40,6 +44,9 @@ export class Pitch3D {
     this.state = new Map();
     this.kitKey = '';
     this.lastT = 0; this.shake = 0; this.celebrateUntil = 0; this.celebrateTeam = -1; this.prevOwner = null;
+    // qualité adaptative : un téléphone modeste qui passe sous ~30 images/s descend en définition (mémorisé)
+    this.quality = 0; try { this.quality = Math.min(2, Number(localStorage.getItem(QUALITY_KEY)) || 0); } catch { /* stockage indisponible */ }
+    this.frameMs = 16; this.frames = 0;
     this.#lights();
     this.#pitch();
     this.#stadium();
@@ -358,7 +365,7 @@ export class Pitch3D {
   // ---------------------------------------------------------------- caméra
   resize() {
     const w = this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 300, h = this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 150;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setPixelRatio(PIXEL_RATIO[this.quality ?? 0](window.devicePixelRatio || 1));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -402,8 +409,22 @@ export class Pitch3D {
   }
 
   // ---------------------------------------------------------------- image
+  // mesure du temps entre deux images (pauses ignorées) ; trop lent sur la durée : palier inférieur
+  #adapt(raw) {
+    if (!(raw > 0 && raw < 400)) return;
+    this.frameMs = this.frameMs * 0.95 + raw * 0.05;
+    if (++this.frames < 90 || this.quality >= 2) return;
+    this.frames = 0;
+    if (this.frameMs > 38) {
+      this.quality++;
+      try { localStorage.setItem(QUALITY_KEY, String(this.quality)); } catch { /* stockage indisponible */ }
+      this.resize();
+    }
+  }
+
   draw({ teams, players, ball, ownerId = null }) {
     const now = performance.now();
+    if (this.lastT) this.#adapt(now - this.lastT);
     const dt = Math.min(0.1, (now - (this.lastT || now)) / 1000) || 0.016; this.lastT = now;
     this.#kits(teams, players);
     const celebrating = now < this.celebrateUntil;

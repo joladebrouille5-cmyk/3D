@@ -1489,10 +1489,11 @@ export function summary(st) {
 
 // Note de match à partir des statistiques du moteur (bornée)
 // Note sur 10 normalisée par poste (références mesurées sur le moteur) : un match moyen ≈ 6,6-6,8.
+// kp : passes clés (dernière passe avant un tir) ; drb : duels gagnés balle au pied, sur 90 minutes
 const RATING_NORM = {
-  GK: { pass: 0.76, tack: 0, shots: 0 }, FB: { pass: 0.72, tack: 4.5, shots: 0.2 }, CB: { pass: 0.77, tack: 5, shots: 0.1 },
-  DM: { pass: 0.75, tack: 10, shots: 0.1 }, CM: { pass: 0.78, tack: 6.5, shots: 0.7 }, AM: { pass: 0.73, tack: 9, shots: 0.8 },
-  W: { pass: 0.67, tack: 6, shots: 1.2 }, ST: { pass: 0.65, tack: 12, shots: 4.4 },
+  GK: { pass: 0.76, tack: 0, shots: 0, kp: 0, drb: 0 }, FB: { pass: 0.72, tack: 4.5, shots: 0.2, kp: 1.05, drb: 14 }, CB: { pass: 0.77, tack: 5, shots: 0.1, kp: 0.4, drb: 8 },
+  DM: { pass: 0.75, tack: 10, shots: 0.1, kp: 1.45, drb: 11 }, CM: { pass: 0.78, tack: 6.5, shots: 0.7, kp: 1.3, drb: 16 }, AM: { pass: 0.73, tack: 9, shots: 0.8, kp: 1.45, drb: 14 },
+  W: { pass: 0.67, tack: 6, shots: 1.2, kp: 2.1, drb: 21 }, ST: { pass: 0.65, tack: 12, shots: 4.4, kp: 1.2, drb: 21 },
 };
 export function matchRating(stats, outcome, minutes, role, conceded = null) {
   if (!minutes) return null;
@@ -1502,6 +1503,8 @@ export function matchRating(stats, outcome, minutes, role, conceded = null) {
   let r = 6.6 + stats.goals * 0.9 + (stats.assists ?? 0) * 0.5 + (passPct - n.pass) * 3
     + (stats.tackles - n.tack * share) * (n.tack ? 0.5 / n.tack : 0)
     + (stats.shots - n.shots * share) * 0.05
+    // ce qui distingue un grand joueur : faire tirer les autres, éliminer son adversaire
+    + (stats.keyPasses != null ? (stats.keyPasses - n.kp * share) * 0.22 + (stats.dribbles - n.drb * share) * 0.015 : 0)
     + (outcome > 0 ? 0.3 : outcome < 0 ? -0.3 : 0);
   if (role === 'GK') r += 0.15 * (stats.saves ?? 0) - 0.35 + (conceded != null ? -0.2 * conceded + 0.25 : 0);
   if (role === 'CB' || role === 'FB') r += conceded != null ? -0.12 * conceded + 0.15 : 0;

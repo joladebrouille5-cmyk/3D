@@ -116,7 +116,7 @@ export function updateTeamShape(m, team) {
           if (ballRel > 0.25 && m.rng.chance(0.035 * (0.5 + tv.direct) * lure)) {
             p.runUntil = m.t + 3.5;
             // appel parti trop tôt : le coureur se retrouve hors-jeu (plus souvent s'il lit mal le jeu)
-            p.runEager = m.rng.chance(0.22 + 0.4 * (1 - p.attrs.decisions));
+            p.runEager = m.rng.chance(0.46 + 0.42 * (1 - p.attrs.decisions));
           }
         }
       }
