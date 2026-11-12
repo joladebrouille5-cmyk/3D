@@ -2,6 +2,12 @@ package fr.generationfootball.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
@@ -23,6 +29,24 @@ import androidx.webkit.WebViewAssetLoader;
 public class MainActivity extends Activity {
     private static final String START_URL = "https://appassets.androidplatform.net/assets/www/index.html";
     private WebView webView;
+    private static final int REQ_EXPORT = 41, REQ_IMPORT = 42;
+    private String pendingExport = null;
+    private ValueCallback<Uri[]> pendingChooser = null;
+
+    /** Pont JavaScript : enregistrer un fichier (sauvegarde exportée) là où l'utilisateur le choisit. */
+    public class Bridge {
+        @JavascriptInterface
+        public void saveFile(String name, String content) {
+            runOnUiThread(() -> {
+                pendingExport = content;
+                Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("application/json");
+                i.putExtra(Intent.EXTRA_TITLE, name);
+                startActivityForResult(i, REQ_EXPORT);
+            });
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -51,8 +75,21 @@ public class MainActivity extends Activity {
                 return !"appassets.androidplatform.net".equals(request.getUrl().getHost());
             }
         });
-        // sans WebChromeClient, les boîtes alert()/confirm() sont ignorées (confirm répond toujours non)
-        webView.setWebChromeClient(new WebChromeClient());
+        // sans WebChromeClient, les boîtes alert()/confirm() sont ignorées (confirm répond toujours non) ;
+        // le sélecteur de fichier sert à importer une sauvegarde
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (pendingChooser != null) pendingChooser.onReceiveValue(null);
+                pendingChooser = callback;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                try { startActivityForResult(i, REQ_IMPORT); } catch (Exception e) { pendingChooser = null; return false; }
+                return true;
+            }
+        });
+        webView.addJavascriptInterface(new Bridge(), "GFAndroid");
         setContentView(webView);
         hideSystemBars();
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);
@@ -69,6 +106,25 @@ public class MainActivity extends Activity {
         } else {
             getWindow().getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        Uri uri = resultCode == RESULT_OK && data != null ? data.getData() : null;
+        if (requestCode == REQ_EXPORT) {
+            boolean ok = false;
+            if (uri != null && pendingExport != null) {
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    if (out != null) { out.write(pendingExport.getBytes(StandardCharsets.UTF_8)); ok = true; }
+                } catch (Exception e) { ok = false; }
+            }
+            pendingExport = null;
+            webView.evaluateJavascript("window.gfExported && window.gfExported(" + ok + ")", null);
+        } else if (requestCode == REQ_IMPORT && pendingChooser != null) {
+            pendingChooser.onReceiveValue(uri != null ? new Uri[] { uri } : null);
+            pendingChooser = null;
         }
     }
 

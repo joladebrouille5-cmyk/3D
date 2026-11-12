@@ -51,3 +51,31 @@ test('la retraite est proposée à partir de 33 ans et imposée à 39', () => {
   C.acceptOffer(b, 0);
   assert.equal(b.phase, 'retired');
 });
+
+test('montées et descentes : divisions de taille stable, mouvements gardés dans la sauvegarde', async () => {
+  const { CLUBS: FR, FOREIGN_LEAGUES } = await import('../src/career/clubs.js');
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'monde-test' });
+  const sizes = () => [1, 2, 3, 4, 5].map((l) => FR.filter((c) => c.senior && c.senior.level === l).length).join('/') + ' ' + FOREIGN_LEAGUES.map((l) => l.clubs.length).join('/');
+  const s0 = sizes();
+  let g = 0;
+  const step = () => {
+    if (st.phase === 'week') C.submitWeek(st, { focus: 'technique', intensity: 'normale', offpitch: 'repos' });
+    else if (st.phase === 'event') C.resolveEvent(st, 0);
+    else if (st.phase === 'month_review') C.closeMonthReview(st);
+    else C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
+  };
+  for (let s = 0; s < 2; s++) {
+    while (st.phase !== 'season_end' && g++ < 9000) step();
+    assert.equal(sizes(), s0, 'tailles des divisions inchangées');
+    const own = st.offers.findIndex((o) => o.own); C.acceptOffer(st, own >= 0 ? own : 0);
+  }
+  const log = st.world.log;
+  assert.equal(log.length, 2);
+  assert.ok(log[0].up.length >= 20 && log[0].up.length === log[0].down.length, `${log[0].up.length} montées`);
+  // une nouvelle carrière repart du catalogue ; recharger l'ancienne réapplique ses mouvements
+  const moved = log[0].up[0], levelNow = FR.find((c) => c.id === moved)?.senior.level;
+  const st2 = C.createCareer({ firstName: 'C', lastName: 'D', role: 'CM', clubId: 'fc-nantes', seed: 'autre' });
+  void st2;
+  C.ensureState(JSON.parse(JSON.stringify(st)));
+  if (levelNow != null) assert.equal(FR.find((c) => c.id === moved).senior.level, levelNow);
+});

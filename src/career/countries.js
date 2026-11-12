@@ -13,8 +13,13 @@ export const COUNTRIES = {
   'Pays-Bas': { lang: 'néerlandais', press: 'néerlandaise', cup: 'knvb', langStart: 0.3, names: 'nl', youth: 'Championnat des Pays-Bas', youthCup: null, flag: '🇳🇱' },
   Belgique: { lang: 'néerlandais', press: 'belge', cup: 'cbe', langStart: 0.6, names: 'nl', youth: 'Championnat de Belgique', youthCup: null, flag: '🇧🇪' },
 };
+// la France, pour un joueur étranger qui y joue (langue du vestiaire, presse)
+COUNTRIES.France = { lang: 'français', press: 'française', cup: null, langStart: 0, names: null, youth: 'Championnat de France', youthCup: null, flag: '🇫🇷' };
 export const countryInfo = (country) => COUNTRIES[country] ?? { lang: 'la langue locale', press: 'locale', cup: null, langStart: 0, names: null, youth: 'Championnat', youthCup: null };
-export const langLevel = (p, country) => p.lang?.[country] ?? countryInfo(country).langStart;
+// pays d'origine du joueur (nationalité → pays du catalogue) : on y parle sa langue
+const NATION_HOME = { france: 'France', angleterre: 'Angleterre', espagne: 'Espagne', italie: 'Italie', allemagne: 'Allemagne', portugal: 'Portugal', 'pays-bas': 'Pays-Bas', belgique: 'Belgique', turquie: 'Turquie', 'etats-unis': 'États-Unis', suisse: null };
+export const homeCountry = (p) => NATION_HOME[p?.nation ?? 'france'] ?? null;
+export const langLevel = (p, country) => (homeCountry(p) === country ? 1 : p.lang?.[country] ?? countryInfo(country).langStart);
 
 // Salaire mensuel de référence (k€) d'un joueur au niveau moyen du championnat (Ligue 1 : 42)
 export const LEAGUE_SALARY = {

@@ -13,16 +13,17 @@ import {
   roleCA, genAttrs, youthCA, SENIOR_CA, clubLevel, teamCA, CLUBS, ROLE_WEIGHTS, STAGE_LABEL,
   academiesOf,
 } from './clubs.js';
-import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW, isYouthCup } from './competitions.js';
+import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW, isYouthCup, summerTournament, tournamentMatch, resolveTournamentMatch, nationality, NATIONALITIES } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL, countryOf, mixByCountry } from './market.js';
 import { tierById, levelTierById } from './potential.js';
 import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
 import { langLevel } from './countries.js';
-import { pickEvent, eventById, abroad } from './events.js';
+import { pickEvent, eventById, abroad, clubCountry } from './events.js';
+import { emptyWorld, applyWorld, resetWorld, advanceWorld } from './world.js';
 export { SPECIALS, specialById, drillZone, DRILL_LABEL };
 import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy, ageingMul, passiveIncome, servicesFor, purchasesFor, boughtState, LEGACY } from './spending.js';
 export { SERVICES, PURCHASES, monthlyCost, canBuy, passiveIncome, servicesFor, purchasesFor, boughtState };
-export { money, CONTRACT_LABEL, divisionName };
+export { money, CONTRACT_LABEL, divisionName, nationality, NATIONALITIES };
 
 export const SAVE_VERSION = 1;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -52,7 +53,8 @@ export const OFFPITCH = {
 export const ROLES = { GK: 'Gardien', CB: 'Défenseur central', FB: 'Latéral', DM: 'Milieu défensif', CM: 'Milieu central', AM: 'Milieu offensif', W: 'Ailier', ST: 'Avant-centre' };
 
 // ------------------------------------------------------------------ création
-export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null, potential = null, level = null }) {
+export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null, potential = null, level = null, nation = 'france' }) {
+  resetWorld(); // nouvelle carrière : les divisions du catalogue
   const club = clubById(clubId);
   if (!club) throw new Error(`Club inconnu : ${clubId}`);
   const s = String(seed ?? Math.floor(Math.random() * 1e9));
@@ -72,14 +74,14 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
   const st = {
     version: SAVE_VERSION, seed: s, createdAt: Date.now(),
     player: {
-      firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face,
+      firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face, nation,
       attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6, team: 0.5, fans: 0.12,
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
       contract: { clubId, type: 'aspirant', until: 2027, salary: 0.3 }, money: 0, loan: null,
       potentialTier: tier ? { id: tier.id, label: tier.label } : null,
       levelTier: lvTier ? { id: lvTier.id, label: lvTier.label } : null,
     },
-    clubId, formativeName: club.name, stage: 'U17', season: 2026, week: 0,
+    clubId, formativeName: club.name, stage: 'U17', season: 2026, week: 0, world: emptyWorld(),
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
     seasonStats: null, history: [], journal: [], offers: null, retired: false, cups: [], trophies: [],
     rng: rng.snapshot(), eventCooldown: 2,
@@ -159,7 +161,7 @@ function weekStart(st) {
   const r = rngOf(st);
   // la semaine qui commence : demande du coach et proposition hors terrain
   const req = coachRequest(st, r);
-  st.weekly = { week: st.week, coachFocus: req.focus, why: req.why, special: pickSpecial(st, r, abroad(st) ? clubById(st.clubId).country : null) };
+  st.weekly = { week: st.week, coachFocus: req.focus, why: req.why, special: pickSpecial(st, r, abroad(st) ? clubCountry(st) : null) };
   st.callup = maybeCallup(st, r, currentCA(st));
   // mercato d'hiver : à mi-saison, des clubs se manifestent (prêt ou transfert)
   const len = st.league.rounds.length;
@@ -269,6 +271,16 @@ function toExtraMatchday(st, ex) {
   st.phase = 'matchday';
 }
 
+// Match suivant de la phase finale de l'été
+function toTournamentMatch(st) {
+  const r = rngOf(st);
+  const ex = tournamentMatch(st, r);
+  saveRng(st, r);
+  const t = st.tournament;
+  st.matchday = { extra: { ...ex, stage: 'Pro' }, home: ex.home, opponentId: ex.oppId, selection: t.starter || t.idx >= 1 && st.player.morale > 0.6 ? 'titulaire' : 'remplaçant', rival: null };
+  st.phase = 'matchday';
+}
+
 // Nom affiché d'un adversaire de coupe ou de sélection
 export function extraTeamName(st, id) {
   const md = st.matchday;
@@ -324,6 +336,19 @@ function applyExtraResult(st, res) {
   rep.match = { ca: currentCA(st) - caBefore };
   for (const k of GAUGES) rep.match[k] = p[k] - before[k];
   st.lastReport = rep;
+  if (ex.tourn) {
+    const r = rngOf(st);
+    const text = resolveTournamentMatch(st, gMine, gOpp, r);
+    saveRng(st, r);
+    rep.lines.push(text); log(st, text);
+    if (st.tournament.alive) { toTournamentMatch(st); return; }
+    const t = st.tournament;
+    st.trophies ??= [];
+    if (t.won) st.trophies.push({ season: st.season, name: t.name, kind: 'intl', club: nationality(st.player.nation).name });
+    (st.player.intl.tournaments ??= []).push({ name: t.name, reached: t.reached, season: st.season });
+    endSeason(st);
+    return;
+  }
   nextOrFinish(st);
 }
 
@@ -461,7 +486,11 @@ export function ensureState(st) {
   st.awards ??= [];
   st.player.intl ??= { caps: {}, goals: 0, best: null };
   st.formativeName ??= st.history[0]?.club ?? clubById(st.clubId)?.name;
+  // montées et descentes des saisons passées
+  st.world ??= emptyWorld();
+  applyWorld(st.world);
   const p = st.player;
+  p.nation ??= 'france';
   p.money ??= 0;
   p.loan ??= null;
   p.team ??= 0.5;
@@ -508,12 +537,12 @@ function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
     if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.001; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
     if (offpitch === 'repos') { p.fresh += 0.15; p.morale += 0.04; }
     if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; p.team += 0.015; }
-    if (sp) { const txt = sp.apply(p, clubById(st.clubId)?.country); if (sp.progress) progress(st, 'match', sp.progress, r); if (r && txt) rep.lines.push(txt); }
+    if (sp) { const txt = sp.apply(p, clubCountry(st)); if (sp.progress) progress(st, 'match', sp.progress, r); if (r && txt) rep.lines.push(txt); }
     if (youth && offpitch !== 'ecole' && !(sp?.id === 'soutien')) p.school -= 0.012; // la scolarité s'érode si on la néglige
   });
   // à l'étranger, tant que la langue n'est pas maîtrisée, l'intégration au vestiaire est plus lente
   if (abroad(st)) {
-    const lang = langLevel(p, clubById(st.clubId).country);
+    const lang = langLevel(p, clubCountry(st));
     if (lang < 0.6) track(st, 'relations', () => { p.team -= 0.006 * (1 - lang); }, false);
   }
   // défi du coach (voie de rattrapage) : trois semaines sérieuses de suite, puis une titularisation promise
@@ -877,7 +906,14 @@ export function finishWeek(st) {
   }
   st.matchday = null;
   st.week++;
-  if (st.week >= seasonLength(st)) { endSeason(st); return; }
+  if (st.week >= seasonLength(st)) {
+    // l'été : phase finale en sélection si tu es retenu, puis le bilan de la saison
+    const r = rngOf(st);
+    st.tournament = summerTournament(st, r, currentCA(st));
+    saveRng(st, r);
+    if (st.tournament) { log(st, `Sélectionné pour ${st.tournament.name} !`); toTournamentMatch(st); return; }
+    endSeason(st); return;
+  }
   // fin de mois (4 semaines) : point d'étape détaillé
   if (st.week % 4 === 0) {
     ensureState(st);
@@ -989,7 +1025,14 @@ function endSeason(st) {
   st.awards ??= [];
   st.awards.push(...awards);
   st.seasonHonours = { trophies: st.trophies.filter((t) => t.season === st.season), awards };
-  st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
+  st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, tier: clubLevel(clubById(st.clubId)), pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
+  // montées et descentes dans tous les championnats (le tien selon son vrai classement)
+  const moved = advanceWorld(st, table.map((t) => t.id));
+  const me = clubById(st.clubId);
+  const myMove = moved.up.includes(me.id) ? 'promu' : moved.down.includes(me.id) ? 'relégué' : null;
+  st.history.at(-1).move = myMove;
+  st.seasonMoves = { up: moved.up.filter((id) => sameArea(id, me)), down: moved.down.filter((id) => sameArea(id, me)) };
+  if (myMove) log(st, `${me.name} ${myMove === 'promu' ? 'monte' : 'descend'} : la saison prochaine en ${divisionName(me)}.`);
   p.age++;
   const r = rngOf(st);
   p.staffBias = r.gauss(0, 0.02); // nouvelle évaluation du staff
@@ -1006,6 +1049,9 @@ function endSeason(st) {
   log(st, `Fin de saison : ${pos}e sur ${table.length}. ${s.apps} matchs, ${s.goals} but(s). Niveau ${pct(s.caStart)} → ${pct(caEnd)}.`);
   for (const a of awards) log(st, `Récompense : ${a.name}.`);
 }
+
+// clubs du même pays que le tien (compte rendu des montées et descentes)
+function sameArea(id, me) { const c = clubById(id); return !!c && (c.foreign ? c.country : 'France') === (me.foreign ? me.country : 'France'); }
 
 // Récompenses individuelles de fin de saison (seuils réalistes selon la longueur du championnat)
 function seasonAwards(st, pos, avg, ca) {

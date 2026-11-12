@@ -36,11 +36,17 @@ export const FOREIGN_CLUBS = FOREIGN.clubs.map((c) => {
   };
 });
 for (const c of FOREIGN_CLUBS) BY_ID.set(c.id, c);
-// force moyenne de chaque championnat étranger
-const FOREIGN_AVG = Object.fromEntries(FOREIGN.leagues.map((l) => {
-  const xs = FOREIGN_CLUBS.filter((c) => c.leagueId === l.id).map((c) => c.strength);
-  return [l.id, xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.6];
-}));
+// force moyenne de chaque championnat étranger (recalculée après les montées et descentes : world.js)
+const FOREIGN_AVG = {};
+export function refreshForeignAverages() {
+  for (const l of FOREIGN.leagues) {
+    const xs = FOREIGN_CLUBS.filter((c) => c.leagueId === l.id).map((c) => c.strength);
+    FOREIGN_AVG[l.id] = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.6;
+  }
+}
+refreshForeignAverages();
+// moyenne d'origine (catalogue), référence pour l'évolution des clubs promus ou relégués
+export const FOREIGN_AVG0 = { ...FOREIGN_AVG };
 // Centres de formation d'un pays : clubs français du catalogue, ou clubs étrangers du pays
 export const ACADEMY_COUNTRIES = ['France', ...[...new Set(FOREIGN.leagues.map((l) => l.country))]];
 export const academiesOf = (country) => (country === 'France' || !country ? CLUBS : FOREIGN_CLUBS.filter((c) => c.country === country));

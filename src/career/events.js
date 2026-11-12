@@ -2,7 +2,8 @@
 // et à la vie à l'étranger. Chaque option renvoie le texte affiché dans le bilan.
 import { clubById } from './clubs.js';
 import { money } from './market.js';
-import { countryInfo, langLevel } from './countries.js';
+import { countryInfo, langLevel, homeCountry } from './countries.js';
+import { nationality } from './competitions.js';
 // dépendances de la carrière (import circulaire sans risque : utilisées seulement à l'appel)
 import { progress, selectionForecast, fixtureOfWeek, standings, nameOf } from './career.js';
 
@@ -285,31 +286,33 @@ EVENTS.push(
 );
 
 // Vie à l'étranger : la langue, le mal du pays, la presse locale
-export const abroad = (st) => !!clubById(st.clubId)?.foreign && st.stage === 'Pro';
+// à l'étranger : un club hors de ton pays d'origine (pour un joueur français : tout club étranger)
+export const clubCountry = (st) => { const c = clubById(st.clubId); return c?.foreign ? c.country : 'France'; };
+export const abroad = (st) => st.stage === 'Pro' && clubCountry(st) !== homeCountry(st.player);
 EVENTS.push(
   {
-    id: 'langue', ctx: true, when: (st) => abroad(st) && langLevel(st.player, clubById(st.clubId).country) < 0.6,
-    text: (st) => `Dans le vestiaire, tout se dit en ${countryInfo(clubById(st.clubId).country).lang}. Tu comprends un mot sur deux.`,
+    id: 'langue', ctx: true, when: (st) => abroad(st) && langLevel(st.player, clubCountry(st)) < 0.6,
+    text: (st) => `Dans le vestiaire, tout se dit en ${countryInfo(clubCountry(st)).lang}. Tu comprends un mot sur deux.`,
     options: [
-      { label: 'Prendre des cours intensifs', apply: (st) => { const c = clubById(st.clubId).country; (st.player.lang ??= {})[c] = Math.min(1, langLevel(st.player, c) + 0.35); st.player.team += 0.05; st.player.fresh -= 0.04; return `Tu progresses vite en ${countryInfo(c).lang}. Les blagues du vestiaire commencent à te faire rire.`; } },
+      { label: 'Prendre des cours intensifs', apply: (st) => { const c = clubCountry(st); (st.player.lang ??= {})[c] = Math.min(1, langLevel(st.player, c) + 0.35); st.player.team += 0.05; st.player.fresh -= 0.04; return `Tu progresses vite en ${countryInfo(c).lang}. Les blagues du vestiaire commencent à te faire rire.`; } },
       { label: 'Rester avec les francophones', apply: (st) => { st.player.morale += 0.03; st.player.team -= 0.03; return 'Tu te sens bien dans ta bulle, un peu à l\'écart du reste du groupe.'; } },
       { label: 'Laisser le terrain parler', apply: (st) => { st.player.trust += 0.01; st.player.team -= 0.01; return 'Le coach t\'explique les consignes par gestes. Ça passe… à peu près.'; } },
     ],
   },
   {
     id: 'malpays', ctx: true, when: (st) => abroad(st) && st.player.morale < 0.55,
-    text: () => 'Le mal du pays te prend : la famille, les amis, la France te manquent.',
+    text: (st) => `Le mal du pays te prend : la famille, les amis, ${nationality(st.player.nation).the.replace(/^L/, 'l').replace(/^Le /, 'le ').replace(/^La /, 'la ').replace(/^Les /, 'les ')} te manquent.`,
     options: [
       { label: 'Faire venir ta famille quelques jours', apply: (st) => { const cost = Math.min(st.player.money, 3); st.player.money -= cost; st.player.morale += 0.1; return 'Une semaine en famille : tu repars regonflé.'; } },
       { label: 'Serrer les dents', apply: (st) => { st.player.morale -= 0.03; st.player.discipline += 0.02; return 'Tu tiens bon. Les appels vidéo du soir aident un peu.'; } },
-      { label: 'Demander un retour en France au mercato', apply: (st) => { st.player.wantsLoan = st.season; st.player.morale += 0.02; st.player.trust -= 0.03; return 'Ton entourage fait passer le message : des clubs français pourraient se manifester.'; } },
+      { label: 'Demander à rentrer au mercato', apply: (st) => { st.player.wantsLoan = st.season; st.player.morale += 0.02; st.player.trust -= 0.03; return 'Ton entourage fait passer le message : des clubs plus proches de chez toi pourraient se manifester.'; } },
     ],
   },
   {
     id: 'presseEtrangere', ctx: false, when: (st) => abroad(st) && (st.seasonStats?.apps ?? 0) >= 4,
-    text: (st) => `La presse ${countryInfo(clubById(st.clubId).country).press} s'intéresse au « jeune Français » de ${clubById(st.clubId).name}.`,
+    text: (st) => `La presse ${countryInfo(clubCountry(st)).press} s'intéresse au « jeune ${nationality(st.player.nation).noun} » de ${clubById(st.clubId).name}.`,
     options: [
-      { label: 'Répondre dans la langue du pays', apply: (st) => { const c = clubById(st.clubId).country; const lv = langLevel(st.player, c); st.player.fans += lv > 0.3 ? 0.06 : 0.02; return lv > 0.3 ? 'Les supporters adorent l\'effort.' : 'Quelques fautes, beaucoup de sourires : l\'effort est salué.'; } },
+      { label: 'Répondre dans la langue du pays', apply: (st) => { const c = clubCountry(st); const lv = langLevel(st.player, c); st.player.fans += lv > 0.3 ? 0.06 : 0.02; return lv > 0.3 ? 'Les supporters adorent l\'effort.' : 'Quelques fautes, beaucoup de sourires : l\'effort est salué.'; } },
       { label: 'Parler en français avec un traducteur', apply: (st) => { st.player.fans += 0.02; return 'Une interview sage, sans faux pas.'; } },
     ],
   },

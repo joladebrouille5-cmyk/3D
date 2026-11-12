@@ -200,3 +200,19 @@ test('chaque option de chaque événement s\'applique sans erreur (formation, pr
   }
   assert.ok(n > 100, `${n} options jouées`);
 });
+
+test('sauvegarde : export en fichier puis import dans un autre emplacement', async () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  const S = await import('../src/career/save.js');
+  const st = C.createCareer({ firstName: 'Noa', lastName: 'Export', role: 'ST', clubId: 'fc-nantes', seed: 'export' });
+  S.saveCareer(1, st);
+  const { name, text } = S.exportCareer(1);
+  assert.match(name, /^generation-football-noa-export-2026-2027\.json$/);
+  const sum = S.importCareer(text, 3);
+  assert.equal(sum.name, 'Noa Export');
+  assert.deepEqual(S.loadCareer(3), S.loadCareer(1));
+  assert.throws(() => S.importCareer('{"app":"autre"}', 2), /pas une sauvegarde/);
+  assert.throws(() => S.importCareer('pas du json', 2), /lisible/);
+  delete globalThis.localStorage;
+});

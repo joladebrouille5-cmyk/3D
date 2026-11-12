@@ -2,7 +2,7 @@
 import * as C from '../career/career.js';
 import { CLUBS, clubById, academyQuality, academyStars, clubLevel, LEVEL_NAMES, leagueFor, STAGE_LABEL, youthCA, ACADEMY_COUNTRIES, academiesOf, divisionName, FOREIGN_LEAGUES } from '../career/clubs.js';
 import { countryInfo } from '../career/countries.js';
-import { listSaves, saveCareer, loadCareer, deleteSave, firstFreeSlot, hasSaves, SLOTS } from '../career/save.js';
+import { listSaves, saveCareer, loadCareer, deleteSave, firstFreeSlot, hasSaves, SLOTS, exportCareer, importCareer } from '../career/save.js';
 import { createCareerMatch, extractResult } from '../career/play.js';
 import { CATALOG } from '../data/catalog.js';
 import { startMatch, showQuickMatchSetup, setHomeHandler } from './app.js';
@@ -93,7 +93,7 @@ export function showHome() {
         ${ticket}
         <button class="menu-btn ${last ? '' : 'primary'}" id="h-new">${icon('ball', 22)}<span><b>Débuter la partie</b><small>15 ans, un centre de formation, tout à prouver</small></span></button>
         <div class="menu-row">
-          <button class="menu-btn" id="h-load" ${hasSaves() ? '' : 'disabled'}>${icon('folder', 20)}<span><b>Charger la partie</b></span></button>
+          <button class="menu-btn" id="h-load">${icon('folder', 20)}<span><b>Charger la partie</b>${hasSaves() ? '' : '<small>ou importer un fichier</small>'}</span></button>
           <button class="menu-btn" id="h-quick">${icon('stadium', 20)}<span><b>Match amical</b></span></button>
         </div>
       </nav>
@@ -136,10 +136,40 @@ function showLoad() {
       <span class="slot-crest">${s.face != null ? avatar({ face: s.face }, 46) : s.clubId ? crest(clubById(s.clubId), 40) : `<span class="slot-n">${s.slot}</span>`}</span>
       <strong>Emplacement ${s.slot}</strong>
       ${s.empty ? '<span class="muted">vide</span>' : s.corrupt ? '<span class="error">sauvegarde illisible</span>' : `<span>${esc(s.name)} · ${s.age} ans · ${esc(s.club)} (${esc(s.stage)}) · saison ${esc(s.season)}, semaine ${s.week} · niveau ${s.ca}<br><span class="muted">Sauvegardé le ${new Date(s.savedAt).toLocaleString('fr-FR')}</span></span>`}
-      <span class="row">${s.empty ? '' : `${s.corrupt ? '' : `<button class="primary" data-load="${s.slot}">Charger</button>`}<button data-del="${s.slot}">Supprimer</button>`}</span>
+      <span class="row">${s.empty ? '' : `${s.corrupt ? '' : `<button class="primary" data-load="${s.slot}">Charger</button><button data-exp="${s.slot}" title="Enregistrer un fichier de cette carrière (hors du téléphone)">Exporter</button>`}<button data-del="${s.slot}">Supprimer</button>`}</span>
     </li>`).join('')}</ul>
-    <div class="actions"><button id="l-back">Retour</button></div>
+    <p class="muted small">Tes carrières vivent dans l'application : exporte-les en fichier pour les garder en cas de réinstallation ou de nouveau téléphone.</p>
+    <div class="actions"><button id="l-back">Retour</button><button id="l-import">${icon('folder', 18)} Importer un fichier</button><input type="file" id="l-file" accept=".json,application/json" hidden></div>
   </div>`);
+  el.querySelectorAll('[data-exp]').forEach((b) => b.addEventListener('click', () => {
+    try {
+      const { name, text } = exportCareer(Number(b.dataset.exp));
+      if (window.GFAndroid?.saveFile) { window.gfExported = (ok) => flash(ok ? 'Sauvegarde exportée.' : 'Export annulé.'); window.GFAndroid.saveFile(name, text); return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      a.download = name; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      flash('Sauvegarde exportée.');
+    } catch (e) { flash(e.message); }
+  }));
+  const file = el.querySelector('#l-file');
+  el.querySelector('#l-import').addEventListener('click', () => file.click());
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      let slot = firstFreeSlot();
+      if (slot == null) {
+        const old = listSaves().filter((x) => !x.empty).sort((a, b) => (a.savedAt ?? 0) - (b.savedAt ?? 0))[0];
+        if (!(await askConfirm(`Tes emplacements sont pleins. Remplacer l'emplacement ${old.slot} (${old.name ?? 'partie'}, la plus ancienne) par la carrière importée ?`, 'Remplacer'))) return;
+        slot = old.slot;
+      }
+      const sum = importCareer(text, slot);
+      flash(`Carrière importée : ${sum.name} (emplacement ${slot}).`);
+      showLoad();
+    } catch (e) { flash(e.message); }
+  });
   el.querySelectorAll('[data-load]').forEach((b) => b.addEventListener('click', () => {
     openSave(Number(b.dataset.load));
   }));
@@ -154,7 +184,7 @@ function showLoad() {
 const POS_SPOTS = [['GK', 7, 50], ['CB', 22, 50], ['FB', 27, 16], ['DM', 40, 50], ['CM', 53, 34], ['AM', 66, 52], ['W', 75, 16], ['ST', 87, 50]];
 function showNewCareer() {
   const oldest = () => listSaves().filter((x) => !x.empty).sort((a, b) => (a.savedAt ?? 0) - (b.savedAt ?? 0))[0]?.slot ?? 1;
-  const f = G.form ?? { firstName: '', lastName: '', role: 'CM', foot: 'droit', slot: firstFreeSlot() ?? oldest() };
+  const f = G.form ?? { firstName: '', lastName: '', role: 'CM', foot: 'droit', nation: 'france', slot: firstFreeSlot() ?? oldest() };
   f.faceSeed ??= Date.now();
   const sample = faceSample(f.faceSeed, 14);
   if (f.face == null || !sample.includes(f.face)) f.face = f.face ?? sample[0];
@@ -170,6 +200,7 @@ function showNewCareer() {
         </div>
         <label>Prénom<input type="text" id="n-first" maxlength="20" value="${esc(f.firstName)}" autocomplete="off"></label>
         <label>Nom<input type="text" id="n-last" maxlength="24" value="${esc(f.lastName)}" autocomplete="off"></label>
+        <label>Nationalité<select id="n-nation">${C.NATIONALITIES.map(([id]) => { const n = C.nationality(id); return `<option value="${id}" ${(f.nation ?? 'france') === id ? 'selected' : ''}>${esc(n.name)}</option>`; }).join('')}</select></label>
         <label>Pied fort<select id="n-foot"><option ${f.foot === 'droit' ? 'selected' : ''}>droit</option><option ${f.foot === 'gauche' ? 'selected' : ''}>gauche</option></select></label>
         ${saves.every((s) => !s.empty) ? `<p class="slot-full">${icon('save', 16)}<span>Tes ${saves.length} emplacements sont pleins : choisis la partie que la nouvelle remplacera.</span></p>` : ''}
         <label>Emplacement de sauvegarde<select id="n-slot">${saves.map((s) => `<option value="${s.slot}" ${f.slot === s.slot ? 'selected' : ''}>${s.slot} — ${s.empty ? 'vide' : `remplacer ${esc(s.name ?? 'la sauvegarde')}`}</option>`).join('')}</select></label>
@@ -187,7 +218,7 @@ function showNewCareer() {
     <div id="n-err" class="error"></div>
     <div class="actions"><button id="n-back">Retour</button><button class="primary" id="n-next">Choisir le club ${icon('next', 18)}</button></div>
   </div>`);
-  const readForm = () => ({ ...f, firstName: el.querySelector('#n-first').value, lastName: el.querySelector('#n-last').value, role: el.querySelector('#n-role').value, foot: el.querySelector('#n-foot').value, slot: Number(el.querySelector('#n-slot').value) });
+  const readForm = () => ({ ...f, firstName: el.querySelector('#n-first').value, lastName: el.querySelector('#n-last').value, role: el.querySelector('#n-role').value, foot: el.querySelector('#n-foot').value, nation: el.querySelector('#n-nation').value, slot: Number(el.querySelector('#n-slot').value) });
   el.querySelectorAll('.face').forEach((b) => b.addEventListener('click', () => {
     f.face = Number(b.dataset.face);
     el.querySelectorAll('.face').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
@@ -267,7 +298,7 @@ function showClubPicker() {
       <p class="small">U17 : ${esc(lg17.name)}<br>U19 : ${esc(lg19.name)}</p>
       <p>Un centre réputé t'entoure de meilleurs joueurs et de meilleurs formateurs, mais la concurrence y est plus rude.</p>
       <p><strong>Ton niveau et ton potentiel</strong> : deux roues décident, juste après. Le niveau se situe par rapport aux jeunes du club ; le potentiel ne dépend pas du club et évoluera selon tes choix.</p>
-      ${c.foreign ? `<p>Formation à l'étranger : ta famille te suit, l'école se fait en ${esc(countryInfo(c.country).lang)}. Pas d'équipe réserve : à 18 ans, premier contrat au club ou prêt dans un club du pays. Les sélections de France te suivent toujours.</p>` : ''}
+      ${c.foreign ? `<p>Formation à l'étranger : ta famille te suit, l'école se fait en ${esc(countryInfo(c.country).lang)}. Pas d'équipe réserve : à 18 ans, premier contrat au club ou prêt dans un club du pays. Les sélections de ton pays te suivent toujours.</p>` : ''}
       <p class="muted">${c.senior?.players?.length >= 11 ? `Effectif professionnel : noms publiés${c.foreign ? ' (Wikipédia)' : ' par le club'}, notes estimées par le jeu. Tes coéquipiers en formation sont fictifs.` : 'Effectif professionnel : non établi dans la collecte, joueurs générés.'}</p>
       <button class="primary" id="c-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
     box.querySelector('#c-go').addEventListener('click', () => showWheel(c));
@@ -414,7 +445,7 @@ function wheelVerdict(el, club, step, tier) {
   if (!last) { side.querySelector('#wheel-next').addEventListener('click', () => showWheel(club, step + 1)); return; }
   side.querySelector('#wheel-go').addEventListener('click', () => {
     const fm = G.form;
-    G.st = C.createCareer({ firstName: fm.firstName, lastName: fm.lastName, role: fm.role, foot: fm.foot, clubId: club.id, face: fm.face ?? null, potential: fm.potential, level: fm.level });
+    G.st = C.createCareer({ firstName: fm.firstName, lastName: fm.lastName, role: fm.role, foot: fm.foot, nation: fm.nation ?? 'france', clubId: club.id, face: fm.face ?? null, potential: fm.potential, level: fm.level });
     G.slot = fm.slot; G.form = null; G.pick = null;
     persist();
     renderHub();
@@ -615,7 +646,7 @@ function leagueCard(st) {
       return `<div class="cup"><div class="cup-head">${icon('trophy', 18)}<strong>${esc(c.name)}</strong>${status}${c.points ? `<span class="muted small">${c.points} pts</span>` : ''}</div>
         <ul class="cup-log">${c.log.map((l) => `<li><span class="res ${l.won === true ? 'w' : l.won === false ? 'l' : 'd'}">${l.won === true ? 'V' : l.won === false ? 'D' : 'N'}</span><span class="cl-round">${esc(l.label)}</span>${crest(clubById(l.opp), 18)}<span class="cl-opp">${esc(clubById(l.opp)?.name ?? l.opp)}</span><b>${l.gf}-${l.ga}${l.pens ? ` <small>(t.a.b. ${l.pens[0]}-${l.pens[1]})</small>` : ''}</b></li>`).join('') || '<li class="muted">Premier tour à venir.</li>'}</ul></div>`;
     }).join('') : '<p class="muted">Pas de coupe cette saison à ce niveau.</p>')
-      + `<div class="cup"><div class="cup-head">${icon('star', 18)}<strong>Équipes de France</strong></div>${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? 'France A' : k} : <b>${v}</b> sélection${v > 1 ? 's' : ''}`).join(' · ')} · ${intl.goals} but(s)</p>` : '<p class="muted">Pas encore de convocation. Les trêves internationales tombent vers les semaines ' + [0.2, 0.44, 0.7, 0.9].map((f) => Math.round(f * C.seasonLength(st)) + 1).join(', ') + '.</p>'}</div>`;
+      + `<div class="cup"><div class="cup-head">${icon('star', 18)}<strong>Sélections · ${esc(C.nationality(st.player.nation).name)}</strong></div>${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? `${esc(C.nationality(st.player.nation).name)} A` : k} : <b>${v}</b> sélection${v > 1 ? 's' : ''}`).join(' · ')} · ${intl.goals} but(s)</p>` : '<p class="muted">Pas encore de convocation. Les trêves internationales tombent vers les semaines ' + [0.2, 0.44, 0.7, 0.9].map((f) => Math.round(f * C.seasonLength(st)) + 1).join(', ') + '.</p>'}</div>`;
   } else if (G.tab === 'journal') {
     body = `<ul class="plain">${st.journal.slice(0, 60).map((j) => `<li><span class="muted">${j.season} · S${j.week + 1}</span> ${esc(j.text)}</li>`).join('')}</ul>`;
   } else {
@@ -709,7 +740,7 @@ export function renderHub() {
     <header class="hub-head">
       <span class="kit-stripes" aria-hidden="true"></span>
       <div class="hub-title">${crest(club, 52)}
-        <div><strong>${esc(club.name)}</strong><span class="stage-pill">${esc(STAGE_LABEL[st.stage])}</span><br><span class="muted">Saison ${st.season}-${st.season + 1} · semaine ${Math.min(st.week + 1, n)}/${n}</span></div></div>
+        <div><strong>${esc(club.name)}</strong><span class="stage-pill">${esc(STAGE_LABEL[st.stage])}</span><br><span class="muted">Saison ${st.season}-${st.season + 1} · ${st.week >= n && st.tournament ? `été : ${esc(st.tournament.name)}` : `semaine ${Math.min(st.week + 1, n)}/${n}`}</span></div></div>
       ${seasonStrip(st)}
       <div class="row hub-actions"><button id="hub-money" title="Ton argent">${icon('wallet', 18)}<span>${C.money(st.player.money)}</span></button><button id="hub-palmares" title="Palmarès">${icon('trophy', 18)}<span>Palmarès</span></button><button id="hub-save">${icon('save', 18)}<span>Sauvegarder</span></button><button id="hub-home">${icon('home', 18)}<span>Accueil</span></button></div>
     </header>
@@ -932,8 +963,8 @@ function renderPalmares(back) {
       <li>Meilleure note sur une saison : ${rec.records.rating ? `<b>${rec.records.rating.rating.toFixed(2).replace('.', ',')}</b> (${seasonLabel(rec.records.rating.season)}, ${esc(rec.records.rating.club)})` : '—'}</li>
       ${rec.ballonDor.length ? `<li>Ballon d'or : ${rec.ballonDor.map((b) => `${b.rank === 1 ? '<b>lauréat</b>' : `${b.rank}e`} en ${seasonLabel(b.season)}`).join(', ')}</li>` : ''}
     </ul>
-    <h2>${icon('star', 18)} Équipes de France</h2>
-    ${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? '<b>France A</b>' : k === 'U21' ? 'Espoirs' : k} : <b>${v}</b>`).join(' · ')} · ${rec.intl.goals} but(s)</p>` : '<p class="muted">Pas encore de sélection.</p>'}
+    <h2>${icon('star', 18)} Sélections · ${esc(C.nationality(st.player.nation).name)}</h2>
+    ${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? `<b>${esc(C.nationality(st.player.nation).name)} A</b>` : k === 'U21' ? 'Espoirs' : k} : <b>${v}</b>`).join(' · ')} · ${rec.intl.goals} but(s)</p>` : '<p class="muted">Pas encore de sélection.</p>'}
     <h2>${icon('calendar', 18)} Saison par saison</h2>
     ${st.history.length ? `<table class="table"><tr><th>Saison</th><th>Club</th><th>M</th><th>B</th><th>PD</th><th>Note</th><th>Rang</th></tr>${st.history.map((h) => `<tr><td>${seasonLabel(h.season)}${h.partial ? ' (1)' : ''}</td><td>${esc(h.club)} <span class="muted">${esc(h.stage)}</span></td><td>${h.apps}</td><td>${h.goals}</td><td>${h.assists ?? 0}</td><td>${h.rating ? h.rating.toFixed(1) : '—'}</td><td>${h.pos}/${h.teams}</td></tr>`).join('')}</table>` : '<p class="muted">Première saison en cours.</p>'}
   </div>`);
@@ -949,6 +980,10 @@ function renderSeasonEnd() {
     <p>${esc(h.club)} ${esc(h.stage)} · ${esc(h.league)} : <strong>${h.pos}e sur ${h.teams}</strong></p>
     <p>${h.apps} matchs (${h.starts} titularisations), ${h.goals} but(s), ${h.minutes} minutes${h.rating ? `, note moyenne ${h.rating.toFixed(1)}` : ''}.</p>
     <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
+    ${h.move ? `<p class="note move-${h.move === 'promu' ? 'up' : 'down'}">${icon(h.move === 'promu' ? 'trophy' : 'injury', 18)} <b>${esc(h.club)} ${h.move === 'promu' ? 'monte' : 'descend'}</b> : la saison prochaine en ${esc(C.divisionName(clubById(st.clubId)))}.</p>` : ''}
+    ${st.seasonMoves && (st.seasonMoves.up.length || st.seasonMoves.down.length) ? `<details class="moves"><summary>Montées et descentes (${st.seasonMoves.up.length + st.seasonMoves.down.length} clubs)</summary>
+      <p><b>Montent</b> : ${st.seasonMoves.up.map((id) => `${esc(clubById(id).name)} <span class="muted">(${esc(C.divisionName(clubById(id)))})</span>`).join(', ')}</p>
+      <p><b>Descendent</b> : ${st.seasonMoves.down.map((id) => `${esc(clubById(id).name)} <span class="muted">(${esc(C.divisionName(clubById(id)))})</span>`).join(', ')}</p></details>` : ''}
     ${honoursBlock(st.seasonHonours)}
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
     <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">

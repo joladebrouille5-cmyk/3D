@@ -64,6 +64,24 @@ const NATIONS = [
   ['etats-unis', 'États-Unis', 'en', -0.01, '#ffffff', '#002868'], ['norvege', 'Norvège', 'nordic', -0.01, '#ba0c2f', '#00205b'], ['cote-ivoire', 'Côte d\'Ivoire', 'af', 0, '#f77f00', '#009e60'],
   ['algerie', 'Algérie', 'ar', -0.01, '#ffffff', '#006233'], ['turquie', 'Turquie', 'tr', -0.005, '#e30a17', '#ffffff'],
 ];
+// Nationalités jouables : [id, nom avec article, joueur (« jeune … »), confédération, pays du catalogue]
+export const NATIONALITIES = [
+  ['france', 'La France', 'Français', 'uefa', 'France'], ['angleterre', 'L\'Angleterre', 'Anglais', 'uefa', 'Angleterre'], ['espagne', 'L\'Espagne', 'Espagnol', 'uefa', 'Espagne'],
+  ['italie', 'L\'Italie', 'Italien', 'uefa', 'Italie'], ['allemagne', 'L\'Allemagne', 'Allemand', 'uefa', 'Allemagne'], ['portugal', 'Le Portugal', 'Portugais', 'uefa', 'Portugal'],
+  ['pays-bas', 'Les Pays-Bas', 'Néerlandais', 'uefa', 'Pays-Bas'], ['belgique', 'La Belgique', 'Belge', 'uefa', 'Belgique'], ['suisse', 'La Suisse', 'Suisse', 'uefa', null],
+  ['croatie', 'La Croatie', 'Croate', 'uefa', null], ['danemark', 'Le Danemark', 'Danois', 'uefa', null], ['norvege', 'La Norvège', 'Norvégien', 'uefa', null],
+  ['turquie', 'La Turquie', 'Turc', 'uefa', 'Turquie'], ['maroc', 'Le Maroc', 'Marocain', 'caf', null], ['algerie', 'L\'Algérie', 'Algérien', 'caf', null],
+  ['senegal', 'Le Sénégal', 'Sénégalais', 'caf', null], ['cote-ivoire', 'La Côte d\'Ivoire', 'Ivoirien', 'caf', null], ['bresil', 'Le Brésil', 'Brésilien', 'conmebol', null],
+  ['argentine', 'L\'Argentine', 'Argentin', 'conmebol', null], ['etats-unis', 'Les États-Unis', 'Américain', 'concacaf', 'États-Unis'], ['japon', 'Le Japon', 'Japonais', 'afc', null],
+];
+export const nationality = (id) => { const n = NATIONALITIES.find((x) => x[0] === (id ?? 'france')) ?? NATIONALITIES[0]; return { id: n[0], the: n[1], noun: n[2], confed: n[3], country: n[4], name: n[1].replace(/^(La |Le |Les |L')/, '') }; };
+const CONTINENTAL = { uefa: 'Euro', caf: 'Coupe d\'Afrique des nations', conmebol: 'Copa América', concacaf: 'Gold Cup', afc: 'Coupe d\'Asie' };
+// écart de niveau d'une sélection (France : 0,04) : une sélection moins forte convoque plus facilement
+const nationOff = (id) => (id === 'france' ? 0.04 : NATIONS.find((x) => x[0] === id)?.[3] ?? 0);
+export const natReq = (cat, nation = 'france') => NAT_REQ[cat] + nationOff(nation) - 0.04;
+// adversaires possibles : toutes les sélections sauf la sienne (la France en fait partie pour les autres)
+const opponentsOf = (nation) => ['france', ...NATIONS.map((n) => n[0])].filter((id) => id !== nation);
+
 // niveau requis pour une convocation, par catégorie (note de poste 0-1)
 export const NAT_REQ = { U16: 0.48, U17: 0.52, U18: 0.55, U19: 0.58, U20: 0.61, U21: 0.64, A: 0.74 };
 const NAT_TOURNEY = { U16: 'Tournoi de Montaigu', U17: 'Qualifications à l\'Euro U17', U18: 'Tournoi international', U19: 'Qualifications à l\'Euro U19', U20: 'Tournoi de Toulon', U21: 'Qualifications à l\'Euro Espoirs', A: 'Qualifications à la Coupe du monde' };
@@ -80,8 +98,8 @@ export function nationTeam(nid, cat) {
 }
 
 // catégorie selon l'âge (l'équipe A reste possible plus tôt pour un joueur au niveau)
-export function natCategory(age, ca) {
-  if (age >= 18 && ca >= NAT_REQ.A) return 'A';
+export function natCategory(age, ca, nation = 'france') {
+  if (age >= 18 && ca >= natReq('A', nation)) return 'A';
   if (age <= 15) return 'U16';
   if (age === 16) return 'U17';
   if (age === 17) return 'U18';
@@ -89,6 +107,100 @@ export function natCategory(age, ca) {
   if (age === 19) return 'U20';
   if (age <= 21) return 'U21';
   return 'A';
+}
+
+// ------------------------------------------------------------------ phases finales (l'été, après le championnat)
+// Années (été de fin de saison) : Euro les années divisibles par 4, Coupe du monde les années paires suivantes,
+// Ligue des nations (phase finale) les années impaires ; Jeux olympiques en 2028, 2032… (moins de 24 ans) ;
+// chez les jeunes : Euro U17 et Euro U19 chaque été, Coupe du monde U20 et Euro Espoirs les années impaires.
+const shuffle = (a, r) => { const x = [...a]; for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [x[i], x[j]] = [x[j], x[i]]; } return x; };
+const KO = { 4: ['8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], 3: ['Quarts de finale', 'Demi-finale', 'Finale'], 2: ['Demi-finale', 'Finale'] };
+function tournamentFor(cat, year, age, confed = 'uefa') {
+  const youthEuro = (n) => (confed === 'uefa' ? `Euro U${n} ${year}` : `Championnat continental U${n} ${year}`);
+  if (cat === 'A') {
+    if (year % 4 === 0) return { name: `${CONTINENTAL[confed]} ${year}`, groups: true, ko: confed === 'uefa' ? 4 : 3 };
+    if (year % 4 === 2) return { name: `Coupe du monde ${year}`, groups: true, ko: 4 };
+    return confed === 'uefa' ? { name: `Ligue des nations ${year} (phase finale)`, groups: false, ko: 2, qualify: 0.5 } : null;
+  }
+  if (year % 4 === 0 && age >= 19 && age <= 23) return { name: `Jeux olympiques ${year}`, groups: true, ko: 3, cat: 'U21' };
+  if (cat === 'U21') return year % 2 ? { name: confed === 'uefa' ? `Euro Espoirs ${year}` : `Championnat continental U23 ${year}`, groups: true, ko: 3 } : null;
+  if (cat === 'U20') return year % 2 ? { name: `Coupe du monde U20 ${year}`, groups: true, ko: 4 } : null;
+  if (cat === 'U19' || cat === 'U18') return { name: youthEuro(19), groups: true, ko: 2, cat: 'U19' };
+  if (cat === 'U17' || cat === 'U16') return { name: youthEuro(17), groups: true, ko: 2, cat: 'U17' };
+  return null;
+}
+
+// Sélectionné pour la phase finale de l'été ? Renvoie le tournoi à jouer (ou null)
+export function summerTournament(st, r, ca) {
+  const p = st.player;
+  if (p.injuryWeeks > 1) return null;
+  const year = st.season + 1;
+  const age = p.age + 1; // l'été suivant
+  const nat = nationality(p.nation);
+  const cat0 = natCategory(age - 1, ca, p.nation);
+  const t = tournamentFor(cat0, year, age, nat.confed);
+  if (!t) return null;
+  const cat = t.cat ?? cat0;
+  const req = natReq(cat, nat.id);
+  // déjà appelé dans la catégorie : un atout ; en A, il faut jouer en équipe première d'un bon niveau
+  const caps = p.intl?.caps?.[cat] ?? 0;
+  const proF = cat === 'A' ? (st.stage === 'Pro' && clubLevel(clubById(st.clubId)) <= 2 ? 1 : 0.15) : 1;
+  const prob = clamp(0.35 + (ca - req) / 0.035 + Math.min(caps, 4) * 0.08, 0, 0.95) * proF;
+  if (!r.chance(prob)) return null;
+  if (t.qualify && !r.chance(t.qualify)) return null; // pas qualifiée pour la phase finale
+  // une sélection moins forte se qualifie moins souvent pour les phases finales
+  if (cat === 'A' && !r.chance(clamp(0.75 + nationOff(nat.id) * 6, 0.4, 0.98))) return null;
+  const team = nationTeam(nat.id, cat);
+  // trois adversaires de poule, puis les tours à élimination directe
+  const pool = shuffle(opponentsOf(nat.id), r);
+  const group = t.groups ? pool.slice(0, 3) : [];
+  const rounds = [
+    ...group.map((opp, i) => ({ label: `Phase de groupes · match ${i + 1}`, opp, group: true })),
+    ...KO[t.ko].map((label) => ({ label, opp: null })),
+  ];
+  return { name: t.name, cat, nation: nat.id, teamId: team.id, rounds, idx: 0, pts: 0, gd: 0, alive: true, starter: ca >= team.strength - 0.01, used: [...group, nat.id], log: [], won: false };
+}
+
+// Prochain match du tournoi (adversaire des tours à élimination directe tiré parmi les autres nations)
+export function tournamentMatch(st, r) {
+  const t = st.tournament;
+  const rd = t.rounds[t.idx];
+  if (!rd.opp) {
+    const left = opponentsOf(t.nation ?? 'france').filter((id) => !t.used.includes(id));
+    const strong = left.sort((a, b) => nationOff(b) - nationOff(a));
+    rd.opp = strong[Math.min(strong.length - 1, Math.floor(r.next() * Math.max(2, 8 - 2 * (t.idx - 3))))];
+    t.used.push(rd.opp);
+  }
+  const vs = nationTeam(rd.opp, t.cat);
+  return { kind: 'nat', tourn: true, label: `${t.name} · ${rd.label}`, teamId: t.teamId, oppId: vs.id, cat: t.cat, home: r.chance(0.5) };
+}
+
+// Issue d'un match de tournoi ; renvoie le texte du compte rendu
+export function resolveTournamentMatch(st, gf, ga, r) {
+  const t = st.tournament;
+  const rd = t.rounds[t.idx];
+  let text;
+  if (rd.group) {
+    t.pts += gf > ga ? 3 : gf === ga ? 1 : 0; t.gd += gf - ga;
+    t.idx++;
+    text = `${t.name} (${rd.label}) : ${gf > ga ? 'victoire' : gf < ga ? 'défaite' : 'nul'} ${gf}-${ga} · ${t.pts} pts.`;
+    if (!t.rounds[t.idx]?.group) {
+      // sortie de poule : 2 premiers qualifiés (4 points suffisent presque toujours, 3 parfois)
+      const through = t.pts >= 5 || (t.pts === 4 && r.chance(0.85)) || (t.pts === 3 && r.chance(0.35 + 0.05 * t.gd));
+      if (!through) { t.alive = false; text += ' Éliminés en phase de groupes.'; }
+      else text += ' Qualifiés pour la phase à élimination directe !';
+    }
+  } else {
+    let won = gf > ga, pens = '';
+    if (gf === ga) { won = r.chance(0.5); pens = ` (${won ? 'qualifiés' : 'éliminés'} aux tirs au but)`; }
+    t.log.push({ label: rd.label, gf, ga, won });
+    text = `${t.name} (${rd.label}) : ${gf}-${ga}${pens}.`;
+    if (!won) { t.alive = false; text += rd.label === 'Finale' ? ' Finale perdue.' : ' Éliminés.'; }
+    else if (rd.label === 'Finale') { t.alive = false; t.won = true; text += ` ${nationality(t.nation).the} remporte ${/^(Euro|Championnat)/.test(t.name) ? 'l\'' : /^Jeux/.test(t.name) ? 'les ' : /^Gold/.test(t.name) ? 'la ' : 'la '}${t.name} !`; }
+    else t.idx++;
+  }
+  t.reached = t.won ? 'Vainqueur' : rd.label;
+  return text;
 }
 
 // ------------------------------------------------------------------ calendrier
@@ -131,7 +243,8 @@ export function buildCups(st, len) {
       const prev = st.history.at(-1);
       const sameClub = prev && prev.club === club.name && prev.stage === 'Pro';
       const prestige = club.foreign ? club.strength - divisionCA(club) : CLUB_PRESTIGE[club.id] ?? 0;
-      const euro = sameClub ? (prev.pos <= 3 ? 'ucl' : prev.pos <= 6 ? 'uel' : null) : prestige >= 0.03 ? 'ucl' : prestige >= 0.012 ? 'uel' : null;
+      // qualification par le classement de la saison passée… si c'était déjà en première division
+      const euro = sameClub && (prev.tier ?? 1) === 1 ? (prev.pos <= 3 ? 'ucl' : prev.pos <= 6 ? 'uel' : null) : sameClub ? null : prestige >= 0.03 ? 'ucl' : prestige >= 0.012 ? 'uel' : null;
       if (euro) cups.push(mk(euro));
     }
   }
@@ -170,7 +283,7 @@ export function drawOpponent(st, cup, r) {
   // coupes d'Europe : chapeaux en phase de ligue (2 forts, 2 moyens, 2 plus faibles), puis adversaires plus forts
   // (jamais son propre club ni un club du même pays)
   const mine = countryOfClub(clubById(st.clubId));
-  const eligible = EURO_CLUBS.filter((c) => c.id !== st.clubId && countryOfClub(c) !== mine);
+  const eligible = EURO_CLUBS.filter((c) => c.id !== st.clubId && countryOfClub(c) !== mine && (!c.foreign || c.tier === 1));
   const ranked = [...eligible].sort((a, b) => b.strength - a.strength);
   const third = Math.ceil(ranked.length / 3);
   const top = cup.id === 'ucl';
@@ -251,8 +364,9 @@ export function maybeCallup(st, r, ca) {
   if (!windows.includes(st.week)) return null;
   const p = st.player;
   if (p.injuryWeeks > 0) return null;
-  const cat = natCategory(p.age, ca);
-  const req = NAT_REQ[cat];
+  const nation = p.nation ?? 'france';
+  const cat = natCategory(p.age, ca, nation);
+  const req = natReq(cat, nation);
   const recent = (st.seasonStats?.ratings ?? []).slice(-5);
   const form = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : null;
   const formF = form == null ? 0.75 : form >= 7 ? 1.15 : form >= 6.6 ? 1 : form >= 6.2 ? 0.75 : 0.5;
@@ -260,9 +374,13 @@ export function maybeCallup(st, r, ca) {
   const proF = cat === 'A' ? (st.stage === 'Pro' && clubLevel(clubById(st.clubId)) <= 2 ? 1 : 0.2) : 1;
   const prob = clamp(0.5 + (ca - req) / 0.04, 0, 0.93) * formF * proF;
   if (!r.chance(prob)) return null;
-  const opp = NATIONS[r.int(0, NATIONS.length - 1)][0];
-  const team = nationTeam('france', cat);
+  const opps = opponentsOf(nation);
+  const opp = opps[r.int(0, opps.length - 1)];
+  const team = nationTeam(nation, cat);
   const vs = nationTeam(opp, cat);
   const friendly = r.chance(0.4);
-  return { week: st.week, cat, teamId: team.id, oppId: vs.id, home: r.chance(0.5), comp: friendly ? 'Match amical' : NAT_TOURNEY[cat], label: `${team.name} · ${friendly ? 'Match amical' : NAT_TOURNEY[cat]}`, starter: ca >= team.strength - 0.01 };
+  // compétition officielle : celle de la confédération (qualifications à l'Euro, à la CAN…)
+  const conf = nationality(nation).confed;
+  const comp = friendly ? 'Match amical' : conf === 'uefa' || cat === 'A' ? NAT_TOURNEY[cat] : `Qualifications continentales ${cat}`;
+  return { week: st.week, cat, teamId: team.id, oppId: vs.id, home: r.chance(0.5), comp, label: `${team.name} · ${comp}`, starter: ca >= team.strength - 0.01 };
 }
