@@ -181,3 +181,22 @@ test('bilan mensuel : toutes les 4 semaines, avec le détail mesuré de chaque c
   assert.equal(st.phase, 'week');
   assert.ok(st.lastMonthReview, 'le dernier bilan reste consultable');
 });
+
+test('chaque option de chaque événement s\'applique sans erreur (formation, pro, étranger)', async () => {
+  const { EVENTS } = await import('../src/career/events.js');
+  const { Rng } = await import('../src/engine/rng.js');
+  const base = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'evts' });
+  const pro = structuredClone(base); pro.stage = 'Pro'; pro.player.age = 24; pro.player.agent = true;
+  const away = structuredClone(pro); away.clubId = 'ger-bayern-munich';
+  let n = 0;
+  for (const st0 of [base, pro, away]) for (const e of EVENTS) for (let i = 0; i < e.options.length; i++) {
+    const st = structuredClone(st0);
+    assert.equal(typeof e.text(st), 'string', e.id);
+    const label = e.options[i].label;
+    if (typeof label === 'function') assert.equal(typeof label(st), 'string');
+    const out = e.options[i].apply(st, new Rng(`${e.id}-${i}`));
+    assert.equal(typeof out, 'string', `${e.id} option ${i}`);
+    n++;
+  }
+  assert.ok(n > 100, `${n} options jouées`);
+});

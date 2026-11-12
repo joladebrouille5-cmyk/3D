@@ -189,6 +189,10 @@ Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sa
 - Point 6 (3D sur téléphone) : qualité adaptative. Si l'image passe sous ~26 images/s sur la durée, la vue 3D
   baisse sa définition (palier 1 : 1,25 pixel par point ; palier 2 : 0,85), et le palier est mémorisé pour
   les matchs suivants. Ici, en rendu logiciel, le palier 1 est atteint en une vingtaine de secondes.
+- Point 7 (code) : les événements de vie quittent `career.js` (1 521 → 1 201 lignes) pour `events.js`,
+  les données par pays vont dans `countries.js` ; un test joue chaque option de chaque événement (formation,
+  professionnel, étranger). Restent au-delà de 950 lignes : `match.js` (classe du moteur), `app.js` et
+  `career-ui.js` (écrans), à découper en partageant d'abord l'état de l'interface dans un module commun.
 
 ### Championnats étrangers (2 plus hauts niveaux, vrais effectifs) : recommandé, par étapes
 
