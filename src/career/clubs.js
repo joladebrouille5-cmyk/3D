@@ -8,6 +8,8 @@
 import { CLUB_PRESTIGE, ACADEMY_BONUS } from '../data/club-prestige.js';
 import { CATALOG } from '../data/catalog.js';
 import { FOREIGN } from '../data/foreign.js';
+import { NAMES } from '../data/names.js';
+import { countryInfo } from './countries.js';
 import { ATTRS, ROLE_TEMPLATES, FIRST, LAST_A, LAST_B, FORMATIONS } from '../engine/teams.js';
 import { Rng } from '../engine/rng.js';
 import { kitColors } from '../ui/crest.js';
@@ -29,6 +31,8 @@ export const FOREIGN_CLUBS = FOREIGN.clubs.map((c) => {
     id: c.id, name: c.name, short: c.short, foreign: true, country: c.country, leagueId: c.league, tier: c.tier, strength: c.strength,
     senior: { level: c.tier, competition: lg?.name ?? c.league, group: 'Unique', players: c.players, status: 'wikipedia' },
     reserve: null, u17: null, u19: null,
+    // centre de formation : coéquipiers et adversaires de jeunes toujours fictifs (noms de la langue du pays)
+    names: NAMES[countryInfo(c.country).names] ?? null,
   };
 });
 for (const c of FOREIGN_CLUBS) BY_ID.set(c.id, c);
@@ -37,6 +41,9 @@ const FOREIGN_AVG = Object.fromEntries(FOREIGN.leagues.map((l) => {
   const xs = FOREIGN_CLUBS.filter((c) => c.leagueId === l.id).map((c) => c.strength);
   return [l.id, xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.6];
 }));
+// Centres de formation d'un pays : clubs français du catalogue, ou clubs étrangers du pays
+export const ACADEMY_COUNTRIES = ['France', ...[...new Set(FOREIGN.leagues.map((l) => l.country))]];
+export const academiesOf = (country) => (country === 'France' || !country ? CLUBS : FOREIGN_CLUBS.filter((c) => c.country === country));
 // Tous les clubs professionnels (France + étranger), pour les offres et les prêts
 export const PRO_CLUBS = () => [...CLUBS.filter((c) => c.senior), ...FOREIGN_CLUBS];
 
@@ -80,7 +87,15 @@ export function genAttrs(role, target, rng, sd = 0.05) {
 export function clubLevel(c) { return c.senior?.level ?? (c.reserve ? c.reserve.level + 1 : 6); }
 
 // Qualité du centre de formation (0-1) : niveau de l'équipe première + équipes nationales de jeunes.
+// centres de formation étrangers réputés (écart ajouté à la qualité tirée de la force du club)
+const FOREIGN_ACADEMY = {
+  'ned-ajax': 0.08, 'por-benfica': 0.08, 'por-sporting-cp': 0.07, 'esp-barcelona': 0.06, 'ned-psv': 0.05, 'ned-feyenoord': 0.04, 'bel-anderlecht': 0.06,
+  'bel-genk': 0.06, 'bel-club-brugge': 0.03, 'por-porto': 0.04, 'esp-real-madrid': 0.03, 'esp-athletic-club': 0.05, 'esp-real-sociedad': 0.05, 'esp-villarreal': 0.03,
+  'eng-chelsea': 0.05, 'eng-manchester-city': 0.04, 'eng-southampton': 0.04, 'ger-bayern-munich': 0.03, 'ger-borussia-dortmund': 0.04, 'ger-vfb-stuttgart': 0.03,
+  'ita-atalanta': 0.06, 'ita-inter-milan': 0.03, 'ita-juventus': 0.03, 'ned-az': 0.04, 'ger-schalke-04': 0.04,
+};
 export function academyQuality(c) {
+  if (c.foreign) return clamp(0.5 + (c.strength - 0.56) * 2.4 + (FOREIGN_ACADEMY[c.id] ?? 0), 0.45, 0.97);
   const base = { 1: 0.9, 2: 0.79, 3: 0.68, 4: 0.6, 5: 0.54, 6: 0.47 }[clubLevel(c)];
   return clamp(base + (c.u19 ? 0.03 : 0) + (c.u17 ? 0.03 : 0) + (ACADEMY_BONUS[c.id] ?? 0), 0.4, 0.97);
 }
@@ -97,6 +112,8 @@ export function divisionName(c) {
 }
 export function youthCA(q, stage) { return (stage === 'U19' ? 0.37 : 0.3) + 0.22 * q; }
 export function teamCA(club, stage) {
+  // équipes de jeunes d'un club étranger : niveau de son centre de formation
+  if (club.foreign && (stage === 'U17' || stage === 'U19')) return youthCA(academyQuality(club), stage);
   if (club.strength != null) return club.strength;
   if (stage === 'U17' || stage === 'U19') return youthCA(academyQuality(club), stage);
   if (stage === 'Réserve') return SENIOR_CA[club.reserve?.level ?? 5] - 0.01;
@@ -120,6 +137,13 @@ export function leagueFor(club, stage) {
     });
     return { name: label(team), simulated: false, clubs: members.map((c) => c.id) };
   };
+  // jeunes d'un club étranger : groupe national de clubs du pays au centre de formation comparable
+  if (club.foreign && (stage === 'U17' || stage === 'U19')) {
+    const q = academyQuality(club);
+    const pool = FOREIGN_CLUBS.filter((c) => c.country === club.country && c.id !== club.id)
+      .sort((a, b) => Math.abs(academyQuality(a) - q) - Math.abs(academyQuality(b) - q) || a.name.localeCompare(b.name)).slice(0, 13);
+    return { name: `${countryInfo(club.country).youth} ${stage}`, simulated: false, clubs: [club.id, ...pool.map((c) => c.id)], country: club.country, youthGroup: true };
+  }
   let lg = null;
   if (stage === 'U17') lg = pick('u17', (t) => `Championnat National U17 · groupe ${t.group}`);
   if (stage === 'U19') lg = pick('u19', (t) => `Championnat National U19 · groupe ${t.group}`);
@@ -166,9 +190,12 @@ export function teamStrength(club, stage, league) {
 const SLOTS_433 = FORMATIONS['4-3-3'].map((s) => s.role); // GK FB CB CB FB DM CM CM W ST W
 const BENCH = ['GK', 'CB', 'FB', 'DM', 'CM', 'W', 'ST'];
 
+// noms des joueurs réels du catalogue : un nom fictif ne doit jamais coïncider avec l'un d'eux
+let REAL_NAMES = null;
+const realNames = () => (REAL_NAMES ??= new Set([...CLUBS, ...FOREIGN_CLUBS].flatMap((c) => (c.senior?.players ?? []).map((p) => p[0]))));
 function fakeName(rng, used, pool = null) {
   let n, guard = 0;
-  do n = pool ? `${rng.pick(pool.first)} ${rng.pick(pool.last)}` : `${rng.pick(FIRST)} ${rng.pick(LAST_A)}${rng.pick(LAST_B)}`; while (used.has(n) && guard++ < 50);
+  do n = pool ? `${rng.pick(pool.first)} ${rng.pick(pool.last)}` : `${rng.pick(FIRST)} ${rng.pick(LAST_A)}${rng.pick(LAST_B)}`; while ((used.has(n) || realNames().has(n)) && guard++ < 80);
   used.add(n);
   return n;
 }

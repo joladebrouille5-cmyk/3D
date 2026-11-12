@@ -85,7 +85,8 @@ export function updateTeamShape(m, team) {
       const dBall = dist(b.x, b.y, ownGX, 34);
       const out = poss ? clamp(4 + 10 * tv.line * (ballRel > 0.5 ? 1 : 0.4), 3, 16) : clamp(1 + (dBall - 8) * 0.07, 0.8, 5 + 6 * tv.line);
       rel = out / PITCH.length;
-      y = 34 + (b.y - 34) * 0.22;
+      // il suit le ballon latéralement, sans jamais quitter l'espace entre ses poteaux (7,32 m)
+      y = 34 + clamp((b.y - 34) * 0.22, -3, 3);
       // attaquant lancé : le gardien sort pour fermer l'angle
       const h = b.owner != null ? m.players[b.owner] : null;
       if (h && h.team !== team.idx && dBall < 22) {
@@ -219,8 +220,16 @@ export function updateTeamShape(m, team) {
       const spots = [[6, -3], [7, 3], [11, 0], [9, -6], [10, 6], [14, 0], [5, 0], [13, -4], [13, 4]];
       const cand = players.filter((p) => p.role !== 'GK' && p.id !== r.taker).sort((a, c) => (c.attrs.aerial - a.attrs.aerial));
       const n = r.team === team.idx ? 5 : cand.length;
+      // centre annoncé par le tireur (ton choix) : les deux meilleurs de la tête attaquent la zone visée
+      const plan = r.team === team.idx ? m.players[r.taker]?.restartPlan : null;
+      let mySpots = spots;
+      if (plan?.kind === 'cross') {
+        const side = r.y < 34 ? -1 : 1;
+        const zone = plan.post === 'near' ? [[5, side * 3.5], [7.5, side * 1]] : [[7.5, -side * 5], [10, -side * 2.5]];
+        mySpots = [...zone, ...spots.filter(([dx, dy]) => !zone.some(([zx, zy]) => Math.abs(zx - dx) + Math.abs(zy - dy) < 3))];
+      }
       cand.slice(0, n).forEach((p, i) => {
-        const [dx, dy] = spots[i % spots.length];
+        const [dx, dy] = mySpots[i % mySpots.length];
         targets.set(p.id, { x: goalX + into * dx, y: 34 + dy, urg: 0.7 });
       });
     }
@@ -248,6 +257,11 @@ export function updateTeamShape(m, team) {
     if (r.type === 'penalty') {
       const g = players.find((p) => p.role === 'GK');
       if (g && r.team !== team.idx) targets.set(g.id, { x: ownGX, y: 34, urg: 0.6 });
+    }
+    // corner adverse : le gardien reste sur sa ligne, légèrement côté premier poteau
+    if (r.type === 'corner' && r.team !== team.idx) {
+      const g = players.find((p) => p.role === 'GK');
+      if (g) targets.set(g.id, { x: ownGX + (ownGX === 0 ? 1 : -1), y: 34 + (r.y < 34 ? -1.2 : 1.2), urg: 0.7 });
     }
   }
 

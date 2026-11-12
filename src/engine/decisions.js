@@ -230,7 +230,8 @@ export function executeOption(m, p, choice, restartType = null) {
   switch (choice.kind) {
     case 'shoot': m.shoot(p, { freekick: restartType === 'freekick', style: choice.style }); break;
     case 'pass': m.pass(p, choice.tx, choice.ty, { to: choice.to, lofted: choice.lofted, through: choice.through, low: restartType === 'throw' }); break;
-    case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true }); break;
+    // centre au premier poteau : tendu et plus bas, pour une déviation
+    case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true, low: !!choice.whip }); break;
     case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + m.rng.range(-20, 20), 4, 64), { lofted: true, clear: true }); break;
     case 'carry': m.carry(p, choice.dx, choice.dy, choice.speed ?? 0.75 + 0.25 * team.tv.direct); break;
     default: p.carry = null; p.nextDecision = m.t + 0.4;
@@ -247,7 +248,7 @@ function plannedOption(m, p, opts, plan) {
     const o = opts.find((x) => x.kind === 'cross') ?? { kind: 'cross' };
     const near = plan.post === 'near';
     const side = p.y < 34 ? -1 : 1; // côté du tireur
-    return { ...o, kind: 'cross', tx: gx - team.dir * (near ? 5.5 : 8), ty: near ? 34 + side * 3 : 34 - side * 5.5 };
+    return { ...o, kind: 'cross', tx: gx - team.dir * (near ? 5.5 : 8), ty: near ? 34 + side * 3 : 34 - side * 5.5, whip: near };
   }
   if (plan.kind === 'short') return best(opts.filter((x) => x.kind === 'pass' && !x.lofted && dist(p.x, p.y, m.players[x.to].x, m.players[x.to].y) < 16));
   if (plan.kind === 'long') return best(opts.filter((x) => x.kind === 'pass' && x.lofted));

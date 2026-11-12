@@ -47,9 +47,24 @@ const SHOTS = process.argv[3] || null;
   assert.ok(gl, 'contexte WebGL créé');
   assert.ok(choices >= 1 && choiceIn2d === choices, 'les choix s\'affichent en 2D');
   assert.ok(seen3dFollow || seen3dReplay, 'la 3D prend le relais (suite de l\'action ou ralenti)');
-  // repli : vue 3D désactivée par le bouton
-  await page.click('#btn-view');
+  // bouton 2D : retour à la vue du dessus, mémorisé ; puis 3D de nouveau
+  const state = () => page.evaluate(() => ({ v3d: !document.getElementById('pitch3d').hidden, choice: !document.getElementById('choices').hidden, done: !!document.getElementById('sum-career'), badge: document.getElementById('mode-badge').textContent }));
+  await page.click('#btn-view [data-view="2d"]');
   assert.equal(await page.evaluate(() => localStorage.getItem('generation-football.view3d')), 'off');
+  await page.clock.runFor(500);
+  const s2 = await state();
+  assert.ok(!s2.v3d, `en 2D, la vue 3D est masquée (${JSON.stringify(s2)})`);
+  await page.click('#btn-view [data-view="3d"]');
+  let live = null;
+  for (let i = 0; i < 12; i++) {
+    await page.clock.runFor(500);
+    live = await state();
+    if (live.v3d || live.done) break;
+    if (live.choice) await page.keyboard.press('1');
+    else if (live.badge === 'PAUSE') await page.keyboard.press(' ');
+  }
+  assert.ok(live.v3d || live.done, `en 3D, le direct s'affiche en 3D (${JSON.stringify(live)})`);
+  if (SHOTS && live.v3d) await page.screenshot({ path: `${SHOTS}/3d-direct.png` });
   assert.deepEqual(errs, []);
   console.log('ui-check-3d : OK');
   await b.close();

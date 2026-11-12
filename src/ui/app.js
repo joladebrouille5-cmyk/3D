@@ -180,7 +180,9 @@ function draw() {
   document.getElementById('pitch').classList.toggle('ff', ff && m.phase !== 'fulltime');
   // suite de l'action après un choix : en 3D, caméra de télévision sur l'action
   const follow3d = S.pace.mode === 'tf' && !S.choice && m.t < S.hl.follow && m.phase === 'play';
-  if (present3d(follow3d, teams, players, ball, m.ball.owner, u && u.onPitch ? [u.x * 0.45 + ball.x * 0.55, u.y * 0.45 + ball.y * 0.55, Math.max(1.7, S.ctl.zoom), 0.1] : [ball.x, ball.y, 1.7, 0.1])) return;
+  // vue 3D choisie : tout le direct en 3D, sauf le panneau de choix (cibles numérotées en 2D)
+  const live3d = !S.choice && !controlActive();
+  if (present3d(follow3d || live3d, teams, players, ball, m.ball.owner, u && u.onPitch ? [u.x * 0.45 + ball.x * 0.55, u.y * 0.45 + ball.y * 0.55, Math.max(1.7, S.ctl.zoom), 0.1] : [ball.x, ball.y, 1.7, 0.1])) return;
   if (ff) S.renderer.follow(52.5, 34, 1);
   else if (u && u.onPitch && S.career) {
     // choix ouvert : la caméra cadre ton joueur et le ballon dans la partie non couverte par le panneau
@@ -192,8 +194,9 @@ function draw() {
 }
 
 // ------------------------------------------------------------------ vue 3D
-// Chargée à la demande (Three.js embarqué, ≈ 670 Ko) : ralentis des temps forts et suite de l'action.
-// Les moments de choix restent en 2D (flèches et cibles numérotées). Repli silencieux sans WebGL.
+// Chargée à la demande (Three.js embarqué, ≈ 670 Ko). Au choix du joueur (boutons 2D / 3D) : en 3D, tout le
+// match se regarde en caméra de télévision (direct, suite de l'action, ralentis) ; les moments de choix restent
+// en 2D (flèches et cibles numérotées). Repli silencieux sans WebGL.
 const VIEW_KEY = 'generation-football.view3d';
 export function view3dOn() { try { return localStorage.getItem(VIEW_KEY) !== 'off'; } catch { return true; } }
 function setView3d(on) { try { localStorage.setItem(VIEW_KEY, on ? 'on' : 'off'); } catch { /* stockage indisponible */ } }
@@ -1267,9 +1270,9 @@ function bind() {
   const soundIco = () => setIco('#btn-sound', sound.enabled ? 'sound' : 'mute');
   soundIco();
   $('#btn-sound').addEventListener('click', (e) => { e.currentTarget.blur(); sound.toggle(); soundIco(); });
-  const viewIco = () => { setIco('#btn-view', 'stadium'); $('#btn-view').classList.toggle('off', !view3dOn()); $('#btn-view').title = view3dOn() ? 'Vue 3D activée (ralentis et suite des actions)' : 'Vue 3D désactivée'; };
+  const viewIco = () => document.querySelectorAll('#btn-view [data-view]').forEach((x) => { const on = (x.dataset.view === '3d') === view3dOn(); x.classList.toggle('active', on); x.setAttribute('aria-pressed', String(on)); });
   viewIco();
-  $('#btn-view').addEventListener('click', (e) => { e.currentTarget.blur(); setView3d(!view3dOn()); viewIco(); });
+  document.querySelectorAll('#btn-view [data-view]').forEach((x) => x.addEventListener('click', (e) => { e.currentTarget.blur(); setView3d(x.dataset.view === '3d'); viewIco(); }));
   window.addEventListener('keydown', (e) => { if ((e.key === 'm' || e.key === 'M') && !e.target.closest?.('input, select, textarea') && S.m) { sound.toggle(); soundIco(); } });
   window.addEventListener('resize', () => { S.renderer.resize(); S.r3d?.resize(); if (S.choice) S.choice.inset = panelInset($('#choices')); });
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));

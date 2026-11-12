@@ -210,3 +210,48 @@ Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sa
   Transfermarkt bloque les robots. Deux voies : une GitHub Action qui récupère les effectifs poliment (comme pour
   les logos), ou un CSV fourni au même format que `data/joueurs-v1.csv`.
 
+
+## 8. Nouvel audit : ce qui manque (13 novembre 2026)
+
+### Corrigé avant cet audit
+
+- **Corners à 2 %** : l'arbitre des simulations jugeait l'action avant la frappe (ballon arrêté, touché en
+  dernier par l'adversaire qui l'avait sorti) : échec immédiat partout. Il attend maintenant que le coup de pied
+  arrêté soit joué. Deux défauts du moteur apparus en chemin : le gardien se décalait de 7 m vers le ballon,
+  hors de son but, et captait tous les centres au premier poteau (il reste désormais entre ses poteaux, sur sa
+  ligne aux corners) ; personne n'attaquait la zone annoncée (les deux meilleurs de la tête y vont, centre au
+  premier poteau tendu). Corners : 15 à 56 % selon la situation et la zone.
+- **Bouton 2D / 3D** dans la barre du match ; en 3D, tout le direct (hors panneau de choix).
+- **Départ dans le pays de son choix** (sept pays, jeunes fictifs).
+- Moteur recalé (120 matchs) : buts 2,71 · tirs 25,7 · passes 83 % · fautes 24,2 · jaunes 4,1 · rouges 0,16 ·
+  corners 9,4 · hors-jeu 2,45 · domicile 42 % / nul 32 % / extérieur 26 %.
+
+### Ce qui manque (par priorité)
+
+1. **Promotions et relégations** : les championnats sont figés d'une saison à l'autre ; le champion de Ligue 2
+   y reste, le dernier de Premier League aussi. Sur une carrière de vingt saisons, c'est le plus gros manque
+   de réalisme (clubs, salaires, coupes d'Europe ne bougent jamais).
+2. **Phases finales en sélection** : seulement des qualifications et des tournois de jeunes ; pas d'Euro ni
+   de Coupe du monde (tous les deux ans, en juin), pas de Jeux olympiques. Le sommet d'une carrière manque.
+3. **Sauvegardes hors du téléphone** : tout vit dans le stockage de l'application ; une désinstallation ou un
+   changement de téléphone efface les carrières. Il faut un export / import de fichier.
+4. **Nationalité** : toujours française. Avec le départ à l'étranger, choisir sa nationalité (ou une double
+   nationalité) changerait la sélection, la presse, la langue.
+5. **Objectifs de saison** fixés par le club ou le coach (temps de jeu, buts, titre), avec récompense ou
+   sanction : un fil conducteur pour chaque saison.
+6. **Profil du joueur** : pas de traits ni de gestes signature débloqués par la progression (frappe enroulée,
+   dribbleur, tireur de coups francs) ; pas de changement de poste durable.
+7. **Contrats** : ni primes, ni clause libératoire, ni demande de transfert franche.
+8. **Destinations** : Arabie saoudite, MLS, Turquie, Écosse (fins de carrière classiques) ; deuxièmes
+   divisions du Portugal, des Pays-Bas et de la Belgique.
+9. **Après-carrière** : la reconversion n'est qu'un texte (pas de carrière d'entraîneur jouable).
+10. **Ambiance** : pas de derbys ni de rivalités, pas de météo, pas de commentaire audio.
+11. **Moteur** : hors-jeu un peu bas (2,45 pour 3-4), nuls un peu hauts (32 % pour 26 %).
+12. **Vue 3D en direct** : plus coûteuse que les seuls ralentis ; qualité adaptative en place, mais non mesurée
+    sur un vrai téléphone.
+13. **Code** : `match.js` (1 332 lignes), `app.js` (1 309), `career-ui.js` (1 004).
+
+### Recommandation
+
+Dans l'ordre : sauvegardes exportables (rapide, protège tes carrières), promotions et relégations, phases
+finales d'Euro et de Coupe du monde, puis nationalité et objectifs de saison.

@@ -787,7 +787,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      let pSave = clamp(1.01 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(0.94 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
       if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;

@@ -11,8 +11,9 @@ import { ATTRS } from '../engine/teams.js';
 import {
   clubById, academyQuality, leagueFor, teamName, teamStrength, buildTeamSquad, rivalFor, PRO_CLUBS, divisionCA, divisionName,
   roleCA, genAttrs, youthCA, SENIOR_CA, clubLevel, teamCA, CLUBS, ROLE_WEIGHTS, STAGE_LABEL,
+  academiesOf,
 } from './clubs.js';
-import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
+import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW, isYouthCup } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL, countryOf, mixByCountry } from './market.js';
 import { tierById, levelTierById } from './potential.js';
 import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
@@ -83,7 +84,9 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
     seasonStats: null, history: [], journal: [], offers: null, retired: false, cups: [], trophies: [],
     rng: rng.snapshot(), eventCooldown: 2,
   };
-  log(st, `Arrivée au centre de formation de ${club.name}. Le staff estime ton niveau actuel à ${pct(currentCA(st))}.`);
+  // formation à l'étranger : la famille suit, l'école se fait dans la langue du pays
+  if (club.foreign) st.player.lang = { [club.country]: 0.6 };
+  log(st, `Arrivée au centre de formation de ${club.name}${club.foreign ? ` (${club.country})` : ''}. Le staff estime ton niveau actuel à ${pct(currentCA(st))}.`);
   if (tier) log(st, `La roue a parlé : ${tier.label}. À toi d'en faire quelque chose.`);
   startSeason(st);
   return st;
@@ -257,7 +260,7 @@ function toExtraMatchday(st, ex) {
       if (selection === 'non retenu') selection = 'remplaçant';
       else if (selection === 'remplaçant' && r.chance(0.5)) selection = 'titulaire';
     }
-    st.matchday = { extra: { ...ex, stage: cup.id === 'gambardella' ? 'U19' : 'Pro' }, home: r.chance(0.5), opponentId: opp, selection, rival: sel.rival, reason: sel.reason };
+    st.matchday = { extra: { ...ex, stage: isYouthCup(cup.id) ? 'U19' : 'Pro' }, home: r.chance(0.5), opponentId: opp, selection, rival: sel.rival, reason: sel.reason };
   } else {
     const c = st.callup;
     st.matchday = { extra: { ...ex, stage: 'Pro', teamId: c.teamId, cat: c.cat }, home: c.home, opponentId: c.oppId, selection: c.starter ? 'titulaire' : 'remplaçant', rival: null };
@@ -1074,13 +1077,13 @@ function buildOffers(st, pos, n) {
       const shine = (avg >= 7.0 && ss.apps >= 12) || ss.goals >= 8 || ca >= expected + 0.05 || ((p.scouted ?? 0) > 0 && avg >= 6.7);
       if (shine) {
         const q = academyQuality(club);
-        const better = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) > q + 0.03 && ca >= youthCA(academyQuality(c), next) - 0.05);
+        const better = academiesOf(countryOf(club)).filter((c) => c.id !== club.id && academyQuality(c) > q + 0.03 && ca >= youthCA(academyQuality(c), next) - 0.05);
         for (const c of shuffle(better, r).slice(0, avg >= 7.3 || ss.goals >= 12 ? 2 : 1)) offers.push({ clubId: c.id, stage: next, kind: 'Repéré par un centre plus réputé', contract: terms(c, next) });
       }
     } else {
       // libéré : d'autres centres de formation, moins exigeants
       const q = academyQuality(club);
-      const cands = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) < q - 0.02 && ca >= youthCA(academyQuality(c), next) - 0.07);
+      const cands = academiesOf(countryOf(club)).filter((c) => c.id !== club.id && academyQuality(c) < q - 0.02 && ca >= youthCA(academyQuality(c), next) - 0.07);
       for (const c of shuffle(cands, r).slice(0, 3)) offers.push({ clubId: c.id, stage: next, kind: 'Essai concluant dans un autre centre', contract: terms(c, next) });
     }
   } else {
@@ -1097,6 +1100,11 @@ function buildOffers(st, pos, n) {
       offers.push({ clubId: club.id, stage: 'Pro', kind: st.stage === 'Pro' ? 'Prolongation' : 'Premier contrat professionnel', own: true, contract: terms(club, 'Pro', { first: st.stage !== 'Pro' }) });
     } else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) {
       offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true, contract: terms(club, 'Réserve') });
+    } else if (club.foreign && st.stage === 'U19' && ca >= proThreshold(club) - 0.08) {
+      // pas d'équipe réserve à l'étranger : premier contrat au club, puis prêt dans un club du pays pour jouer
+      const hosts = PRO_CLUBS().filter((c) => c.foreign && c.country === club.country && c.id !== club.id && ca >= proThreshold(c) && ca <= divisionCA(c) + 0.06);
+      const host = hosts.length ? r.pick(hosts) : null;
+      if (host) offers.push({ clubId: host.id, stage: 'Pro', loan: true, own: true, parentStage: 'Pro', parentContract: terms(club, 'Pro', { first: true }), kind: `Premier contrat à ${club.name}, prêté à ${host.name}` });
     }
     const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0);
     // clubs professionnels de France et de l'étranger dont le niveau correspond au tien
@@ -1145,8 +1153,9 @@ export function acceptOffer(st, idx) {
   if (o.keep) {
     if (p.loan && o.clubId === p.loan.parentId) { p.contract = p.loan.parentContract; p.loan = null; log(st, `Retour de prêt à ${clubById(o.clubId).name}.`); }
   } else if (o.loan) {
-    p.loan = { parentId: st.clubId, parentStage: st.stage, parentContract: p.contract };
-    p.contract = { clubId: o.clubId, type: 'prêt', until: st.season + 1, salary: p.contract.salary };
+    const parentContract = o.parentContract ? { clubId: st.clubId, type: o.parentContract.type, until: st.season + o.parentContract.years, salary: o.parentContract.salary } : p.contract;
+    p.loan = { parentId: st.clubId, parentStage: o.parentStage ?? st.stage, parentContract };
+    p.contract = { clubId: o.clubId, type: 'prêt', until: st.season + 1, salary: parentContract.salary };
   } else if (o.contract) {
     p.loan = null;
     p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years, salary: o.contract.salary };

@@ -58,13 +58,16 @@ export function createJudge(f, uid, c, goal) {
       const b = f.ball;
       // coup de pied arrêté : le chrono démarre quand le ballon est frappé
       if (!kicked && f.phase === 'play' && f.restart !== restart0 && (b.owner == null || b.owner !== f.restart?.taker)) { kicked = true; kickT = f.t; }
+      // avant la frappe, le ballon est arrêté (souvent touché en dernier par l'adversaire qui l'a sorti) :
+      // rien à juger tant que le coup de pied arrêté n'est pas joué
+      if (!kicked) return f.t - t0 > 14 ? res(false) : null;
       if (f.score[team] > score0) return res(true);
       if (f.score[opp] > conc0) return res(false);
       const ownerTeam = b.owner != null ? f.players[b.owner].team : null;
       const dead = f.phase === 'dead' && f.restart && f.restart !== restart0;
       const restartFor = dead ? f.restart.team : null;
       const el = f.t - (kicked ? kickT : t0);
-      if (f.t - t0 > 16) return res(false);
+      if (f.t - kickT > 16) return res(false);
       switch (goal.kind) {
         case 'goal':
           if (kicked && el > goal.max) return res(false);
@@ -131,7 +134,8 @@ function rollout(m, uid, c, goal, seed) {
   const f = m.fork(seed);
   applyChoice(f, uid, c);
   const j = createJudge(f, uid, c, goal);
-  for (let i = 0; i < 170; i++) {
+  // un coup de pied arrêté attend son tireur (jusqu'à ~9 s) avant que l'action ne commence
+  for (let i = 0, n = c.plan ? 300 : 170; i < n; i++) {
     f.step();
     const r = j.check();
     if (r) return r;

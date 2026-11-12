@@ -298,9 +298,11 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
 
 ## Vue 3D
 
-Les ralentis des temps forts et la suite de l'action après un choix s'affichent en 3D (WebGL, Three.js
-0.160 embarqué dans `assets/vendor/`, licence MIT : rien n'est téléchargé). Les moments de choix restent en 2D,
-plus lisibles pour les flèches et les cibles numérotées. Le bouton « stade » de la barre du match coupe la 3D.
+Les boutons **2D / 3D** de la barre du match choisissent la vue (le choix est retenu d'un match à l'autre).
+En 3D, tout le match se regarde en caméra de télévision : le direct, la suite de l'action après un choix et les
+ralentis (WebGL, Three.js 0.160 embarqué dans `assets/vendor/`, licence MIT : rien n'est téléchargé). Les moments
+de choix restent en 2D, plus lisibles pour les flèches et les cibles numérotées. Sur un téléphone trop lent, la
+définition de la 3D baisse d'elle-même.
 
 - Stade de nuit : quatre tribunes garnies aux couleurs des deux équipes, toit, mâts d'éclairage et halos,
   panneaux et bandeaux lumineux défilants, flashs d'appareils photo (plus nombreux sur un but).
@@ -340,6 +342,13 @@ mercato d'hiver et les prêts.
   Galatasaray, le Celtic, le Dinamo Zagreb, Copenhague et Bodø/Glimt restent fictifs.
 - **Vie à l'étranger** : la langue (cours, intégration plus lente au vestiaire tant qu'elle n'est pas maîtrisée ;
   l'anglais aide aux Pays-Bas, le français suffit souvent en Belgique), le mal du pays, la presse locale.
+- **Commencer à l'étranger** : à la création, le menu « Pays » du choix du centre de formation propose les sept
+  pays. Championnats U17 et U19 du pays (groupes de 14 centres de niveau proche), coupe U19 (FA Youth Cup,
+  Coupe du Roi U19, Coupe d'Italie Primavera, Coupe d'Allemagne U19), qualité du centre tirée de la force du
+  club et de sa réputation (Ajax, Benfica, Sporting, La Masia…). Coéquipiers et adversaires de jeunes
+  **toujours fictifs** (noms de la langue du pays, jamais le nom d'un joueur réel) ; seuls les effectifs
+  professionnels (adultes) sont réels. Pas d'équipe réserve : à 18 ans, premier contrat au club ou premier
+  contrat avec prêt dans un club du pays. On y parle la langue du pays ; les sélections de France suivent.
 - **Mettre à jour** : relancer l'action (onglet Actions du dépôt), puis
   `node tools/build-foreign.mjs <dossier des logos>` qui écrit `src/data/foreign.js` et `assets/crests-foreign/`.
 

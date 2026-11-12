@@ -14,10 +14,14 @@ test('les choix proposés sont variés et exécutables', () => {
     else C.applyMatchResult(st, C.resultWithoutUser(st));
   }
   st.matchday.selection = 'titulaire';
-  const m = createCareerMatch(C.matchSetup(st));
-  const u = m.players.find((p) => p.isUser);
+  const setup = C.matchSetup(st);
   const combos = new Set(), recent = [];
-  let lastOwner = null, lastBall = -99, lastOff = -99, n = 0, i = 0;
+  let n = 0, i = 0;
+  // un match suffit d'ordinaire ; si ton joueur sort tôt (blessure, expulsion), on en joue un autre
+  for (let k = 0; k < 3 && n <= 50; k++) {
+  const m = createCareerMatch({ ...setup, seed: k ? `${setup.seed}-${k}` : setup.seed });
+  const u = m.players.find((p) => p.isUser);
+  let lastOwner = null, lastBall = -99, lastOff = -99;
   const asked = new Set();
   while (m.phase !== 'fulltime') {
     m.step();
@@ -45,6 +49,7 @@ test('les choix proposés sont variés et exécutables', () => {
     else if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
     else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent, ...(c.spot ?? {}) });
     recent.push(c.key); if (recent.length > 4) recent.shift();
+  }
   }
   assert.ok(n > 50, `situations de choix rencontrées : ${n}`);
   assert.ok(combos.size >= 25, `combinaisons distinctes : ${combos.size}`);

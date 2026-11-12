@@ -6,28 +6,15 @@
 //   championnat de 26 ou de 34 journées.
 
 import { registerClub, clubById, CLUBS, clubLevel, academyQuality, SENIOR_CA, FOREIGN_CLUBS, divisionCA } from './clubs.js';
-import { FOREIGN_CUPS, EURO_SPOTS, countryInfo } from './countries.js';
+import { FOREIGN_CUPS, YOUTH_CUPS, EURO_SPOTS, countryInfo } from './countries.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
 import { registerColors } from '../ui/crest.js';
+import { NAMES } from '../data/names.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-// ------------------------------------------------------------------ noms fictifs par langue
-const NAMES = {
-  es: { first: ['Pablo', 'Álvaro', 'Hugo', 'Sergio', 'Iker', 'Marco', 'Rodrigo', 'Javier', 'Dani', 'Unai', 'Mikel', 'Adrián', 'Raúl', 'Óscar'], last: ['García', 'Romero', 'Navarro', 'Ortega', 'Castillo', 'Morales', 'Delgado', 'Vidal', 'Moreno', 'Serrano', 'Iglesias', 'Herrera', 'Marín', 'Vega'] },
-  en: { first: ['Jack', 'Harry', 'Oliver', 'George', 'Callum', 'Mason', 'Reece', 'Jordan', 'Kyle', 'Ryan', 'Ethan', 'Lewis', 'Jamie', 'Tom'], last: ['Walker', 'Bennett', 'Hughes', 'Carter', 'Mitchell', 'Ward', 'Turner', 'Collins', 'Parker', 'Morgan', 'Hayes', 'Fletcher', 'Baker', 'Shaw'] },
-  de: { first: ['Leon', 'Jonas', 'Lukas', 'Felix', 'Niklas', 'Tim', 'Florian', 'Jan', 'Paul', 'Max', 'Kai', 'Julian', 'Moritz', 'Elias'], last: ['Müller', 'Schmidt', 'Becker', 'Hoffmann', 'Wagner', 'Krüger', 'Weber', 'Richter', 'Neumann', 'Schulz', 'Brandt', 'Vogel', 'Lang', 'Keller'] },
-  it: { first: ['Lorenzo', 'Matteo', 'Andrea', 'Federico', 'Alessandro', 'Nicolò', 'Davide', 'Riccardo', 'Gianluca', 'Simone', 'Marco', 'Tommaso', 'Luca', 'Pietro'], last: ['Rossi', 'Bianchi', 'Esposito', 'Romano', 'Colombo', 'Ricci', 'Marino', 'Greco', 'Conti', 'De Luca', 'Mancini', 'Lombardi', 'Moretti', 'Barbieri'] },
-  pt: { first: ['João', 'Diogo', 'Rúben', 'Tiago', 'Gonçalo', 'André', 'Rafael', 'Pedro', 'Bruno', 'Nuno', 'Vitinho', 'Gabriel', 'Lucas', 'Matheus'], last: ['Silva', 'Santos', 'Ferreira', 'Pereira', 'Costa', 'Oliveira', 'Rodrigues', 'Almeida', 'Carvalho', 'Sousa', 'Ribeiro', 'Lima', 'Araújo', 'Gomes'] },
-  nl: { first: ['Daan', 'Sem', 'Bram', 'Thijs', 'Ruben', 'Jesse', 'Lars', 'Milan', 'Stijn', 'Joris', 'Wout', 'Arne', 'Senne', 'Jens'], last: ['de Jong', 'Jansen', 'Bakker', 'Visser', 'Smit', 'Mertens', 'Peeters', 'de Vries', 'van Dijk', 'Maes', 'Willems', 'Claes', 'Wouters', 'Hendriks'] },
-  ar: { first: ['Youssef', 'Achraf', 'Hakim', 'Sofiane', 'Ilyas', 'Amine', 'Bilal', 'Nabil', 'Riyad', 'Walid', 'Ayoub', 'Karim', 'Mehdi', 'Hamza'], last: ['El Amrani', 'Benali', 'Bouzid', 'Haddad', 'Mansouri', 'Ziani', 'Brahimi', 'Belkacem', 'Chérif', 'Saidi', 'Taoufik', 'Ouahbi', 'Rahmani', 'Kaddour'] },
-  af: { first: ['Moussa', 'Ibrahima', 'Cheikh', 'Pape', 'Sadio', 'Seydou', 'Kalidou', 'Lamine', 'Ismaïla', 'Boubacar', 'Franck', 'Wilfried', 'Serge', 'Yao'], last: ['Diop', 'Ndiaye', 'Sarr', 'Gueye', 'Koné', 'Traoré', 'Cissé', 'Touré', 'Kouassi', 'Diallo', 'Bamba', 'Sow', 'Faye', 'Yao'] },
-  la: { first: ['Lautaro', 'Thiago', 'Enzo', 'Julián', 'Facundo', 'Matías', 'Gabriel', 'Rodrygo', 'Vinícius', 'Bruno', 'Nicolás', 'Lucas', 'Joaquín', 'Endrick'], last: ['González', 'Martínez', 'Fernández', 'Álvarez', 'Romero', 'Paredes', 'Souza', 'Barbosa', 'Moura', 'Carvalho', 'Acosta', 'Ruiz', 'Sosa', 'Correa'] },
-  ja: { first: ['Kaoru', 'Takumi', 'Daichi', 'Ritsu', 'Kyogo', 'Hiroki', 'Wataru', 'Ao', 'Yuto', 'Kento', 'Junya', 'Sota', 'Ren', 'Haruto'], last: ['Tanaka', 'Suzuki', 'Kubo', 'Endo', 'Ito', 'Mitoma', 'Nakamura', 'Sato', 'Watanabe', 'Kobayashi', 'Yamamoto', 'Kato', 'Morita', 'Hayashi'] },
-  nordic: { first: ['Erling', 'Martin', 'Kasper', 'Mikkel', 'Jonas', 'Oscar', 'Emil', 'Viktor', 'Anders', 'Rasmus', 'Mads', 'Sander', 'Kristoffer', 'Elias'], last: ['Hansen', 'Larsen', 'Nielsen', 'Andersen', 'Johansson', 'Karlsson', 'Berg', 'Lindqvist', 'Olsen', 'Pedersen', 'Strand', 'Holm', 'Dahl', 'Lund'] },
-  hr: { first: ['Luka', 'Ivan', 'Mateo', 'Josip', 'Marko', 'Ante', 'Nikola', 'Domagoj', 'Lovro', 'Mario', 'Dejan', 'Petar', 'Duje', 'Bruno'], last: ['Horvat', 'Kovačić', 'Babić', 'Marić', 'Jurić', 'Novak', 'Perić', 'Vuković', 'Knežević', 'Pavlović', 'Matić', 'Petković', 'Radić', 'Šarić'] },
-  tr: { first: ['Arda', 'Kerem', 'Emre', 'Barış', 'Cengiz', 'Hakan', 'Ferdi', 'Yusuf', 'Kaan', 'Mert', 'Orkun', 'Salih', 'Altay', 'Zeki'], last: ['Yılmaz', 'Kaya', 'Demir', 'Şahin', 'Çelik', 'Aydın', 'Öztürk', 'Arslan', 'Doğan', 'Kılıç', 'Kurt', 'Aksoy', 'Polat', 'Erdem'] },
-};
+// noms fictifs par langue : src/data/names.js
+
 
 // ------------------------------------------------------------------ clubs européens (effectifs fictifs)
 // [id, nom, langue, force, couleur 1, couleur 2, motif]
@@ -108,11 +95,14 @@ export function natCategory(age, ca) {
 const weekAt = (len, f) => clamp(Math.round(f * len), 1, len - 1);
 export const INTL_WINDOWS = [0.2, 0.44, 0.7, 0.9];
 export const WINTER_WINDOW = 0.5;
+// coupe jouée par les U19 (et non par l'équipe première)
+export const isYouthCup = (id) => id === 'gambardella' || !!YOUTH_CUPS[id];
 
 const CUP_FORMATS = {
   gambardella: { name: 'Coupe Gambardella', short: 'Gambardella', rounds: ['32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.36, 0.48, 0.6, 0.74, 0.88] },
   cdf: { name: 'Coupe de France', short: 'Coupe de France', rounds: ['7e tour', '8e tour', '32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.14, 0.22, 0.32, 0.42, 0.52, 0.62, 0.76, 0.9] },
   ...FOREIGN_CUPS,
+  ...YOUTH_CUPS,
   ucl: { name: 'Ligue des champions', short: 'Ligue des champions', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
   uel: { name: 'Ligue Europa', short: 'Ligue Europa', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
 };
@@ -128,7 +118,11 @@ export function buildCups(st, len) {
       : f.rounds.map((label, i) => ({ label, week: weekAt(len, f.at[i]) })).slice(startIdx);
     return { id, name: f.name, rounds, idx: 0, alive: true, points: 0, log: [], champion: false };
   };
-  if (st.stage === 'U19') cups.push(mk('gambardella'));
+  // coupe des U19 : Gambardella en France, coupe de jeunes du pays à l'étranger (s'il y en a une)
+  if (st.stage === 'U19') {
+    if (!club.foreign) cups.push(mk('gambardella'));
+    else if (countryInfo(club.country).youthCup) cups.push(mk(countryInfo(club.country).youthCup));
+  }
   if (st.stage === 'Pro' && club.senior) {
     // coupe nationale du pays du club
     if (club.foreign) { const cup = countryInfo(club.country).cup; if (cup) cups.push(mk(cup)); }
@@ -159,6 +153,12 @@ export function drawOpponent(st, cup, r) {
   if (cup.id === 'cdf') {
     pool = CLUBS.filter((c) => c.id !== st.clubId && c.senior && !used.has(c.id));
     const w = pool.map((c) => { const lv = clubLevel(c); return k < 0.3 ? (lv >= 4 ? 3 : lv === 3 ? 1 : 0.15) : Math.pow(7 - lv, 1 + 3 * k); });
+    return pool[r.weighted(w)].id;
+  }
+  if (YOUTH_CUPS[cup.id]) {
+    // centres de formation du pays ; noms des joueurs toujours fictifs (équipes de jeunes)
+    pool = FOREIGN_CLUBS.filter((c) => c.country === YOUTH_CUPS[cup.id].country && c.id !== st.clubId && !used.has(c.id));
+    const w = pool.map((c) => Math.pow(academyQuality(c), 2 + 10 * k));
     return pool[r.weighted(w)].id;
   }
   if (FOREIGN_CUPS[cup.id]) {

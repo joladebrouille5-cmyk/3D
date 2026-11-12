@@ -1,6 +1,7 @@
 // Écrans de la carrière : accueil, chargement, création, choix du club, semaine, fin de saison.
 import * as C from '../career/career.js';
-import { CLUBS, clubById, academyQuality, academyStars, clubLevel, LEVEL_NAMES, leagueFor, STAGE_LABEL, youthCA } from '../career/clubs.js';
+import { CLUBS, clubById, academyQuality, academyStars, clubLevel, LEVEL_NAMES, leagueFor, STAGE_LABEL, youthCA, ACADEMY_COUNTRIES, academiesOf, divisionName, FOREIGN_LEAGUES } from '../career/clubs.js';
+import { countryInfo } from '../career/countries.js';
 import { listSaves, saveCareer, loadCareer, deleteSave, firstFreeSlot, hasSaves, SLOTS } from '../career/save.js';
 import { createCareerMatch, extractResult } from '../career/play.js';
 import { CATALOG } from '../data/catalog.js';
@@ -210,9 +211,14 @@ function showNewCareer() {
 }
 
 // ------------------------------------------------------------------ choix du club
+// divisions proposées au filtre : niveaux français, ou championnats du pays choisi
+const levelOptions = (country) => (country === 'France'
+  ? [1, 2, 3, 4, 5, 6].map((l) => [String(l), LEVEL_NAMES[l]])
+  : FOREIGN_LEAGUES.filter((l) => l.country === country).map((l) => [String(l.tier), l.name]));
+const divisionOf = (c) => (c.foreign ? c.senior.competition : LEVEL_NAMES[clubLevel(c)]);
 function clubRows() {
   const q = G.filter.q.trim().toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '');
-  return CLUBS.filter((c) => {
+  return academiesOf(G.filter.country ?? 'France').filter((c) => {
     if (G.filter.level !== 'all' && String(clubLevel(c)) !== G.filter.level) return false;
     if (!q) return true;
     return c.name.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').includes(q);
@@ -220,13 +226,15 @@ function clubRows() {
 }
 
 function showClubPicker() {
-  const levels = [1, 2, 3, 4, 5, 6];
+  G.filter.country ??= 'France';
+  const country = G.filter.country;
   const el = show(`<div class="panel-screen picker">
     <div class="picker-head">
       <header class="screen-head"><button class="icon-btn" id="c-back2" aria-label="Retour">${icon('back', 20)}</button><h1>Où commence ta formation ?</h1></header>
       <div class="row">
+        <select id="c-country" aria-label="Pays">${ACADEMY_COUNTRIES.map((k) => `<option value="${esc(k)}" ${k === country ? 'selected' : ''}>${countryInfo(k).flag ?? '🇫🇷'} ${esc(k)}</option>`).join('')}</select>
         <input type="text" id="c-q" placeholder="Rechercher un club…" value="${esc(G.filter.q)}">
-        <select id="c-level"><option value="all">Toutes les divisions</option>${levels.map((l) => `<option value="${l}" ${G.filter.level === String(l) ? 'selected' : ''}>${esc(LEVEL_NAMES[l])}</option>`).join('')}</select>
+        <select id="c-level"><option value="all">Toutes les divisions</option>${levelOptions(country).map(([v, label]) => `<option value="${v}" ${G.filter.level === v ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select>
       </div>
     </div>
     <div class="picker-body">
@@ -240,7 +248,7 @@ function showClubPicker() {
     const rows = clubRows();
     list.innerHTML = rows.map((c) => `<li data-id="${c.id}" class="${G.pick === c.id ? 'sel' : ''}" style="${clubVars(c)}">
       <span class="cr">${crestSVG(c, 26)}</span><span class="cn">${esc(c.name)}</span>
-      <span class="cd">${esc(LEVEL_NAMES[clubLevel(c)])}</span>
+      <span class="cd">${esc(divisionOf(c))}</span>
       <span class="cs" title="Centre de formation">${stars(academyStars(c))}</span>
     </li>`).join('') || '<li class="muted">Aucun club.</li>';
     list.querySelectorAll('li[data-id]').forEach((li) => li.addEventListener('click', () => { G.pick = li.dataset.id; renderList(); renderDetail(); }));
@@ -254,17 +262,19 @@ function showClubPicker() {
     const start = Math.round((youthCA(q, 'U17') - 0.03) * 100);
     box.setAttribute('style', clubVars(c));
     box.innerHTML = `<div class="club-hero"><span class="kit-stripes" aria-hidden="true"></span>${crestSVG(c, 84)}<h2>${esc(c.name)}</h2></div>
-      <p>${c.senior ? `${esc(c.senior.competition.split(', ').pop())}${c.senior.group !== 'Unique' ? ` (groupe ${esc(c.senior.group)})` : ''}` : esc(LEVEL_NAMES[clubLevel(c)])}${c.reserve ? ` · réserve en ${esc(c.reserve.competition.split(', ').pop())}` : ''}</p>
+      <p>${c.foreign ? esc(divisionName(c)) : c.senior ? `${esc(c.senior.competition.split(', ').pop())}${c.senior.group !== 'Unique' ? ` (groupe ${esc(c.senior.group)})` : ''}` : esc(LEVEL_NAMES[clubLevel(c)])}${c.reserve ? ` · réserve en ${esc(c.reserve.competition.split(', ').pop())}` : ''}</p>
       <div class="cd-facts"><div><span>Centre de formation</span><b class="stars">${stars(academyStars(c))}</b></div><div><span>Niveau de départ</span><b class="num">${start - 5}–${start + 9}</b><small class="muted">selon la roue</small></div></div>
       <p class="small">U17 : ${esc(lg17.name)}<br>U19 : ${esc(lg19.name)}</p>
       <p>Un centre réputé t'entoure de meilleurs joueurs et de meilleurs formateurs, mais la concurrence y est plus rude.</p>
       <p><strong>Ton niveau et ton potentiel</strong> : deux roues décident, juste après. Le niveau se situe par rapport aux jeunes du club ; le potentiel ne dépend pas du club et évoluera selon tes choix.</p>
-      <p class="muted">${c.senior?.players?.length >= 11 ? 'Effectif professionnel : noms publiés par le club (notes estimées par le jeu).' : 'Effectif professionnel : non établi dans la collecte, joueurs générés.'}</p>
+      ${c.foreign ? `<p>Formation à l'étranger : ta famille te suit, l'école se fait en ${esc(countryInfo(c.country).lang)}. Pas d'équipe réserve : à 18 ans, premier contrat au club ou prêt dans un club du pays. Les sélections de France te suivent toujours.</p>` : ''}
+      <p class="muted">${c.senior?.players?.length >= 11 ? `Effectif professionnel : noms publiés${c.foreign ? ' (Wikipédia)' : ' par le club'}, notes estimées par le jeu. Tes coéquipiers en formation sont fictifs.` : 'Effectif professionnel : non établi dans la collecte, joueurs générés.'}</p>
       <button class="primary" id="c-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
     box.querySelector('#c-go').addEventListener('click', () => showWheel(c));
   };
   el.querySelector('#c-q').addEventListener('input', (e) => { G.filter.q = e.target.value; renderList(); });
   el.querySelector('#c-level').addEventListener('change', (e) => { G.filter.level = e.target.value; renderList(); });
+  el.querySelector('#c-country').addEventListener('change', (e) => { G.filter.country = e.target.value; G.filter.level = 'all'; G.pick = null; showClubPicker(); });
   el.querySelector('#c-back').addEventListener('click', showNewCareer);
   el.querySelector('#c-back2').addEventListener('click', showNewCareer);
   renderList();

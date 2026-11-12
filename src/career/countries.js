@@ -3,16 +3,17 @@
 
 // langStart : niveau de départ dans la langue du vestiaire (0 = rien compris, 0,6 = intégration sans peine).
 // Aux Pays-Bas l'anglais passe partout ; en Belgique le français suffit souvent.
+// names : noms fictifs des coéquipiers en formation ; youth : championnat de jeunes ; youthCup : coupe U19.
 export const COUNTRIES = {
-  Angleterre: { lang: 'anglais', press: 'anglaise', cup: 'fac', langStart: 0 },
-  Espagne: { lang: 'espagnol', press: 'espagnole', cup: 'cdr', langStart: 0 },
-  Italie: { lang: 'italien', press: 'italienne', cup: 'cit', langStart: 0 },
-  Allemagne: { lang: 'allemand', press: 'allemande', cup: 'dfb', langStart: 0 },
-  Portugal: { lang: 'portugais', press: 'portugaise', cup: 'tpo', langStart: 0 },
-  'Pays-Bas': { lang: 'néerlandais', press: 'néerlandaise', cup: 'knvb', langStart: 0.3 },
-  Belgique: { lang: 'néerlandais', press: 'belge', cup: 'cbe', langStart: 0.6 },
+  Angleterre: { lang: 'anglais', press: 'anglaise', cup: 'fac', langStart: 0, names: 'en', youth: 'Championnat d\'Angleterre', youthCup: 'yfa', flag: '🏴󠁧󠁢󠁥󠁮󠁧󠁿' },
+  Espagne: { lang: 'espagnol', press: 'espagnole', cup: 'cdr', langStart: 0, names: 'es', youth: 'Championnat d\'Espagne', youthCup: 'ycdr', flag: '🇪🇸' },
+  Italie: { lang: 'italien', press: 'italienne', cup: 'cit', langStart: 0, names: 'it', youth: 'Championnat d\'Italie', youthCup: 'ycit', flag: '🇮🇹' },
+  Allemagne: { lang: 'allemand', press: 'allemande', cup: 'dfb', langStart: 0, names: 'de', youth: 'Championnat d\'Allemagne', youthCup: 'ydfb', flag: '🇩🇪' },
+  Portugal: { lang: 'portugais', press: 'portugaise', cup: 'tpo', langStart: 0, names: 'pt', youth: 'Championnat du Portugal', youthCup: null, flag: '🇵🇹' },
+  'Pays-Bas': { lang: 'néerlandais', press: 'néerlandaise', cup: 'knvb', langStart: 0.3, names: 'nl', youth: 'Championnat des Pays-Bas', youthCup: null, flag: '🇳🇱' },
+  Belgique: { lang: 'néerlandais', press: 'belge', cup: 'cbe', langStart: 0.6, names: 'nl', youth: 'Championnat de Belgique', youthCup: null, flag: '🇧🇪' },
 };
-export const countryInfo = (country) => COUNTRIES[country] ?? { lang: 'la langue locale', press: 'locale', cup: null, langStart: 0 };
+export const countryInfo = (country) => COUNTRIES[country] ?? { lang: 'la langue locale', press: 'locale', cup: null, langStart: 0, names: null, youth: 'Championnat', youthCup: null };
 export const langLevel = (p, country) => p.lang?.[country] ?? countryInfo(country).langStart;
 
 // Salaire mensuel de référence (k€) d'un joueur au niveau moyen du championnat (Ligue 1 : 42)
@@ -29,6 +30,14 @@ export const FOREIGN_CUPS = {
   tpo: { country: 'Portugal', name: 'Coupe du Portugal', short: 'Coupe du Portugal', rounds: ['3e tour', '4e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.36, 0.48, 0.62, 0.76, 0.94] },
   knvb: { country: 'Pays-Bas', name: 'Coupe des Pays-Bas', short: 'Coupe des Pays-Bas', rounds: ['1er tour', '2e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.26, 0.38, 0.52, 0.62, 0.74, 0.86] },
   cbe: { country: 'Belgique', name: 'Coupe de Belgique', short: 'Coupe de Belgique', rounds: ['7e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.26, 0.38, 0.5, 0.62, 0.84] },
+};
+
+// Coupes U19 des pays étrangers (formation commencée à l'étranger) : adversaires fictifs des clubs du pays
+export const YOUTH_CUPS = {
+  yfa: { country: 'Angleterre', name: 'FA Youth Cup', short: 'FA Youth Cup', rounds: ['3e tour', '4e tour', '5e tour', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.3, 0.42, 0.54, 0.66, 0.78, 0.9] },
+  ycdr: { country: 'Espagne', name: 'Coupe du Roi U19', short: 'Coupe du Roi U19', rounds: ['8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.6, 0.7, 0.8, 0.9] },
+  ycit: { country: 'Italie', name: 'Coupe d\'Italie Primavera', short: 'Coppa Primavera', rounds: ['1er tour', '2e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.12, 0.26, 0.42, 0.58, 0.74, 0.88] },
+  ydfb: { country: 'Allemagne', name: 'Coupe d\'Allemagne U19', short: 'DFB-Pokal U19', rounds: ['1er tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.2, 0.4, 0.58, 0.76, 0.9] },
 };
 
 // En coupe d'Europe, les meilleurs clubs réels de chaque pays remplacent leurs doubles fictifs

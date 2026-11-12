@@ -92,3 +92,24 @@ test('une star reçoit des offres de l\'étranger ; une saison en Angleterre se 
   assert.ok(st.journal.length > 0);
   void buildCups;
 });
+
+test('formation à l\'étranger : championnat de jeunes du pays, coéquipiers fictifs, coupe U19, premier contrat', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'eng-arsenal', seed: 'academie-arsenal', potential: 'bel' });
+  const club = clubById('eng-arsenal');
+  assert.equal(st.stage, 'U17');
+  assert.ok(st.league.teams.length >= 10, 'championnat U17');
+  for (const t of st.league.teams) assert.equal(clubById(t.id).country, 'Angleterre', `${t.id} dans le championnat d'Angleterre U17`);
+  assert.ok(st.player.lang.Angleterre >= 0.6, 'formé sur place : il parle la langue');
+  // jamais de vrais noms chez les jeunes (mineurs)
+  const real = new Set(FOREIGN_CLUBS.flatMap((c) => c.senior.players.map((p) => p[0])));
+  for (const id of ['eng-arsenal', 'esp-barcelona', 'ita-atalanta', 'ned-ajax']) {
+    for (const stage of ['U17', 'U19']) {
+      const sq = buildTeamSquad(clubById(id), stage, 2026, null);
+      for (const p of [...sq.starters, ...sq.bench]) assert.ok(!p.real && !real.has(p.name), `${id} ${stage} : ${p.name}`);
+    }
+  }
+  // U19 : FA Youth Cup ; centre étranger au niveau d'un centre français réputé
+  st.stage = 'U19';
+  assert.ok(buildCups(st, 30).some((c) => c.id === 'yfa'));
+  assert.ok(teamCA(club, 'U17') < 0.55 && teamCA(club, 'U17') > 0.45, `U17 d'Arsenal ${teamCA(club, 'U17')}`);
+});
