@@ -847,3 +847,16 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
 .cup-log li { display: grid; grid-template-columns: 24px 1fr 20px 1.4fr auto; gap: 7px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 0.86em; }
 .cup-log .cl-round { color: var(--muted); }
 .cup-log b { font: 800 1.1em var(--f-display); color: var(--chalk); }
+
+/* contrat, mercato */
+.contract-line { display: flex; gap: 7px; align-items: flex-start; margin: 0; font-size: 0.8em; color: var(--muted); line-height: 1.45; }
+.contract-line .ico-svg { margin-top: 3px; color: var(--club2, var(--flood)); }
+.contract-line b { color: var(--chalk); }
+.window { margin: 6px 0 12px; padding: 10px 12px; border-radius: var(--r-md); background: rgba(120, 160, 255, 0.08); border: 1px solid rgba(120, 160, 255, 0.3); }
+.window h3 { margin: 0 0 6px; color: #9cc3ff; }
+.win-list { list-style: none; margin: 0 0 6px; padding: 0; }
+.win-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.win-list li > span { display: flex; flex-direction: column; }
+.win-list small { font-size: 0.78em; }
+.of-terms { display: block; margin-top: 3px; font-size: 0.82em; color: var(--chalk); }
+.of-terms b { color: var(--flood); }

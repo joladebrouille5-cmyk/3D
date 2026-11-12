@@ -12,7 +12,9 @@ import {
   clubById, academyQuality, leagueFor, teamName, teamStrength, buildTeamSquad, rivalFor,
   roleCA, genAttrs, youthCA, SENIOR_CA, clubLevel, teamCA, CLUBS, ROLE_WEIGHTS, STAGE_LABEL,
 } from './clubs.js';
-import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup } from './competitions.js';
+import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
+import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL } from './market.js';
+export { money, CONTRACT_LABEL };
 
 export const SAVE_VERSION = 1;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -58,6 +60,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
       firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face,
       attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6,
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
+      contract: { clubId, type: 'aspirant', until: 2027, salary: 0.3 }, money: 0, loan: null,
     },
     clubId, stage: 'U17', season: 2026, week: 0,
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
@@ -101,7 +104,7 @@ function roundRobin(ids) {
   return [...rounds, ...rounds.map((rd) => rd.map(([a, b]) => [b, a]))];
 }
 
-export function startSeason(st) {
+function buildLeague(st) {
   const club = clubById(st.clubId);
   const lg = leagueFor(club, st.stage);
   const r = rngOf(st);
@@ -113,6 +116,12 @@ export function startSeason(st) {
     teams: lg.clubs.map((id) => ({ id, name: teamName(clubById(id), st.stage, lg), p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0 })),
     rounds: roundRobin(ids), results: [],
   };
+  return lg;
+}
+
+export function startSeason(st) {
+  const club = clubById(st.clubId);
+  const lg = buildLeague(st);
   st.week = 0;
   st.seasonStats = { caStart: currentCA(st), apps: 0, starts: 0, minutes: 0, goals: 0, ratings: [], notSelected: 0, injuredWeeks: 0 };
   st.monthReview = null;
@@ -129,8 +138,57 @@ export function startSeason(st) {
 function weekStart(st) {
   const r = rngOf(st);
   st.callup = maybeCallup(st, r, currentCA(st));
+  // mercato d'hiver : à mi-saison, des clubs se manifestent (prêt ou transfert)
+  const len = st.league.rounds.length;
+  if (st.week === Math.round(WINTER_WINDOW * len) && !st.window) {
+    const offers = winterOffers(st, currentCA(st), r);
+    if (offers.length) { st.window = { week: st.week, offers }; log(st, `Mercato d'hiver : ${offers.length} club(s) se manifestent.`); }
+  }
+  if (st.window && st.week !== st.window.week) st.window = null; // la fenêtre se referme
   saveRng(st, r);
   if (st.callup) log(st, `Convocation : ${st.callup.label}.`);
+}
+
+// Mercato d'hiver : accepter une offre (prêt ou transfert) avant de valider la semaine
+export function acceptWinterOffer(st, idx) {
+  const o = st.window?.offers?.[idx];
+  if (!o || st.phase !== 'week') throw new Error('Offre indisponible.');
+  midSeasonMove(st, o);
+  st.window = null;
+}
+export function declineWinter(st) { if (st.window) { log(st, 'Mercato d\'hiver : tu restes au club.'); st.window = null; } }
+
+// Changement de club en cours de saison : nouveau championnat déjà entamé, statistiques par club
+function midSeasonMove(st, o) {
+  const p = st.player, old = clubById(st.clubId);
+  const table = standings(st);
+  const s = st.seasonStats;
+  const avg = s.ratings.length ? s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length : null;
+  st.history.push({ season: st.season, age: p.age, club: old.name, stage: st.stage, league: st.league.name, pos: table.findIndex((t) => t.id === st.clubId) + 1, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd: currentCA(st), partial: true, cups: [] });
+  if (o.loan) {
+    p.loan = { parentId: st.clubId, parentStage: st.stage, parentContract: p.contract };
+    p.contract = { clubId: o.clubId, type: 'prêt', until: st.season, salary: p.contract.salary };
+  } else {
+    p.loan = null;
+    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years - 1, salary: o.contract.salary };
+  }
+  const frac = st.week / st.league.rounds.length;
+  st.clubId = o.clubId; st.stage = o.stage; p.trust = 0.45;
+  buildLeague(st);
+  const len = st.league.rounds.length;
+  const newWeek = Math.min(len - 1, Math.max(1, Math.round(frac * len)));
+  const r = rngOf(st);
+  for (let w = 0; w < newWeek; w++) {
+    st.week = w;
+    for (const [h, a] of st.league.rounds[w]) { const [gh, ga] = aggregateScore(st, h, a, r); recordResult(st, h, a, gh, ga); }
+  }
+  saveRng(st, r);
+  st.week = newWeek;
+  st.seasonStats = { caStart: currentCA(st), apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, ratings: [], notSelected: 0, injuredWeeks: 0 };
+  st.cups = []; st.weekExtras = null; st.callup = null;
+  const t = `${o.loan ? 'Prêté' : 'Transféré'} à ${clubById(o.clubId).name} en cours de saison (${st.league.name}).`;
+  log(st, t);
+  (st.lastReport ??= { lines: [] }).lines.push(t);
 }
 
 // Après un match : rencontre supplémentaire de la semaine (coupe, sélection) ou fin de semaine
@@ -294,6 +352,10 @@ export function ensureState(st) {
   st.cups ??= [];
   st.trophies ??= [];
   st.player.intl ??= { caps: {}, goals: 0, best: null };
+  const p = st.player;
+  p.money ??= 0;
+  p.loan ??= null;
+  p.contract ??= { clubId: st.clubId, type: contractType(clubById(st.clubId), st.stage), until: st.season + 1, salary: salaryFor(clubById(st.clubId), st.stage, currentCA(st), p.age) };
   st.lastMonthReview ??= null;
   st.monthReview ??= null;
   return st;
@@ -779,6 +841,9 @@ export function finishWeek(st) {
   saveRng(st, r);
   if (st.matchday?.bye) st.lastReport?.lines.push('Pas de match cette semaine (journée d\'exemption).');
   st.player.caHistory.push(Math.round(currentCA(st) * 1000) / 1000);
+  // salaire de la semaine
+  // salaire annuel réparti sur les semaines de la saison
+  if (st.player.contract) { const pay = (st.player.contract.salary * 12) / st.league.rounds.length; st.player.money += pay; st.month.earned = (st.month.earned ?? 0) + pay; }
   st.matchday = null;
   st.week++;
   if (st.week >= seasonLength(st)) { endSeason(st); return; }
@@ -815,7 +880,7 @@ function buildMonthReview(st) {
     const attrs = ATTR_KEYS.map((k) => ({ k, d: e.d[`a:${k}`] ?? 0 })).filter((x) => Math.abs(x.d) > 2e-5).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
     const g = {};
     for (const k of GAUGES) if (Math.abs(e.d[k] ?? 0) > 5e-4) g[k] = e.d[k];
-    return { key, kind: kindOf(key), label: sourceLabel(key), n: e.n, ca: caFromAttrDeltas(p.role, e.d), pa: e.d.pa ?? 0, gauges: g, attrs };
+  return { key, kind: kindOf(key), label: sourceLabel(key), n: e.n, ca: caFromAttrDeltas(p.role, e.d), pa: e.d.pa ?? 0, gauges: g, attrs };
   }).filter((x) => x.n > 0 || Math.abs(x.ca) > 1e-5 || Math.abs(x.pa) > 1e-5 || Object.keys(x.gauges).length);
   const order = { train: 0, off: 1, match: 2, event: 3, injury: 4, staff: 5, rest: 6, nature: 7 };
   sources.sort((a, b) => order[a.kind] - order[b.kind] || b.n - a.n);
@@ -850,7 +915,7 @@ function buildMonthReview(st) {
     index: mo.index, season: st.season, fromWeek: mo.startWeek + 1, toWeek: st.week,
     ca: [mo.ca0, ca1], est: [mo.est0, potentialEstimate(st)], paDelta: p.pa - mo.base.pa,
     gauges, attrs, sources, totals, matches, pos: [mo.pos0, pos1], teams: table.length,
-    weeks: mo.weeks, advice: [],
+    weeks: mo.weeks, advice: [], earned: mo.earned ?? 0,
   };
   review.advice = monthAdvice(st, review);
   return review;
@@ -908,37 +973,50 @@ function buildOffers(st, pos, n) {
   const r = rngOf(st);
   const youth = st.stage === 'U17' || st.stage === 'U19';
   const proThreshold = (c) => SENIOR_CA[clubLevel(c)] - 0.07;
+  const ss = st.seasonStats;
+  const avg = ss.ratings.length ? ss.ratings.reduce((x, y) => x + y, 0) / ss.ratings.length : 0;
+  const terms = (c, stage, opts) => contractTerms(c, stage, ca, p.age + 0, opts);
   if (youth && p.age <= 17) {
     // reste en formation : U17 jusqu'à 16 ans, puis U19
     const next = p.age >= 17 ? 'U19' : 'U17';
     const expected = youthCA(academyQuality(club), next) - 0.06 - (next === 'U19' && st.stage === 'U17' ? 0.03 : 0);
     if (ca >= expected || p.trust > 0.7) {
-      offers.push({ clubId: club.id, stage: next, kind: 'Prolongation en formation', own: true });
+      offers.push({ clubId: club.id, stage: next, kind: 'Prolongation en formation', own: true, contract: terms(club, next) });
       // une belle saison attire les recruteurs de centres plus réputés
-      const ss = st.seasonStats;
-      const avg = ss.ratings.length ? ss.ratings.reduce((x, y) => x + y, 0) / ss.ratings.length : 0;
       const shine = (avg >= 7.0 && ss.apps >= 12) || ss.goals >= 8 || ca >= expected + 0.05 || ((p.scouted ?? 0) > 0 && avg >= 6.7);
       if (shine) {
         const q = academyQuality(club);
         const better = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) > q + 0.03 && ca >= youthCA(academyQuality(c), next) - 0.05);
-        for (const c of shuffle(better, r).slice(0, avg >= 7.3 || ss.goals >= 12 ? 2 : 1)) offers.push({ clubId: c.id, stage: next, kind: 'Repéré par un centre plus réputé' });
+        for (const c of shuffle(better, r).slice(0, avg >= 7.3 || ss.goals >= 12 ? 2 : 1)) offers.push({ clubId: c.id, stage: next, kind: 'Repéré par un centre plus réputé', contract: terms(c, next) });
       }
     } else {
       // libéré : d'autres centres de formation, moins exigeants
       const q = academyQuality(club);
       const cands = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) < q - 0.02 && ca >= youthCA(academyQuality(c), next) - 0.07);
-      for (const c of shuffle(cands, r).slice(0, 3)) offers.push({ clubId: c.id, stage: next, kind: 'Essai concluant dans un autre centre' });
+      for (const c of shuffle(cands, r).slice(0, 3)) offers.push({ clubId: c.id, stage: next, kind: 'Essai concluant dans un autre centre', contract: terms(c, next) });
     }
   } else {
     // contrats seniors
-    if (ca >= proThreshold(club) && club.senior) offers.push({ clubId: club.id, stage: 'Pro', kind: st.stage === 'Pro' ? 'Prolongation' : 'Premier contrat professionnel', own: true });
-    else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true });
+    const contractRuns = !p.loan && p.contract && p.contract.clubId === club.id && p.contract.until > st.season;
+    if (p.loan) {
+      const parent = clubById(p.loan.parentId);
+      offers.push({ clubId: parent.id, stage: p.loan.parentStage, kind: `Retour de prêt à ${parent.name}`, own: true, keep: true });
+      if (avg >= 6.9 && club.senior && ca >= proThreshold(club)) offers.push({ clubId: club.id, stage: 'Pro', kind: 'Transfert définitif', contract: terms(club, 'Pro') });
+    } else if (contractRuns) {
+      offers.push({ clubId: club.id, stage: st.stage, kind: `Poursuivre ton contrat (fin en juin ${p.contract.until + 1})`, own: true, keep: true });
+      for (const o of seasonLoanOffers(st, ca, r)) offers.push(o);
+    } else if (ca >= proThreshold(club) && club.senior) {
+      offers.push({ clubId: club.id, stage: 'Pro', kind: st.stage === 'Pro' ? 'Prolongation' : 'Premier contrat professionnel', own: true, contract: terms(club, 'Pro', { first: st.stage !== 'Pro' }) });
+    } else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) {
+      offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true, contract: terms(club, 'Réserve') });
+    }
     const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0);
-    const cands = CLUBS.filter((c) => c.id !== club.id && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
-    for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: 'Offre de contrat' });
+    const cands = CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
+    for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
     if (!offers.length) {
       const amateur = CLUBS.filter((c) => c.senior && clubLevel(c) === 5);
-      offers.push({ clubId: r.pick(amateur).id, stage: 'Pro', kind: 'Contrat fédéral (National 2)' });
+      const c = r.pick(amateur);
+      offers.push({ clubId: c.id, stage: 'Pro', kind: 'Contrat fédéral (National 2)', contract: terms(c, 'Pro') });
     }
   }
   saveRng(st, r);
@@ -947,16 +1025,39 @@ function buildOffers(st, pos, n) {
   return offers;
 }
 
+// L'agent tente d'améliorer une offre (une fois par offre)
+export function negotiateOffer(st, idx) {
+  if (st.phase !== 'season_end' || !st.player.agent) throw new Error('Pas d\'agent pour négocier.');
+  const r = rngOf(st);
+  const out = negotiate(st.offers[idx], currentCA(st), r);
+  saveRng(st, r);
+  log(st, `Négociation avec ${clubById(st.offers[idx].clubId).name} : ${out.text}`);
+  return out;
+}
+
 function shuffle(a, r) { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(r.next() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
 
 export function acceptOffer(st, idx) {
   if (st.phase !== 'season_end') throw new Error('Aucune offre à accepter.');
   const o = st.offers[idx];
+  if (o.withdrawn) throw new Error('Cette offre a été retirée.');
   if (o.retire) { st.retired = true; st.phase = 'retired'; log(st, 'Fin de carrière de joueur.'); return; }
+  const p = st.player;
+  if (o.keep) {
+    if (p.loan && o.clubId === p.loan.parentId) { p.contract = p.loan.parentContract; p.loan = null; log(st, `Retour de prêt à ${clubById(o.clubId).name}.`); }
+  } else if (o.loan) {
+    p.loan = { parentId: st.clubId, parentStage: st.stage, parentContract: p.contract };
+    p.contract = { clubId: o.clubId, type: 'prêt', until: st.season + 1, salary: p.contract.salary };
+  } else if (o.contract) {
+    p.loan = null;
+    p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years, salary: o.contract.salary };
+    if (p.agent && !o.own) { p.money -= o.contract.salary; log(st, `Commission de l'agent : ${money(o.contract.salary)}.`); }
+  }
   const changed = o.clubId !== st.clubId;
   st.clubId = o.clubId; st.stage = o.stage; st.season++;
   st.offers = null;
-  if (changed) { st.player.trust = 0.45; log(st, `Signature à ${clubById(o.clubId).name} (${o.kind}).`); }
+  if (changed) { p.trust = 0.45; log(st, `Signature à ${clubById(o.clubId).name} (${o.kind}${o.contract ? `, ${CONTRACT_LABEL[o.contract.type].toLowerCase()} de ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}, ${money(o.contract.salary)}/mois` : ''}).`); }
+  else if (o.contract) log(st, `${o.kind} : ${CONTRACT_LABEL[o.contract.type].toLowerCase()} de ${o.contract.years} an(s), ${money(o.contract.salary)}/mois.`);
   startSeason(st);
 }
 

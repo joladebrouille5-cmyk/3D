@@ -292,6 +292,7 @@ function profileCard(st) {
         <div class="lvl"><span class="label">Niveau actuel</span><span class="value">${C.pct(ca)}</span><span class="delta ${season >= 0 ? 'up' : 'down'}">${fmtLvl(season)} cette saison</span></div>
         <div class="pot"><span class="label">Potentiel estimé par le staff</span><span class="stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
         <p class="role-line">${esc(C.ROLES[p.role])}</p>
+        ${p.contract ? `<p class="contract-line">${icon('save', 14)}<span>${p.loan ? `Prêté par ${esc(clubById(p.loan.parentId).name)} · ` : ''}${esc(C.CONTRACT_LABEL[p.contract.type] ?? 'Contrat')} · <b>${C.money(p.contract.salary)}</b>/mois · fin juin ${p.contract.until + 1}<br>Économies : <b>${C.money(p.money)}</b>${p.agent ? ' · agent' : ''}</span></p>` : ''}
       </div>
     </div>
     ${p.injuryWeeks ? `<p class="error">${icon('injury', 16)} Blessé : encore ${p.injuryWeeks} semaine(s).</p>` : ''}
@@ -378,7 +379,11 @@ function weekCard(st) {
   const sel = C.selectionForecast(st);
   const opp = fx && !fx.bye ? st.league.teams.find((t) => t.id === fx.opponentId)?.name : null;
   const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
-  return `<section class="card week">${report}
+  return `<section class="card week">
+    ${st.window && st.window.week === st.week ? `<div class="window"><h3>${icon('swap', 18)} Mercato d'hiver</h3>
+      <ul class="win-list">${st.window.offers.map((o, i) => { const c = clubById(o.clubId); return `<li style="${clubVars(c)}">${crest(c, 30)}<span><b>${esc(c.name)}</b><small>${esc(o.kind)}${o.contract ? ` · ${C.money(o.contract.salary)}/mois, ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}` : ' · tu gardes ton contrat'} · ${esc(LEVEL_NAMES[clubLevel(c)])}</small></span><button data-win="${i}">Accepter</button></li>`; }).join('')}</ul>
+      <button class="ghost small" id="win-stay">Rester au club</button></div>` : ''}
+    ${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
     ${extrasForWeek(st).map((x) => `<p class="extra-note ${x.kind}">${icon(x.kind === 'nat' ? 'star' : 'trophy', 18)}<span>${x.kind === 'nat' ? `<b>Convoqué !</b> ${esc(x.label)} cette semaine` : `En semaine : <b>${esc(x.label)}</b>`}</span></p>`).join('')}
     ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span></p>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
@@ -451,7 +456,7 @@ function monthReviewHtml(rv, st, closable) {
       <div><span class="label">Niveau</span><span class="value">${C.pct(rv.ca[0])} → ${C.pct(rv.ca[1])}</span>${chip('', dCa, { digits: 1 })}</div>
       <div><span class="label">Potentiel estimé</span><span class="value stars">${stars(C.toStars(e1.center))}</span><span class="muted">${C.pct(e0.lo)}–${C.pct(e0.hi)} → ${C.pct(e1.lo)}–${C.pct(e1.hi)}</span>${chip('Ce mois-ci', rv.paDelta, { digits: 2, title: 'Variation réelle du potentiel ce mois-ci, en points (détail par source ci-dessous)' })}</div>
       <div><span class="label">Matchs</span><span class="value">${m.played}<small> joué${m.played > 1 ? 's' : ''}</small></span><span class="muted">${m.minutes} min · ${m.goals} but${m.goals > 1 ? 's' : ''} · note ${m.avg != null ? m.avg.toFixed(1) : '—'}</span><span class="muted">Équipe : ${m.w} V · ${m.d} N · ${m.l} D</span></div>
-      <div><span class="label">Classement</span><span class="value">${rv.pos[0] ?? '—'}<sup>e</sup> → ${rv.pos[1]}<sup>e</sup></span><span class="muted">sur ${rv.teams} équipes</span></div>
+      <div><span class="label">Classement</span><span class="value">${rv.pos[0] ?? '—'}<sup>e</sup> → ${rv.pos[1]}<sup>e</sup></span><span class="muted">sur ${rv.teams} équipes</span>${rv.earned ? `<span class="muted">Salaire perçu : ${C.money(rv.earned)}</span>` : ''}</div>
     </div>
 
     <h3>D'où vient ta progression (${fmtLvl(dCa)} de niveau)</h3>
@@ -539,6 +544,8 @@ function bindHub(el) {
   pickIn('[data-int]', 'int', 'intensity');
   pickIn('[data-off]', 'off', 'offpitch');
   el.querySelector('#w-go')?.addEventListener('click', () => { C.submitWeek(st, { ...G.choices }); persist(); renderHub(); });
+  el.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => { C.acceptWinterOffer(st, Number(b.dataset.win)); persist(); renderHub(); }));
+  el.querySelector('#win-stay')?.addEventListener('click', () => { C.declineWinter(st); persist(); renderHub(); });
   el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { C.resolveEvent(st, Number(b.dataset.ev)); persist(); renderHub(); }));
   el.querySelector('#w-bye')?.addEventListener('click', () => { C.applyMatchResult(st, {}); persist(); renderHub(); });
   el.querySelector('#w-sim')?.addEventListener('click', simulateWeekMatch);
@@ -609,11 +616,14 @@ function renderSeasonEnd() {
     <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
     <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">
-      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span></span>
-      <button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button></li>`).join('')}</ul>
+      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span>
+        ${o.contract ? `<span class="of-terms">${esc(C.CONTRACT_LABEL[o.contract.type])} · <b>${C.money(o.contract.salary)}</b>/mois · ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}${o.negotiated ? ' · négocié' : ''}</span>` : o.loan ? '<span class="of-terms">Prêt : ton contrat actuel continue</span>' : o.keep ? '<span class="of-terms">Tu gardes ton contrat actuel</span>' : ''}</span>
+      <span class="row">${o.withdrawn ? '<span class="error">Offre retirée</span>' : `${st.player.agent && o.contract && !o.negotiated ? `<button class="ghost" data-neg="${i}">${icon('chat', 16)} Négocier</button>` : ''}<button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button>`}</span></li>`).join('')}</ul>
+    ${G.negMsg ? `<p class="note">${esc(G.negMsg)}</p>` : ''}
     ${st.offers.some((o) => o.own) ? '' : '<p class="note">Ton club ne te conserve pas. L\'échec ouvre d\'autres chemins : choisis où rebondir.</p>'}
   </div>`);
-  el.querySelectorAll('[data-offer]').forEach((b) => b.addEventListener('click', () => { C.acceptOffer(st, Number(b.dataset.offer)); persist(); renderHub(); }));
+  el.querySelectorAll('[data-offer]').forEach((b) => b.addEventListener('click', () => { G.negMsg = null; C.acceptOffer(st, Number(b.dataset.offer)); persist(); renderHub(); }));
+  el.querySelectorAll('[data-neg]').forEach((b) => b.addEventListener('click', () => { G.negMsg = C.negotiateOffer(st, Number(b.dataset.neg)).text; persist(); renderSeasonEnd(); }));
 }
 
 function renderRetired() {
