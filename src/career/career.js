@@ -14,7 +14,9 @@ import {
 } from './clubs.js';
 import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL } from './market.js';
-import { tierById } from './potential.js';
+import { tierById, levelTierById } from './potential.js';
+import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
+export { SPECIALS, specialById, drillZone, DRILL_LABEL };
 import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy } from './spending.js';
 export { SERVICES, PURCHASES, monthlyCost, canBuy };
 export { money, CONTRACT_LABEL };
@@ -42,18 +44,21 @@ export const OFFPITCH = {
   extra: { label: 'Séance en plus', desc: 'Progression accrue ; fatigue et risque de blessure.' },
   repos: { label: 'Repos et famille', desc: 'Récupération et moral.' },
   sortie: { label: 'Sortie entre amis', desc: 'Moral en hausse ; discipline et potentiel en baisse.' },
+  special: { label: 'Proposition de la semaine', desc: 'Une occasion qui ne revient pas la semaine suivante.' },
 };
 export const ROLES = { GK: 'Gardien', CB: 'Défenseur central', FB: 'Latéral', DM: 'Milieu défensif', CM: 'Milieu central', AM: 'Milieu offensif', W: 'Ailier', ST: 'Avant-centre' };
 
 // ------------------------------------------------------------------ création
-export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null, potential = null }) {
+export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null, potential = null, level = null }) {
   const club = clubById(clubId);
   if (!club) throw new Error(`Club inconnu : ${clubId}`);
   const s = String(seed ?? Math.floor(Math.random() * 1e9));
   const rng = new Rng(`career:${s}`);
   const q = academyQuality(club);
   // niveau actuel : dépend du centre de formation (benjamin de l'effectif U17)
-  const ca0 = youthCA(q, 'U17') - 0.03 + rng.gauss(0, 0.015);
+  // tiré par la roue du niveau (palier, valeur exacte cachée dedans) ; sans roue, tirage direct
+  const lvTier = level ? levelTierById(level) : null;
+  const ca0 = youthCA(q, 'U17') - 0.03 + (lvTier ? rng.range(lvTier.lo, lvTier.hi) : rng.gauss(0, 0.015));
   const attrs = genAttrs(role, ca0, rng, 0.045);
   // potentiel : indépendant du club. Tiré par la roue (palier choisi par le sort, valeur exacte
   // cachée dans le palier) ; sans roue, tirage direct.
@@ -69,6 +74,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
       contract: { clubId, type: 'aspirant', until: 2027, salary: 0.3 }, money: 0, loan: null,
       potentialTier: tier ? { id: tier.id, label: tier.label } : null,
+      levelTier: lvTier ? { id: lvTier.id, label: lvTier.label } : null,
     },
     clubId, stage: 'U17', season: 2026, week: 0,
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
@@ -146,6 +152,9 @@ export function startSeason(st) {
 // Début de semaine : trêve internationale éventuelle (convocation annoncée à l'avance)
 function weekStart(st) {
   const r = rngOf(st);
+  // la semaine qui commence : demande du coach et proposition hors terrain
+  const req = coachRequest(st, r);
+  st.weekly = { week: st.week, coachFocus: req.focus, why: req.why, special: pickSpecial(st, r) };
   st.callup = maybeCallup(st, r, currentCA(st));
   // mercato d'hiver : à mi-saison, des clubs se manifestent (prêt ou transfert)
   const len = st.league.rounds.length;
@@ -455,7 +464,7 @@ export function ensureState(st) {
 
 // ------------------------------------------------------------------ semaine
 // Effets d'une semaine. `r` nul = mode « attendu » (aperçu) : pas d'aléa, pas de blessure.
-function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
+function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
   const p = st.player;
   const youth = st.stage === 'U17' || st.stage === 'U19';
   let injuryRisk = 0;
@@ -469,9 +478,11 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
   }
   const it = INTENSITY[intensity] ?? INTENSITY.normale;
   const freshBefore = p.fresh;
-  injuryRisk = (0.006 + it.injury + (freshBefore + it.fresh < 0.35 ? 0.03 : 0) + (offpitch === 'extra' ? 0.01 : 0)) * serviceEffects(p).injury;
-  // entraînement : thème + intensité
-  const trainGrowth = it.growth * (focus === 'recuperation' ? 0.35 : 1);
+  const sp = offpitch === 'special' ? specialById(st.weekly?.special) : null;
+  injuryRisk = (0.006 + it.injury + (freshBefore + it.fresh < 0.35 ? 0.03 : 0) + (offpitch === 'extra' ? 0.01 : 0)) * serviceEffects(p).injury * (sp?.injury ?? 1);
+  // entraînement : thème + intensité, et l'atelier de la semaine (geste réussi ou non)
+  const trainGrowth = it.growth * (focus === 'recuperation' ? 0.35 : 1) * (DRILL_MUL[drill] ?? 1);
+  if (drill && DRILL_MUL[drill] && r) rep.lines.push(`Atelier : ${DRILL_LABEL[drill].toLowerCase()}${drill === 'parfait' ? ' — séance nettement plus profitable' : drill === 'rate' ? ' — séance moins profitable' : ''}.`);
   track(st, `train:${focus}`, () => {
     p.fresh += it.fresh + (focus === 'recuperation' ? 0.12 : 0);
     p.trust += it.trust;
@@ -486,8 +497,14 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
     if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.001; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
     if (offpitch === 'repos') { p.fresh += 0.15; p.morale += 0.04; }
     if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; p.team += 0.015; }
-    if (youth && offpitch !== 'ecole') p.school -= 0.012; // la scolarité s'érode si on la néglige
+    if (sp) { const txt = sp.apply(p); if (sp.progress) progress(st, 'match', sp.progress, r); if (r && txt) rep.lines.push(txt); }
+    if (youth && offpitch !== 'ecole' && !(sp?.id === 'soutien')) p.school -= 0.012; // la scolarité s'érode si on la néglige
   });
+  // suivre la demande du coach : il le remarque
+  if (st.weekly?.coachFocus && focus === st.weekly.coachFocus) {
+    track(st, 'staff', () => { p.trust += 0.015; p.morale += 0.005; });
+    if (r) rep.lines.push('Tu as suivi la demande du coach : il l\'a remarqué.');
+  }
   // ton entourage (abonnements payés avec tes économies)
   const sfx = serviceEffects(p);
   if (sfx.fresh || sfx.morale || sfx.composure || sfx.decisions || sfx.pa) {
@@ -576,6 +593,7 @@ export function previewWeek(st, choices) {
 
 export function sourceLabel(key) {
   if (key.startsWith('train:')) return `Entraînement — ${FOCUS[key.slice(6)]?.label ?? key.slice(6)}`;
+  if (key === 'off:special') return 'Propositions de la semaine';
   if (key.startsWith('off:')) return OFFPITCH[key.slice(4)]?.label ?? key.slice(4);
   return SOURCE_LABELS[key] ?? key;
 }

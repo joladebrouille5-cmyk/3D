@@ -43,3 +43,20 @@ test('roue : le palier tiré fixe le potentiel de départ, qui évolue ensuite',
   const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'a' });
   assert.equal(st.player.potentialTier, null);
 });
+
+test('roue du niveau : probabilités, parts et effet sur le niveau de départ', async () => {
+  const { LEVEL_TIERS, WHEELS, slicesOf, drawFrom } = await import('../src/career/potential.js');
+  const { youthCA, academyQuality, clubById } = await import('../src/career/clubs.js');
+  assert.ok(Math.abs(LEVEL_TIERS.reduce((a, t) => a + t.p, 0) - 1) < 1e-9);
+  const sl = slicesOf(WHEELS.level);
+  assert.ok(Math.abs(sl.at(-1).end - 360) < 1e-9);
+  assert.equal(drawFrom(WHEELS.level, 0.999).id, 'precoce');
+  const base = youthCA(academyQuality(clubById('fc-nantes')), 'U17') - 0.03;
+  const ca = (lv, seed) => C.currentCA(C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed, level: lv }));
+  const avg = (lv) => ['a', 'b', 'c', 'd', 'e', 'f'].reduce((s, sd) => s + ca(lv, sd), 0) / 6;
+  assert.ok(avg('precoce') > avg('niveau') + 0.05, 'un précoce part bien plus haut');
+  assert.ok(avg('retard') < base, 'en retard : sous le repère du centre');
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'x', level: 'surclasse', potential: 'bon' });
+  assert.equal(st.player.levelTier.id, 'surclasse');
+  assert.ok(st.player.pa > C.currentCA(st), 'le potentiel reste au-dessus du niveau');
+});

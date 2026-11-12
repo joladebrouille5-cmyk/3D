@@ -11,7 +11,8 @@ import { avatar, faceUrl, faceIndexFor, faceSample } from './faces.js';
 import { extrasForWeek } from '../career/competitions.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
 import { sound } from './sound.js';
-import { TIERS, wheelSlices, drawTier, tierById } from '../career/potential.js';
+import { WHEELS, slicesOf, drawFrom, tierById, LEVEL_TIERS } from '../career/potential.js';
+const LEVEL_COLORS = Object.fromEntries(LEVEL_TIERS.map((t) => [t.id, t.color]));
 const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -235,10 +236,10 @@ function showClubPicker() {
     box.setAttribute('style', clubVars(c));
     box.innerHTML = `<div class="club-hero"><span class="kit-stripes" aria-hidden="true"></span>${crestSVG(c, 84)}<h2>${esc(c.name)}</h2></div>
       <p>${c.senior ? `${esc(c.senior.competition.split(', ').pop())}${c.senior.group !== 'Unique' ? ` (groupe ${esc(c.senior.group)})` : ''}` : esc(LEVEL_NAMES[clubLevel(c)])}${c.reserve ? ` · réserve en ${esc(c.reserve.competition.split(', ').pop())}` : ''}</p>
-      <div class="cd-facts"><div><span>Centre de formation</span><b class="stars">${stars(academyStars(c))}</b></div><div><span>Ton niveau de départ</span><b class="num">${start}</b></div></div>
+      <div class="cd-facts"><div><span>Centre de formation</span><b class="stars">${stars(academyStars(c))}</b></div><div><span>Niveau de départ</span><b class="num">${start - 5}–${start + 9}</b><small class="muted">selon la roue</small></div></div>
       <p class="small">U17 : ${esc(lg17.name)}<br>U19 : ${esc(lg19.name)}</p>
       <p>Un centre réputé t'entoure de meilleurs joueurs et de meilleurs formateurs, mais la concurrence y est plus rude.</p>
-      <p><strong>Ton potentiel</strong> : c'est la roue qui décide, juste après — indépendamment du club. Il évoluera ensuite selon tes choix.</p>
+      <p><strong>Ton niveau et ton potentiel</strong> : deux roues décident, juste après. Le niveau se situe par rapport aux jeunes du club ; le potentiel ne dépend pas du club et évoluera selon tes choix.</p>
       <p class="muted">${c.senior?.players?.length >= 11 ? 'Effectif professionnel : noms publiés par le club (notes estimées par le jeu).' : 'Effectif professionnel : non établi dans la collecte, joueurs générés.'}</p>
       <button class="primary" id="c-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
     box.querySelector('#c-go').addEventListener('click', () => showWheel(c));
@@ -251,13 +252,20 @@ function showClubPicker() {
   if (G.pick) renderDetail();
 }
 
-// ------------------------------------------------------------------ roue du potentiel
-// Un seul tour, pas de relance : le sort fixe le palier, les choix feront le reste.
-const TIER_SHORT = { modeste: 'Modeste', bon: 'Bon espoir', bel: 'Bel espoir', grand: 'Grand espoir', pepite: 'Pépite', phenomene: 'Phénomène' };
+// ------------------------------------------------------------------ roues du niveau et du potentiel
+// Deux tours, sans relance : le niveau de départ (par rapport aux jeunes du centre choisi), puis le
+// potentiel. Le sort fixe les paliers ; les choix de la carrière feront le reste.
 const tierStars = (t) => stars(C.toStars((t.lo + t.hi) / 2));
+const WHEEL_STEPS = ['level', 'potential'];
+// texte des paliers : étoiles pour le potentiel, niveaux chiffrés (selon le club) pour le niveau
+function tierRange(w, t, club) {
+  if (w.id === 'potential') return `<span class="stars">${tierStars(t)}</span>`;
+  const base = youthCA(academyQuality(club), 'U17') - 0.03;
+  return `<span class="w-num">${C.pct(base + t.lo)}–${C.pct(base + t.hi)}</span>`;
+}
 
-function wheelSVG(face) {
-  const sl = wheelSlices();
+function wheelSVG(face, w) {
+  const sl = slicesOf(w);
   const R = 90;
   const pt = (a, r) => { const t = ((a - 90) * Math.PI) / 180; return `${(r * Math.cos(t)).toFixed(2)} ${(r * Math.sin(t)).toFixed(2)}`; };
   const parts = sl.map((s, i) => {
@@ -265,7 +273,7 @@ function wheelSVG(face) {
     return `<g class="ws" data-tier="${s.id}" data-i="${i}">
       <path d="M0 0L${pt(s.start, R)}A${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${pt(s.end, R)}Z" fill="${s.tier.color}"/>
       <path d="M0 0L${pt(s.start, R)}A${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${pt(s.end, R)}Z" fill="url(#w-shade)"/>
-      <text transform="rotate(${(mid - 90).toFixed(2)}) translate(84 0)" text-anchor="end" dominant-baseline="central" font-size="${span < 14 ? 6.2 : span < 24 ? 7 : 7.8}">${esc(TIER_SHORT[s.id].toUpperCase())}</text>
+      <text transform="rotate(${(mid - 90).toFixed(2)}) translate(84 0)" text-anchor="end" dominant-baseline="central" font-size="${span < 14 ? 6.2 : span < 24 ? 7 : 7.8}">${esc(w.short[s.id].toUpperCase())}</text>
     </g>`;
   }).join('');
   const seps = sl.map((s) => `<line x1="0" y1="0" x2="${pt(s.start, R).replace(' ', '" y2="')}"/>`).join('');
@@ -273,7 +281,7 @@ function wheelSVG(face) {
   const hub = face
     ? `<clipPath id="w-hubclip"><circle r="17"/></clipPath><image href="${face}" x="-17" y="-19" width="34" height="38" clip-path="url(#w-hubclip)" preserveAspectRatio="xMidYMin slice"/>`
     : `<text class="w-hubstar" text-anchor="middle" dominant-baseline="central">★</text>`;
-  return `<svg class="wheel" viewBox="-110 -114 220 224" role="img" aria-label="Roue du potentiel">
+  return `<svg class="wheel" viewBox="-110 -114 220 224" role="img" aria-label="${w.id === 'level' ? 'Roue du niveau de départ' : 'Roue du potentiel'}">
     <defs>
       <radialGradient id="w-shade" cx="0" cy="0" r="90" gradientUnits="userSpaceOnUse"><stop offset="0.2" stop-color="#000" stop-opacity="0.35"/><stop offset="0.75" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#000" stop-opacity="0.25"/></radialGradient>
       <linearGradient id="w-gold" x1="0" y1="-1" x2="0" y2="1"><stop offset="0" stop-color="#fff2bf"/><stop offset="0.5" stop-color="#e2b23c"/><stop offset="1" stop-color="#8a5f12"/></linearGradient>
@@ -287,33 +295,38 @@ function wheelSVG(face) {
   </svg>`;
 }
 
-function showWheel(club) {
+function showWheel(club, step = 0) {
   const f = G.form;
+  const w = WHEELS[WHEEL_STEPS[step]];
+  const isLevel = w.id === 'level';
   const el = show(`<div class="panel-screen wheel-screen" style="${clubVars(club)}">
-    <header class="screen-head"><button class="icon-btn" id="w-back" aria-label="Retour">${icon('back', 20)}</button><h1>La roue du potentiel</h1></header>
+    <header class="screen-head"><button class="icon-btn" id="w-back" aria-label="Retour">${icon('back', 20)}</button><h1>${isLevel ? 'La roue du niveau' : 'La roue du potentiel'} <small class="w-step">${step + 1}/${WHEEL_STEPS.length}</small></h1></header>
     <div class="wheel-body">
-      <div class="wheel-stage" id="wheel-stage">${wheelSVG(faceUrl(f.face))}</div>
+      <div class="wheel-stage" id="wheel-stage">${wheelSVG(faceUrl(f.face), w)}</div>
       <aside class="wheel-side" id="wheel-side">
         <p class="w-eyebrow">${crest(club, 22)}<span>${esc(f.firstName)} ${esc(f.lastName)} · ${esc(club.name)}</span></p>
-        <h2>Jusqu'où iras-tu ?</h2>
-        <p class="w-lead">La roue fixe ton potentiel de départ. Une part plus grande, c'est un palier plus fréquent : le Phénomène ne sort qu'une fois sur trente-trois. Ensuite, ce sont tes choix qui le feront monter… ou baisser.</p>
-        <ul class="w-odds">${TIERS.map((t) => `<li style="--tier:${t.color}"><i></i><span>${esc(t.label)}</span><span class="stars">${tierStars(t)}</span><b>${Math.round(t.p * 100)} %</b></li>`).join('')}</ul>
+        <h2>${isLevel ? 'Quel joueur arrive au centre ?' : 'Jusqu\'où iras-tu ?'}</h2>
+        <p class="w-lead">${isLevel
+          ? `La roue fixe ton niveau de départ face aux autres jeunes de ${esc(club.name)}. Plus il est haut, plus vite tu joues… mais c'est le potentiel qui dira jusqu'où tu montes.`
+          : 'La roue fixe ton potentiel de départ. Une part plus grande, c\'est un palier plus fréquent : le Phénomène ne sort qu\'une fois sur trente-trois. Ensuite, ce sont tes choix qui le feront monter… ou baisser.'}</p>
+        <ul class="w-odds">${w.tiers.map((t) => `<li style="--tier:${t.color}"><i></i><span>${esc(t.label)}</span>${tierRange(w, t, club)}<b>${Math.round(t.p * 100)} %</b></li>`).join('')}</ul>
         <button class="primary w-spin" id="wheel-spin">${icon('next', 18)} Tourner la roue</button>
       </aside>
     </div>
   </div>`);
   el.querySelector('#w-back').addEventListener('click', showClubPicker);
+  if (step > 0) el.querySelector('#w-back').disabled = true; // pas de retour après un premier tirage
   el.querySelector('#wheel-spin').addEventListener('click', () => {
-    const tier = drawTier(Math.random());
+    const tier = drawFrom(w, Math.random());
     el.querySelector('#w-back').disabled = true;
     el.querySelector('#wheel-spin').disabled = true;
     el.querySelector('#wheel-spin').textContent = 'La roue tourne…';
-    spinWheel(el, tier, () => wheelVerdict(el, club, tier));
+    spinWheel(el, w, tier, () => wheelVerdict(el, club, step, tier));
   });
 }
 
-function spinWheel(el, tier, done) {
-  const sl = wheelSlices();
+function spinWheel(el, w, tier, done) {
+  const sl = slicesOf(w);
   const own = sl.filter((s) => s.id === tier.id);
   const s = own[Math.floor(Math.random() * own.length)];
   const target = s.start + (s.end - s.start) * (0.22 + Math.random() * 0.56); // jamais pile sur une frontière
@@ -321,7 +334,7 @@ function spinWheel(el, tier, done) {
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const dur = reduce ? 1200 : 5800;
   const rot = el.querySelector('#wheel-rot'), ptr = el.querySelector('#wheel-ptr'), svg = el.querySelector('.wheel');
-  const under = (a) => { const w = (((360 - (a % 360)) % 360) + 360) % 360; return sl.findIndex((x) => w >= x.start && w < x.end); };
+  const under = (a) => { const x = (((360 - (a % 360)) % 360) + 360) % 360; return sl.findIndex((q) => x >= q.start && x < q.end); };
   const ease = (x) => 1 - Math.pow(1 - x, 4);
   let last = under(0), t0 = null;
   svg.classList.add('spinning');
@@ -343,8 +356,9 @@ function spinWheel(el, tier, done) {
   requestAnimationFrame(frame);
 }
 
-function wheelVerdict(el, club, tier) {
-  const level = TIERS.indexOf(tier);
+function wheelVerdict(el, club, step, tier) {
+  const w = WHEELS[WHEEL_STEPS[step]];
+  const level = w.tiers.indexOf(tier);
   const svg = el.querySelector('.wheel');
   svg.classList.add('decided');
   svg.querySelectorAll('.ws').forEach((g) => g.classList.toggle('won', g.dataset.tier === tier.id));
@@ -353,18 +367,25 @@ function wheelVerdict(el, club, tier) {
   stage.style.setProperty('--tier', tier.color);
   stage.classList.add(level >= 4 ? 'jackpot' : 'landed');
   if (level >= 3) confetti(stage, level >= 5 ? 90 : level >= 4 ? 60 : 30, tier.color);
-  G.form.potential = tier.id;
+  G.form[w.id] = tier.id;
+  const last = step === WHEEL_STEPS.length - 1;
+  const base = youthCA(academyQuality(club), 'U17') - 0.03;
+  const detail = w.id === 'level'
+    ? `Niveau de départ entre ${C.pct(base + tier.lo)} et ${C.pct(base + tier.hi)} (le benjamin moyen de ${esc(club.name)} est à ${C.pct(base)}).`
+    : 'Potentiel de départ entre ' + C.pct(tier.lo) + ' et ' + C.pct(tier.hi) + '. Le staff ne le connaît pas encore précisément ; il bougera selon ton travail, ta discipline et ton temps de jeu.';
   const side = el.querySelector('#wheel-side');
   side.innerHTML = `<p class="w-eyebrow">${crest(club, 22)}<span>La roue a parlé</span></p>
     <h2 class="w-verdict" style="--tier:${tier.color}">${esc(tier.label)}</h2>
-    <p class="stars w-stars">${tierStars(tier)}</p>
+    ${w.id === 'potential' ? `<p class="stars w-stars">${tierStars(tier)}</p>` : ''}
     <p class="w-blurb">${esc(tier.blurb)}</p>
-    <p class="muted small">Potentiel de départ entre ${C.pct(tier.lo)} et ${C.pct(tier.hi)}. Le staff ne le connaît pas encore précisément ; il bougera selon ton travail, ta discipline et ton temps de jeu.</p>
-    <button class="primary" id="wheel-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
+    <p class="muted small">${detail}</p>
+    ${last ? `<button class="primary" id="wheel-go">Commencer au centre de formation ${icon('next', 18)}</button>`
+      : `<button class="primary" id="wheel-next">Roue suivante : le potentiel ${icon('next', 18)}</button>`}`;
   side.classList.remove('enter-side'); void side.offsetWidth; side.classList.add('enter-side');
+  if (!last) { side.querySelector('#wheel-next').addEventListener('click', () => showWheel(club, step + 1)); return; }
   side.querySelector('#wheel-go').addEventListener('click', () => {
     const fm = G.form;
-    G.st = C.createCareer({ firstName: fm.firstName, lastName: fm.lastName, role: fm.role, foot: fm.foot, clubId: club.id, face: fm.face ?? null, potential: fm.potential });
+    G.st = C.createCareer({ firstName: fm.firstName, lastName: fm.lastName, role: fm.role, foot: fm.foot, clubId: club.id, face: fm.face ?? null, potential: fm.potential, level: fm.level });
     G.slot = fm.slot; G.form = null; G.pick = null;
     persist();
     renderHub();
@@ -418,7 +439,7 @@ function profileCard(st) {
       </figure>
       <div class="pc-stats">
         <h2 class="sr-only">${esc(p.firstName)} ${esc(p.lastName)}</h2>
-        <div class="lvl"><span class="label">Niveau actuel</span><span class="value">${C.pct(ca)}</span><span class="delta ${season >= 0 ? 'up' : 'down'}">${fmtLvl(season)} cette saison</span></div>
+        <div class="lvl"><span class="label">Niveau actuel${p.levelTier && st.season === 2026 ? ` <span class="tier-chip" style="--tier:${LEVEL_COLORS[p.levelTier.id] ?? 'var(--flood)'}" title="Palier tiré à la roue en arrivant au centre">${esc(p.levelTier.label)}</span>` : ''}</span><span class="value">${C.pct(ca)}</span><span class="delta ${season >= 0 ? 'up' : 'down'}">${fmtLvl(season)} cette saison</span></div>
         <div class="pot"><span class="label">Potentiel estimé par le staff${p.potentialTier ? ` <span class="tier-chip" style="--tier:${tierById(p.potentialTier.id)?.color ?? 'var(--flood)'}" title="Palier tiré à la roue en arrivant au centre">${esc(p.potentialTier.label)}</span>` : ''}</span><span class="stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
         <p class="role-line">${esc(C.ROLES[p.role])}</p>
         ${p.contract ? `<p class="contract-line">${icon('save', 14)}<span>${p.loan ? `Prêté par ${esc(clubById(p.loan.parentId).name)} · ` : ''}${esc(C.CONTRACT_LABEL[p.contract.type] ?? 'Contrat')} · <b>${C.money(p.contract.salary)}</b>/mois · fin juin ${p.contract.until + 1}<br>Économies : <b>${C.money(p.money)}</b>${p.agent ? ' · agent' : ''}</span></p>` : ''}
@@ -516,6 +537,9 @@ function weekCard(st) {
   }
   const c = G.choices;
   if (p.role !== 'GK' && c.focus === 'gardien') c.focus = 'technique';
+  const wk = st.weekly?.week === st.week ? st.weekly : null;
+  const sp = wk ? C.specialById(wk.special) : null;
+  if (c.offpitch === 'special' && !sp) c.offpitch = 'repos';
   const sel = C.selectionForecast(st);
   const opp = fx && !fx.bye ? st.league.teams.find((t) => t.id === fx.opponentId)?.name : null;
   const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
@@ -529,11 +553,12 @@ function weekCard(st) {
     ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.reason && C.SELECTION_REASON[sel.reason] ? ` <span class="muted small">${esc(C.SELECTION_REASON[sel.reason])}</span>` : ''}</p>${sel.rival && (sel.status !== 'titulaire' || sel.rival.signing) && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
-    <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''}"><span class="ci">${icon(FOCUS_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>
+    ${wk?.coachFocus ? `<p class="coach-ask">${icon('whistle', 16)}<span><b>Le coach :</b> « ${esc(C.FOCUS[wk.coachFocus]?.label ?? '')} » cette semaine. ${esc(wk.why)}</span></p>` : ''}
+    <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''} ${wk?.coachFocus === k ? 'asked' : ''}">${wk?.coachFocus === k ? '<span class="ask-badge">Demandé</span>' : ''}<span class="ci">${icon(FOCUS_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>
     <h3>Intensité</h3>
     <div class="seg wide" role="group" aria-label="Intensité">${Object.keys(C.INTENSITY).map((k) => `<button data-int="${k}" class="${c.intensity === k ? 'active' : ''}" title="${esc(INT_DESC[k])}">${esc(k)}</button>`).join('')}</div>
     <h3>Hors du terrain</h3>
-    <div class="choice-grid" id="w-off">${Object.entries(C.OFFPITCH).map(([k, v]) => `<button data-off="${k}" class="choice ${c.offpitch === k ? 'active' : ''}"><span class="ci">${icon(OFF_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${esc(v.desc)}</span></button>`).join('')}</div>
+    <div class="choice-grid" id="w-off">${sp ? `<button data-off="special" class="choice special ${c.offpitch === 'special' ? 'active' : ''}"><span class="ask-badge gold">Cette semaine</span><span class="ci">${icon(sp.icon, 24)}</span><span class="cl">${esc(sp.label)}</span><span class="cs2">${esc(sp.desc)}</span></button>` : ''}${Object.entries(C.OFFPITCH).filter(([k]) => k !== 'special').map(([k, v]) => `<button data-off="${k}" class="choice ${c.offpitch === k ? 'active' : ''}"><span class="ci">${icon(OFF_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${esc(v.desc)}</span></button>`).join('')}</div>
     <div id="w-preview">${previewBlock(st)}</div>`}
     <button class="primary cta" id="w-go">Valider la semaine</button>
   </section>`;
@@ -685,13 +710,68 @@ function bindHub(el) {
   pickIn('[data-focus]', 'focus', 'focus');
   pickIn('[data-int]', 'int', 'intensity');
   pickIn('[data-off]', 'off', 'offpitch');
-  el.querySelector('#w-go')?.addEventListener('click', () => { C.submitWeek(st, { ...G.choices }); persist(); renderHub(); });
+  el.querySelector('#w-go')?.addEventListener('click', () => {
+    const finish = (drill) => { C.submitWeek(st, { ...G.choices, drill }); persist(); renderHub(); };
+    const z = st.player.injuryWeeks ? null : C.drillZone(st.player, G.choices.focus, G.choices.intensity);
+    if (z && drillsOn()) runDrill(z, finish); else finish(null);
+  });
   el.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => { C.acceptWinterOffer(st, Number(b.dataset.win)); persist(); renderHub(); }));
   el.querySelector('#win-stay')?.addEventListener('click', () => { C.declineWinter(st); persist(); renderHub(); });
   el.querySelectorAll('[data-ev]').forEach((b) => b.addEventListener('click', () => { C.resolveEvent(st, Number(b.dataset.ev)); persist(); renderHub(); }));
   el.querySelector('#w-bye')?.addEventListener('click', () => { C.applyMatchResult(st, {}); persist(); renderHub(); });
   el.querySelector('#w-sim')?.addEventListener('click', simulateWeekMatch);
   el.querySelector('#w-watch')?.addEventListener('click', watchWeekMatch);
+}
+
+// ------------------------------------------------------------------ atelier de la semaine
+// Un geste à réussir : un curseur va et vient, tu l'arrêtes dans la zone (or au centre = parfait).
+const DRILL_KEY = 'generation-football.drills';
+function drillsOn() { try { return localStorage.getItem(DRILL_KEY) !== 'off'; } catch { return true; } }
+function setDrills(on) { try { localStorage.setItem(DRILL_KEY, on ? 'on' : 'off'); } catch { /* stockage indisponible */ } }
+function runDrill(z, done) {
+  const box = document.createElement('div');
+  box.className = 'drill-backdrop';
+  const zl = 0.5 - z.width / 2, pl = 0.5 - z.perfect / 2;
+  box.innerHTML = `<div class="drill" role="dialog" aria-label="Atelier">
+    <p class="dr-eyebrow">${icon('whistle', 16)} Atelier de la semaine</p>
+    <h2>${esc(z.title)}</h2>
+    <p class="muted">${esc(z.task)} Zone d'autant plus large que ton attribut est bon.</p>
+    <div class="dr-track" id="dr-track"><i class="dr-zone" style="left:${zl * 100}%;width:${z.width * 100}%"></i><i class="dr-perfect" style="left:${pl * 100}%;width:${z.perfect * 100}%"></i><b class="dr-cursor" id="dr-cursor"></b></div>
+    <p class="dr-result" id="dr-result" aria-live="polite">Touche l'écran (ou Espace) au bon moment.</p>
+    <div class="actions"><label class="inline small"><input type="checkbox" id="dr-off"> Ne plus proposer d'atelier</label><button class="ghost small" id="dr-skip">Passer</button></div>
+  </div>`;
+  document.body.append(box);
+  const cur = box.querySelector('#dr-cursor');
+  let x = 0, dir = 1, last = null, stopped = false;
+  const step = (now) => {
+    if (stopped) return;
+    const dt = Math.min(0.05, (now - (last ?? now)) / 1000); last = now;
+    x += dir * dt * 0.95 * z.speed;
+    if (x > 1) { x = 1; dir = -1; } else if (x < 0) { x = 0; dir = 1; }
+    cur.style.left = `${x * 100}%`;
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+  const close = (res) => {
+    stopped = true;
+    if (box.querySelector('#dr-off').checked) setDrills(false);
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => { box.remove(); done(res); }, res ? 900 : 0);
+  };
+  const hit = () => {
+    if (stopped) return;
+    const d = Math.abs(x - 0.5);
+    const res = d <= z.perfect / 2 ? 'parfait' : d <= z.width / 2 ? 'bien' : 'rate';
+    box.querySelector('#dr-result').textContent = res === 'parfait' ? 'Parfait ! Séance nettement plus profitable.' : res === 'bien' ? 'Réussi : bonne séance.' : 'Raté : séance un peu moins profitable.';
+    box.querySelector('.drill').classList.add(`res-${res}`);
+    if (res === 'parfait') sound.chime();
+    close(res);
+  };
+  const onKey = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); hit(); } };
+  document.addEventListener('keydown', onKey);
+  box.querySelector('#dr-track').addEventListener('pointerdown', hit);
+  box.querySelector('.drill h2').addEventListener('pointerdown', hit);
+  box.querySelector('#dr-skip').addEventListener('click', () => close(null));
 }
 
 let flashTimer;

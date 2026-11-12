@@ -1027,3 +1027,26 @@ details.report:not([open]) { padding: 6px 12px; margin-bottom: 8px; }
   .mo-list li { padding: 4px 7px; gap: 7px; grid-template-columns: 30px 1fr auto auto; } .mo-list .mi { width: 30px; height: 30px; }
   .mo-list .mt small { font-size: 0.68em; }
 }
+.w-step { font: 600 0.45em var(--f-text); color: var(--muted); margin-left: 6px; vertical-align: middle; }
+.w-odds .w-num { font: 800 0.95em var(--f-display); color: var(--chalk); letter-spacing: 0.02em; }
+
+/* ------------------------------------------------------------ semaine : demande du coach, proposition, atelier */
+.coach-ask { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 8px; padding: 7px 10px; border-radius: var(--r-sm); background: rgba(255, 214, 90, 0.07); border: 1px solid rgba(255, 214, 90, 0.25); font-size: 0.86em; }
+.coach-ask .ico-svg { flex: none; color: var(--flood); margin-top: 1px; }
+.choice { position: relative; }
+.choice.asked { border-color: rgba(255, 214, 90, 0.55); }
+.choice.special { border-color: rgba(78, 224, 138, 0.5); background: linear-gradient(135deg, rgba(78, 224, 138, 0.09), rgba(255, 255, 255, 0.02)); }
+.ask-badge { position: absolute; top: -7px; right: 8px; font: 700 0.62em/1 var(--f-text); text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 7px; border-radius: 999px; background: var(--flood); color: var(--ink); }
+.ask-badge.gold { background: var(--ok); color: #06210f; }
+.drill-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(3, 6, 14, 0.72); backdrop-filter: blur(4px); padding: 14px; }
+.drill { width: min(560px, 100%); padding: 16px 20px; border-radius: var(--r-lg); background: linear-gradient(180deg, #111b31, #0b1324); border: 1px solid var(--line-2); border-top: 3px solid var(--flood); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.drill h2 { margin: 2px 0 4px; font: 900 2em/1 var(--f-display); color: var(--chalk); }
+.dr-eyebrow { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--flood); font-weight: 700; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.08em; }
+.dr-track { position: relative; height: 54px; margin: 14px 0 10px; border-radius: 14px; background: repeating-linear-gradient(90deg, #1b2a45 0 10%, #182640 10% 20%); border: 1px solid var(--line-2); cursor: pointer; touch-action: manipulation; overflow: hidden; }
+.dr-zone { position: absolute; top: 0; bottom: 0; background: rgba(78, 224, 138, 0.32); border-left: 2px solid var(--ok); border-right: 2px solid var(--ok); }
+.dr-perfect { position: absolute; top: 0; bottom: 0; background: rgba(255, 214, 90, 0.75); box-shadow: 0 0 18px rgba(255, 214, 90, 0.7); }
+.dr-cursor { position: absolute; top: -4px; bottom: -4px; width: 6px; margin-left: -3px; border-radius: 3px; background: #fff; box-shadow: 0 0 10px #fff; }
+.dr-result { min-height: 1.4em; margin: 0 0 8px; font-weight: 700; }
+.drill.res-parfait .dr-result { color: var(--flood); } .drill.res-bien .dr-result { color: var(--ok); } .drill.res-rate .dr-result { color: var(--bad); }
+.drill .actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+@media (max-height: 520px) { .drill { padding: 10px 14px; } .drill h2 { font-size: 1.5em; } .dr-track { height: 46px; margin: 8px 0 6px; } }

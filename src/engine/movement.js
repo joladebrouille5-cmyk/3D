@@ -106,12 +106,18 @@ export function updateTeamShape(m, team) {
       // courses dans le dos de la défense
       const userRun = m.t < (p.userRun ?? 0);
       if (poss && (slot.role === 'ST' || slot.role === 'W' || slot.role === 'AM' || userRun) && !restart && b.owner != null && b.owner !== p.id) {
-        if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + 0.09); y = y + (34 - y) * 0.3; }
+        // appel : sur l'épaule du dernier défenseur (hors-jeu évité), en diagonale vers l'intervalle ;
+        // la passe est jouée dans l'espace derrière et le coureur la prend de vitesse
+        if (m.t < p.runUntil) { rel = Math.min(0.94, offLine + (p.runEager ? 0.04 : -0.004)); y = y + (34 - y) * 0.3; }
         else {
           // espace dans le dos d'une ligne haute : les appels deviennent bien plus fréquents
           const space = 1 - offLine;
           const lure = 1 + 7 * Math.max(0, space - 0.32);
-          if (ballRel > 0.25 && m.rng.chance(0.035 * (0.5 + tv.direct) * lure)) p.runUntil = m.t + 3.5;
+          if (ballRel > 0.25 && m.rng.chance(0.035 * (0.5 + tv.direct) * lure)) {
+            p.runUntil = m.t + 3.5;
+            // appel parti trop tôt : le coureur se retrouve hors-jeu (plus souvent s'il lit mal le jeu)
+            p.runEager = m.rng.chance(0.22 + 0.4 * (1 - p.attrs.decisions));
+          }
         }
       }
     }

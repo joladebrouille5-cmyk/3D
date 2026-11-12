@@ -49,6 +49,7 @@ function interceptRisk(m, p, tx, ty, opts) {
   for (const o of m.onPitch(1 - p.team)) {
     const { d, s } = segDist(o.x, o.y, p.x, p.y, tx, ty);
     if (opts.lofted && s > 0.12 && s < 0.82) continue; // ballon en l'air au milieu de la trajectoire
+    if (opts.sMax != null && s > opts.sMax) continue; // passe dans l'espace : la fin se joue à la course
     const tBall = (s * L) / vAvg + 0.1;
     const tOpp = Math.max(0, d - 0.8) / 6.5 + 0.2;
     let c = sigmoid((tBall - tOpp) * 4);
@@ -140,23 +141,32 @@ export function holderOptions(m, p, restartType = null) {
 
     // passe dans la course (attaquants, ailiers, latéraux qui montent)
     if (!restartType || restartType === 'freekick') {
-      const running = m.t < (q.runUntil ?? 0) || (m.t < (q.callUntil ?? 0));
+      const running = m.t < (q.runUntil ?? 0);
       const userRun = q.isUser && m.t < (q.userRun ?? 0); // ton appel en profondeur, quel que soit ton poste
-      const fwd = ['ST', 'W', 'AM'].includes(q.role) || (q.role === 'FB' && running) || userRun;
-      if (fwd && running && qRel >= rel - 0.02 && qRel > 0.5) {
-        const lead = 7 + 5 * tv.direct;
-        const tx = clamp(q.x + team.dir * lead, 2, PITCH.length - 2);
-        const ty = clamp(q.y + (34 - q.y) * 0.15, 3, PITCH.width - 3);
+      const fwd = ['ST', 'W', 'AM', 'CM'].includes(q.role) || (q.role === 'FB' && running) || userRun;
+      // ligne de hors-jeu adverse : avant-dernier défenseur
+      const oppRelsT = m.onPitch(1 - p.team).map((o) => m.relX(team, o.x)).sort((a, c) => c - a);
+      const lineT = Math.max(oppRelsT[1] ?? 0, 0.5);
+      const nearLine = (lineT - qRel) * PITCH.length < 9; // assez près de la ligne pour gagner la course
+      if (fwd && running && nearLine && qRel >= rel - 0.02 && qRel > 0.5) {
+        // dans l'espace derrière la défense : quelques mètres au-delà de la ligne, vers l'axe
+        const lead = 5 + 4 * tv.direct;
+        const trelWanted = clamp(Math.max(qRel + lead / PITCH.length, lineT + (4 + 3 * tv.direct) / PITCH.length), 0, 0.93);
+        const tx = m.absX(team, trelWanted);
+        const ty = clamp(q.y + (34 - q.y) * 0.2, 3, PITCH.width - 3);
         const trel = m.relX(team, tx);
-        if (trel < 0.96) {
-          const d2 = dist(p.x, p.y, tx, ty);
-          const loftedT = d2 > 34;
-          // le receveur doit arriver avant les adversaires
-          // appel annoncé par ton joueur : départ calé sur le passeur, il a déjà de l'élan
-          const tRecv = Math.max(0.2, dist(q.x, q.y, tx, ty) / (m.maxSpeed(q) * 0.9) + 0.2 - (userRun ? 0.3 : 0));
+        const d2 = dist(p.x, p.y, tx, ty);
+        if (trel < 0.94 && d2 < 44) {
+          // au sol si la ligne est libre, sinon par-dessus la défense (ballon piqué dans l'espace)
+          // la ligne de passe ne compte que jusqu'à l'arrivée dans l'espace ; au-delà, c'est la course qui tranche
+          const groundLane = interceptRisk(m, p, tx, ty, { lofted: false, sMax: 0.72 });
+          const loftedT = d2 > 34 || (groundLane > 0.45 && d2 > 16);
+          const lane = loftedT ? interceptRisk(m, p, tx, ty, { lofted: true, sMax: 0.12 }) : groundLane;
+          // le receveur doit arriver avant les adversaires : il est lancé, eux doivent se retourner
+          const tRecv = Math.max(0.2, dist(q.x, q.y, tx, ty) / (m.maxSpeed(q) * 0.92) + 0.1 - 0.25 - (userRun ? 0.1 : 0) + (loftedT ? 0.15 : 0));
           let tOppBest = Infinity;
-          for (const o of m.onPitch(1 - p.team)) tOppBest = Math.min(tOppBest, dist(o.x, o.y, tx, ty) / (m.maxSpeed(o) * 0.9) + 0.35);
-          let riskT = clamp(interceptRisk(m, p, tx, ty, { lofted: loftedT }) * 0.8 + sigmoid((tRecv - tOppBest) * 2.2) * 0.75 + (loftedT ? 0.1 : 0), 0.05, 0.97);
+          for (const o of m.onPitch(1 - p.team)) tOppBest = Math.min(tOppBest, dist(o.x, o.y, tx, ty) / (m.maxSpeed(o) * 0.9) + (o.role === 'GK' ? 0.35 : 0.6));
+          let riskT = clamp(lane * 0.7 + sigmoid((tRecv - tOppBest) * 2.2) * 0.7 + (loftedT ? 0.2 : 0), 0.05, 0.97);
           riskT += (1 - p.attrs.vision) * 0.12;
           // perception du hors-jeu : un bon décideur l'évite plus souvent
           const oppRels = m.onPitch(1 - p.team).map((o) => m.relX(team, o.x)).sort((a, c) => c - a);
@@ -265,6 +275,9 @@ export function decideHolder(m, p, restartType) {
     return;
   }
 
+  // la passe dans l'espace se voit… ou pas : c'est la vision du passeur qui décide
+  if (!restartType) for (let i = opts.length - 1; i >= 0; i--) if (opts[i].through && !rng.chance(0.2 + 0.55 * p.attrs.vision)) opts.splice(i, 1);
+  if (!opts.length) { m.pass(p, m.absX(team, Math.min(0.9, rel + 0.35)), 34 + rng.range(-15, 15), { lofted: true, clear: true }); return; }
   // perception imparfaite + sélection pondérée (softmax)
   const noise = 0.006 * (1.25 - p.attrs.vision);
   const temp = 0.0055 + 0.012 * (1 - p.attrs.decisions);

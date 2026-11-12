@@ -372,7 +372,7 @@ export class PitchRenderer {
 
   // ---------------------------------------------------------------- scène
   // players : [{id, x, y, team, num, onPitch, yellow, injured, role, isUser, name}] ; ball : {x, y, z}
-  draw({ teams, players, ball, ownerId, selectedId, showNames = false, aim = null }) {
+  draw({ teams, players, ball, ownerId, selectedId, showNames = false, aim = null, t = null, followTeam = null }) {
     const { ctx } = this;
     const now = performance.now();
     const dt = Math.min(0.1, (now - (this.lastT || now)) / 1000); this.lastT = now;
@@ -421,6 +421,7 @@ export class PitchRenderer {
 
     // 2) flèches des choix proposés
     if (aim) this.#aims(Array.isArray(aim) ? aim : [aim], r);
+    if (t != null && followTeam != null) this.#calls(players, teams, followTeam, t, ownerId, r);
 
     // 3) joueurs
     for (const p of players) {
@@ -495,6 +496,32 @@ export class PitchRenderer {
     vg.addColorStop(0, 'rgba(2,5,12,0)'); vg.addColorStop(1, 'rgba(2,5,12,0.62)');
     ctx.fillStyle = vg; ctx.fillRect(0, 0, cw, ch);
     void s;
+  }
+
+  // l'équipe vit autour de toi : flèche pour un appel en profondeur, « ! » pour un partenaire qui demande le ballon
+  #calls(players, teams, ti, t, ownerId, r) {
+    const { ctx } = this;
+    const owner = ownerId != null ? players.find((q) => q.id === ownerId) : null;
+    if (!owner || owner.team !== ti) return;
+    const dir = teams[ti].dir;
+    ctx.save();
+    for (const p of players) {
+      if (!p.onPitch || p.team !== ti || p.id === ownerId || !Number.isFinite(p.x)) continue;
+      const X = this.sx(p.x), Y = this.sy(0, p.y);
+      if (t < (p.runUntil ?? 0)) {
+        const X1 = this.sx(p.x + dir * 6), Y1 = this.sy(0, p.y + (34 - p.y) * 0.12);
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = Math.max(1.6, r * 0.18); ctx.setLineDash([r * 0.5, r * 0.35]);
+        ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X1, Y1); ctx.stroke(); ctx.setLineDash([]);
+        const a = Math.atan2(Y1 - Y, X1 - X), hl = r * 0.9;
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath();
+        ctx.moveTo(X1, Y1); ctx.lineTo(X1 - hl * Math.cos(a - 0.45), Y1 - hl * Math.sin(a - 0.45)); ctx.lineTo(X1 - hl * Math.cos(a + 0.45), Y1 - hl * Math.sin(a + 0.45)); ctx.closePath(); ctx.fill();
+      } else if (t < (p.callUntil ?? 0)) {
+        const R = Math.max(7, r * 0.75), bx = X + r * 0.9, by = Y - r * 1.6;
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'; ctx.beginPath(); ctx.arc(bx, by, R, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#0b1324'; ctx.font = `900 ${Math.round(R * 1.4)}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('!', bx, by + R * 0.06);
+      }
+    }
+    ctx.restore();
   }
 
   #aims(list, r) {

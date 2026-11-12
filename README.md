@@ -27,7 +27,9 @@ L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements,
 2. **Choix du club** parmi les 218 clubs masculins du catalogue (`data/joueurs-v1.csv`). Tu peux chercher un club et filtrer par division. La carrière commence dans le **centre de formation** du club choisi.
 3. **Niveau et potentiel** :
    - Le **niveau actuel** dépend du centre choisi. Un grand centre donne un meilleur niveau de départ, mais la concurrence y est plus rude.
-   - Le **potentiel** se tire à la **roue du potentiel**, juste après le choix du club (un seul tour, pas de relance).
+   - Le **niveau de départ** se tire à la **roue du niveau** (En retard 15 %, Dans le groupe 30 %, Au niveau 28 %,
+     En avance 17 %, Surclassé 8 %, Précoce 2 %), situé par rapport aux jeunes du centre choisi.
+   - Le **potentiel** se tire ensuite à la **roue du potentiel** (un seul tour par roue, pas de relance).
      Chaque part a la taille de sa probabilité : Espoir modeste 16 %, Bon espoir 26 %, Bel espoir 27 %, Grand espoir 19 %,
      Pépite 9 %, Phénomène 3 %. La roue donne le palier ; la valeur exacte, tirée dans ce palier, reste cachée.
      Le staff n'en donne qu'une fourchette, qui se resserre avec le temps (`src/career/potential.js`).
@@ -260,4 +262,26 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
   appartement près du centre (fraîcheur chaque semaine), voiture de sport (moral et supporters, mais discipline et
   vestiaire en baisse), rénovation du terrain de ton club d'enfance (supporters, vestiaire).
 - Les effets apparaissent dans le bilan du mois (« Ton entourage et tes achats ») ; données dans `src/career/spending.js`.
+
+## La semaine
+
+- **Demande du coach** : chaque semaine, un thème d'entraînement demandé (ton point faible, ta récupération,
+  ou la préparation du match) ; le suivre fait monter sa confiance.
+- **Proposition de la semaine** : une occasion hors du terrain qui ne revient pas la semaine suivante
+  (ancien pro, kiné, match des pros en tribune, anniversaire d'un coéquipier, interview, analyste, yoga,
+  école de foot, soutien scolaire, entraîneur de poste) ; `src/career/weekly.js`.
+- **Atelier** : à la validation, un geste à réussir (arrêter le curseur dans la zone). La zone est d'autant
+  plus large que l'attribut travaillé est bon, le curseur d'autant plus rapide que l'intensité est haute.
+  Parfait : séance ×1,25 ; réussi : ×1,08 ; raté : ×0,9. On peut passer ou désactiver l'atelier.
+
+## Match : suite de l'action, finitions, passes en profondeur
+
+- Après un choix, la rencontre reste à vitesse réelle tant que l'issue n'est pas connue ou que ton équipe
+  attaque encore (14 s au plus) ; aucun ralenti ne vient couper l'action en cours.
+- Quand ton joueur a le ballon près du but et s'apprête à décider, la finition te revient (hors quota de
+  choix) : frappe placée, en force, piquée, contourner le gardien, remise…
+- Les appels se font sur l'épaule du dernier défenseur et la passe est jouée dans l'espace derrière la
+  défense (au sol, ou par-dessus si la ligne est fermée) ; la vision du passeur décide s'il la voit.
+  ≈ 23 passes en profondeur par match, ≈ 40 % arrivent à un attaquant ; certains appels partent trop tôt
+  (hors-jeu). Sur le terrain, une flèche montre un appel, un « ! » un partenaire qui demande le ballon.
 

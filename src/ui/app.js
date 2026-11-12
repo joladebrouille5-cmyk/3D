@@ -107,7 +107,7 @@ function frame(now) {
         if (R.hl && R.fx === 1 && R.cursor >= R.evFrame) { R.fx = 2; if (R.goal) sound.goal(); else sound.ooh(); }
         if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; S.replay.doneAt = now; }
       } else if (S.replay.hl && now - (S.replay.doneAt ?? now) > 500) endHighlight();
-    } else if (S.pace.mode === 'tf' && !S.paused && !S.modalOpen && !S.quick && !S.choice && startHighlight()) {
+    } else if (S.pace.mode === 'tf' && !S.paused && !S.modalOpen && !S.quick && !S.choice && m.t >= S.hl.follow && startHighlight()) {
       /* un temps fort démarre */
     } else if (!S.paused && !S.modalOpen && !S.quick && !S.choice && m.phase !== 'fulltime') {
       updateControl();
@@ -121,6 +121,7 @@ function frame(now) {
         S.prev = snapshot();
         m.step();
         checkJudge();
+        extendFollow();
         S.acc -= SIM.dt; n++;
         if (handleNewEvents()) { S.acc = 0; break; }
         if (m.phase === 'fulltime') break;
@@ -182,7 +183,7 @@ function draw() {
     S.renderer.follow(u.x * 0.6 + ball.x * 0.4, u.y * 0.6 + ball.y * 0.4, z, S.choice ? 0.2 : 0.12);
     if (S.choice && S.choice.targets) aim = S.choice.targets;
   } else S.renderer.follow(52.5, 34, 1);
-  S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim });
+  S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim, t: m.t, followTeam: S.career ? S.career.followTeam : null });
 }
 
 // ------------------------------------------------------------------ pilotage direct
@@ -202,7 +203,7 @@ export function setMatchLength(v) { try { localStorage.setItem(LS_KEY, v); } cat
 export const TF = { fastReal: 50 };
 function tfSpeed(dt) {
   const m = S.m, P = S.pace;
-  if (m.t < S.hl.follow) return 1.6; // suite de l'action après un choix
+  if (m.t < S.hl.follow) return 1.1; // suite de l'action après un choix : presque en temps réel
   const simDone = (m.period - 1) * 2700 + Math.min(m.periodTime, 2700 + (m.added[m.period - 1] ?? 0) * 60);
   const remaining = Math.max(30, PACE.totalSim - simDone);
   const left = Math.max(5, TF.fastReal - P.ffReal);
@@ -339,15 +340,23 @@ function checkChoice() {
   const tf = S.pace.mode === 'tf';
   const team = m.teams[u.team];
   c.skipped ??= 0;
-  if (tf) {
-    // au plus ~10 choix, répartis sur toute la rencontre
-    const simDone = (m.period - 1) * 2700 + Math.min(m.periodTime, 2700);
-    if (c.made + c.skipped >= Math.min(10, 1 + Math.floor(10 * simDone / 5400))) return false;
-  }
+  // temps forts : au plus ~10 choix (hors finitions), répartis sur toute la rencontre (contrôle plus bas)
   const relU = m.relX(team, u.x);
   // temps forts : au plus 3 choix « sans ballon » de chaque sorte, le reste pour les actions décisives
   c.byType ??= { ball: 0, defend: 0, support: 0 };
   const offOk = (k) => !tf || c.byType[k] < 3;
+  // moment décisif : ton joueur a le ballon près du but et s'apprête à décider (après une conduite,
+  // un une-deux, une passe en profondeur…) : c'est toi qui choisis la finition, hors quota
+  const dGoalU = Math.hypot(m.oppGoalX(team) - u.x, 34 - u.y);
+  if (owner && owner.id === u.id && !u.gkHolding && dGoalU < 26 && m.t + 0.15 >= u.nextDecision && m.t - (c.lastFinish ?? -99) >= 3 && (c.finishes ?? 0) < 6) {
+    const fc = ballChoices(m, u, recentKeys());
+    if (fc.list.some((x) => x.cat === 'shot')) {
+      c.lastFinish = m.t; c.lastBallChoice = m.t; c.finishes = (c.finishes ?? 0) + 1;
+      openChoice(fc, u);
+      return true;
+    }
+  }
+  if (tf && c.made + c.skipped >= Math.min(10, 1 + Math.floor(10 * ((m.period - 1) * 2700 + Math.min(m.periodTime, 2700)) / 5400))) return false;
   if (justGot && m.t - c.lastBallChoice >= G.ball && !u.gkHolding && (!tf || relU > 0.5)) {
     ch = ballChoices(m, u, recentKeys()); c.lastBallChoice = m.t;
   } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= G.off) {
@@ -410,6 +419,19 @@ function showPcts(box, pred, done) {
   });
 }
 
+// Suite de l'action : tant que l'issue du choix n'est pas connue, ou que ton équipe attaque encore
+// (ballon dans le camp adverse, tir en vol), la rencontre reste à vitesse réelle, jusqu'à 14 s.
+function extendFollow() {
+  const m = S.m, H = S.hl;
+  if (S.pace.mode !== 'tf' || !H.followCap || m.t >= H.followCap || m.t >= H.follow) return;
+  const u = S.ctl.userId != null ? m.players[S.ctl.userId] : null;
+  if (!u) return;
+  const b = m.ball, team = m.teams[u.team];
+  const ours = (b.owner != null && m.players[b.owner].team === u.team) || (b.owner == null && b.lastTeam === u.team);
+  const attacking = m.phase === 'play' && ours && m.relX(team, b.x) > 0.5;
+  if (S.judge || attacking || (b.shot && b.shot.team === u.team)) H.follow = Math.min(H.followCap, Math.max(H.follow, m.t + 0.6));
+}
+
 // Retour après un choix : l'issue réelle, jugée avec les mêmes règles que les simulations
 const OUTCOME = {
   goal: ['But !', 'Pas de but'], pass: ['Passe réussie', 'Passe perdue'], cross: ['Centre pour un partenaire', 'Centre perdu'],
@@ -425,6 +447,7 @@ function checkJudge() {
   S.judge = null;
   if (r.ended) return;
   const m = S.m;
+  if (S.pace.mode === 'tf' && S.hl.followCap) S.hl.follow = Math.min(S.hl.followCap, Math.max(S.hl.follow, m.t + 1.8));
   (m.userChoices ??= []).push({ minute: J.minute, label: J.c.label, p: J.p, ok: !!r.ok, kind: J.goal.kind, card: !!r.card });
   const [yes, no] = OUTCOME[J.goal.kind] ?? ['Réussi', 'Raté'];
   const h = $('#pad-hint');
@@ -463,7 +486,11 @@ function pickChoice(i) {
     else if (TEAM_PLAY.has(c.key)) style.team++;
     flashHint(c.label);
     // on regarde la suite de l'action (pour un coup de pied arrêté : jusqu'après la frappe)
-    if (S.pace.mode === 'tf') S.hl.follow = (c.plan && m.restart ? m.restart.readyAt : m.t) + (c.plan ? 6 : 4);
+    if (S.pace.mode === 'tf') {
+      const t0 = c.plan && m.restart ? m.restart.readyAt : m.t;
+      S.hl.follow = t0 + (c.plan ? 6 : 4);
+      S.hl.followCap = t0 + 14; // on suit l'action jusqu'à son issue, 14 s au plus
+    }
   }
   S.choice = null;
   $('#choices').hidden = true;

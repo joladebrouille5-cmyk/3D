@@ -787,7 +787,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      let pSave = clamp(0.96 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(0.99 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
       if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
@@ -961,7 +961,7 @@ export class Match {
     const pr = pressureOn(this, p);
     const fatigue = 1 + 0.5 * (1 - p.energy);
     const d0 = dist(p.x, p.y, tx, ty);
-    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue * (1 - 0.08 * this.home(p)));
+    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue * (1 - 0.1 * this.home(p)));
     const powErr = 1 + this.rng.gauss(0, (0.05 + 0.08 * (1 - p.attrs.passing)) * fatigue);
     const base = Math.atan2(ty - p.y, tx - p.x) + angErr;
     const d = Math.max(2, d0 * powErr);
@@ -987,7 +987,7 @@ export class Match {
       b.vx = Math.cos(base) * v0; b.vy = Math.sin(base) * v0; b.vz = 0; b.z = 0;
     }
     b.owner = null; b.lastTouch = p.id; b.lastTeam = p.team; b.cross = !!opts.cross;
-    b.pass = { from: p.id, to: opts.to ?? null, team: p.team, type: opts.cross ? 'cross' : opts.lofted ? 'long' : opts.through ? 'through' : 'short', lofted: !!opts.lofted, t0: this.t, offside: any ? offside : null, offsidePos };
+    b.pass = { from: p.id, to: opts.to ?? null, team: p.team, type: opts.cross ? 'cross' : opts.lofted ? 'long' : opts.through ? 'through' : 'short', lofted: !!opts.lofted, through: !!opts.through, t0: this.t, offside: any ? offside : null, offsidePos };
     b.shot = null;
     p.touchCooldown = this.t + 0.35; p.carry = null; p.gkHolding = false;
     if (!opts.clear) { team.stats.passes++; p.stats.passes++; } // un dégagement n'est pas une passe
@@ -1157,7 +1157,7 @@ export class Match {
     // couverture : chaque défenseur supplémentaire à portée réduit l'espace de sortie du dribbleur
     let cover = 0;
     for (const o of this.onPitch(def.team)) if (o !== def && o.role !== 'GK' && dist(o.x, o.y, att.x, att.y) < 3.2) cover++;
-    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.2 * (this.home(def) - this.home(att)));
+    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.26 * (this.home(def) - this.home(att)));
     const pFoul = (0.018 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att));
     const r = this.rng.next();
     // incident physique : évalué au contact, pas de quota

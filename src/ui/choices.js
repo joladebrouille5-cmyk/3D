@@ -78,6 +78,21 @@ export function ballChoices(m, u, recent = []) {
     if (dGoal > 13) add({ key: 'shot-power', cat: 'shot', opt: { ...shot, style: 'power' }, icon: 'physique', label: dGoal > 23 ? 'Tenter sa chance de loin' : 'Frappe en force', hint: 'puissante, moins précise', cls: xgClass(shot.xg * 0.9), score: shot.u + 0.005 + (lead < 0 && late ? 0.02 : 0) });
     if (gkOut && dGoal < 28) add({ key: 'shot-chip', cat: 'shot', opt: { ...shot, style: 'chip' }, icon: 'cross', label: 'Piquer au-dessus du gardien', hint: 'le gardien est sorti de sa ligne', cls: 'mid', score: shot.u + 0.035 });
   }
+  // face à face : contourner le gardien qui sort
+  {
+    const gk = m.gk(1 - u.team);
+    if (gk && dGoal < 22) {
+      const dGk = dist(u.x, u.y, gk.x, gk.y);
+      let closeDef = 0;
+      for (const o of m.onPitch(1 - u.team)) if (o.role !== 'GK' && dist(o.x, o.y, u.x, u.y) < 4) closeDef++;
+      if (dGk < 11 && closeDef === 0) {
+        const toGoal = Math.atan2(34 - u.y, gx - u.x), toGk = Math.atan2(gk.y - u.y, gk.x - u.x);
+        let da = toGk - toGoal; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        const ang = toGoal - Math.sign(da || 1) * 0.75; // on part du côté opposé au gardien
+        add({ key: 'round-gk', cat: 'carry', opt: { kind: 'carry', dx: Math.cos(ang), dy: Math.sin(ang), risk: 0.4 }, icon: 'dribble', label: 'Dribbler le gardien', hint: 'l\'éliminer puis pousser au fond', cls: 'mid', score: 0.06 });
+      }
+    }
+  }
 
   const passes = opts.filter((o) => o.kind === 'pass');
   // profondeur

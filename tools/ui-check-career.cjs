@@ -11,6 +11,17 @@ const SHOTS = process.argv[3] || null;
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   const shot = async (n) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${n}.png` }); };
+  // valider la semaine : l'atelier s'ouvre (thème avec geste), on tente le geste une fois
+  let drills = 0;
+  const goWeek = async () => {
+    await page.click('#w-go');
+    if (await page.waitForSelector('.drill-backdrop', { timeout: 800 }).catch(() => null)) {
+      drills++;
+      if (drills === 1) await shot('c3b-drill');
+      await page.click('#dr-track');
+      await page.waitForSelector('.drill-backdrop', { state: 'detached', timeout: 5000 });
+    }
+  };
   await page.goto(URL);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -34,23 +45,29 @@ const SHOTS = process.argv[3] || null;
   await shot('c2-club');
   assert.match(await page.textContent('#c-detail'), /Centre de formation/);
   await page.click('#c-go');
-  // roue du potentiel : un tour, verdict, puis entrée au centre
-  await page.waitForSelector('.wheel-screen .wheel');
-  assert.equal(await page.locator('.wheel .ws').count(), 10);
-  await shot('c2b-wheel');
-  await page.click('#wheel-spin');
-  await page.waitForSelector('#wheel-go', { timeout: 15000 });
-  const verdict = (await page.textContent('.w-verdict')).trim();
-  assert.ok(['Espoir modeste', 'Bon espoir', 'Bel espoir', 'Grand espoir', 'Pépite', 'Phénomène'].includes(verdict), verdict);
-  // le palier tiré est bien celui qui s'est arrêté sous le pointeur
-  const under = await page.evaluate(() => {
-    const ptr = document.querySelector('#wheel-ptr').getBoundingClientRect();
-    const x = ptr.left + ptr.width / 2, y = ptr.bottom + 6;
-    const el = document.elementFromPoint(x, y);
-    return el?.closest('.ws')?.dataset.tier ?? null;
-  });
-  const ids = { 'Espoir modeste': 'modeste', 'Bon espoir': 'bon', 'Bel espoir': 'bel', 'Grand espoir': 'grand', 'Pépite': 'pepite', 'Phénomène': 'phenomene' };
-  assert.equal(under, ids[verdict], `sous le pointeur : ${under}, verdict : ${verdict}`);
+  // roues du niveau puis du potentiel : un tour chacune, verdict sous le pointeur, puis entrée au centre
+  const ids = { 'En retard': 'retard', 'Dans le groupe': 'groupe', 'Au niveau': 'niveau', 'En avance': 'avance', 'Surclassé': 'surclasse', 'Précoce': 'precoce',
+    'Espoir modeste': 'modeste', 'Bon espoir': 'bon', 'Bel espoir': 'bel', 'Grand espoir': 'grand', 'Pépite': 'pepite', 'Phénomène': 'phenomene' };
+  const verdicts = [];
+  for (const step of [0, 1]) {
+    await page.waitForSelector('.wheel-screen .wheel');
+    assert.equal(await page.locator('.wheel .ws').count(), 10);
+    if (step === 0) await shot('c2b-wheel');
+    await page.click('#wheel-spin');
+    await page.waitForSelector(step === 0 ? '#wheel-next' : '#wheel-go', { timeout: 15000 });
+    const verdict = (await page.textContent('.w-verdict')).trim();
+    assert.ok(ids[verdict], verdict);
+    // le palier tiré est bien celui qui s'est arrêté sous le pointeur
+    const under = await page.evaluate(() => {
+      const ptr = document.querySelector('#wheel-ptr').getBoundingClientRect();
+      const el = document.elementFromPoint(ptr.left + ptr.width / 2, ptr.bottom + 6);
+      return el?.closest('.ws')?.dataset.tier ?? null;
+    });
+    assert.equal(under, ids[verdict], `sous le pointeur : ${under}, verdict : ${verdict}`);
+    verdicts.push(verdict);
+    if (step === 0) await page.click('#wheel-next');
+  }
+  const verdict = verdicts[1];
   await page.waitForTimeout(600);
   await shot('c2c-wheel-verdict');
   await page.click('#wheel-go');
@@ -87,7 +104,7 @@ const SHOTS = process.argv[3] || null;
       await page.click('#mr-close'); reviews++; continue;
     }
     if (await page.$('[data-ev]')) { await page.click('[data-ev="0"]'); continue; }
-    if (await page.$('#w-go')) { await page.click('#w-go'); continue; }
+    if (await page.$('#w-go')) { await goWeek(); continue; }
     if (await page.$('#w-bye')) { await page.click('#w-bye'); continue; }
     if (await page.$('#w-sim')) { await page.click('#w-sim'); await page.waitForSelector('.hub', { timeout: 60000 }); simulated++; continue; }
   }
@@ -100,7 +117,7 @@ const SHOTS = process.argv[3] || null;
   for (let i = 0; i < 8 && !(await page.$('#w-watch')); i++) {
     if (await page.$('#mr-close')) await page.click('#mr-close');
     else if (await page.$('[data-ev]')) await page.click('[data-ev="0"]');
-    else if (await page.$('#w-go')) await page.click('#w-go');
+    else if (await page.$('#w-go')) await goWeek();
     else if (await page.$('#w-bye')) await page.click('#w-bye');
   }
   const week = await page.textContent('.week h2');
@@ -163,6 +180,7 @@ const SHOTS = process.argv[3] || null;
   assert.match(await page.textContent('.report'), /min, note/);
 
   assert.deepEqual(errors, []);
+  assert.ok(drills >= 1, 'l\'atelier de la semaine est proposé');
   console.log('ui-check-career : OK');
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
