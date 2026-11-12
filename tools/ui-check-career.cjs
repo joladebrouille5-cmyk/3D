@@ -34,7 +34,28 @@ const SHOTS = process.argv[3] || null;
   await shot('c2-club');
   assert.match(await page.textContent('#c-detail'), /Centre de formation/);
   await page.click('#c-go');
+  // roue du potentiel : un tour, verdict, puis entrée au centre
+  await page.waitForSelector('.wheel-screen .wheel');
+  assert.equal(await page.locator('.wheel .ws').count(), 10);
+  await shot('c2b-wheel');
+  await page.click('#wheel-spin');
+  await page.waitForSelector('#wheel-go', { timeout: 15000 });
+  const verdict = (await page.textContent('.w-verdict')).trim();
+  assert.ok(['Espoir modeste', 'Bon espoir', 'Bel espoir', 'Grand espoir', 'Pépite', 'Phénomène'].includes(verdict), verdict);
+  // le palier tiré est bien celui qui s'est arrêté sous le pointeur
+  const under = await page.evaluate(() => {
+    const ptr = document.querySelector('#wheel-ptr').getBoundingClientRect();
+    const x = ptr.left + ptr.width / 2, y = ptr.bottom + 6;
+    const el = document.elementFromPoint(x, y);
+    return el?.closest('.ws')?.dataset.tier ?? null;
+  });
+  const ids = { 'Espoir modeste': 'modeste', 'Bon espoir': 'bon', 'Bel espoir': 'bel', 'Grand espoir': 'grand', 'Pépite': 'pepite', 'Phénomène': 'phenomene' };
+  assert.equal(under, ids[verdict], `sous le pointeur : ${under}, verdict : ${verdict}`);
+  await page.waitForTimeout(600);
+  await shot('c2c-wheel-verdict');
+  await page.click('#wheel-go');
   await page.waitForSelector('.hub');
+  assert.match(await page.textContent('.profile .pot'), new RegExp(verdict));
   assert.match(await page.textContent('.hub-head'), /RC Lens/);
   assert.match(await page.textContent('.hub-head'), /U17/);
   await shot('c3-hub');

@@ -14,6 +14,7 @@ import {
 } from './clubs.js';
 import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL } from './market.js';
+import { tierById } from './potential.js';
 export { money, CONTRACT_LABEL };
 
 export const SAVE_VERSION = 1;
@@ -43,7 +44,7 @@ export const OFFPITCH = {
 export const ROLES = { GK: 'Gardien', CB: 'Défenseur central', FB: 'Latéral', DM: 'Milieu défensif', CM: 'Milieu central', AM: 'Milieu offensif', W: 'Ailier', ST: 'Avant-centre' };
 
 // ------------------------------------------------------------------ création
-export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null }) {
+export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null, potential = null }) {
   const club = clubById(clubId);
   if (!club) throw new Error(`Club inconnu : ${clubId}`);
   const s = String(seed ?? Math.floor(Math.random() * 1e9));
@@ -52,8 +53,12 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
   // niveau actuel : dépend du centre de formation (benjamin de l'effectif U17)
   const ca0 = youthCA(q, 'U17') - 0.03 + rng.gauss(0, 0.015);
   const attrs = genAttrs(role, ca0, rng, 0.045);
-  // potentiel : aléatoire, indépendant du club
-  const pa = clamp(Math.max(ca0 + 0.07, rng.gauss(0.63, 0.075)), 0.5, 0.9);
+  // potentiel : indépendant du club. Tiré par la roue (palier choisi par le sort, valeur exacte
+  // cachée dans le palier) ; sans roue, tirage direct.
+  const tier = potential ? tierById(potential) : null;
+  const pa = tier
+    ? clamp(Math.max(ca0 + 0.05, rng.range(tier.lo, tier.hi)), 0.5, 0.9)
+    : clamp(Math.max(ca0 + 0.07, rng.gauss(0.63, 0.075)), 0.5, 0.9);
   const st = {
     version: SAVE_VERSION, seed: s, createdAt: Date.now(),
     player: {
@@ -61,6 +66,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
       attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6, team: 0.5, fans: 0.12,
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
       contract: { clubId, type: 'aspirant', until: 2027, salary: 0.3 }, money: 0, loan: null,
+      potentialTier: tier ? { id: tier.id, label: tier.label } : null,
     },
     clubId, stage: 'U17', season: 2026, week: 0,
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
@@ -68,6 +74,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
     rng: rng.snapshot(), eventCooldown: 2,
   };
   log(st, `Arrivée au centre de formation de ${club.name}. Le staff estime ton niveau actuel à ${pct(currentCA(st))}.`);
+  if (tier) log(st, `La roue a parlé : ${tier.label}. À toi d'en faire quelque chose.`);
   startSeason(st);
   return st;
 }

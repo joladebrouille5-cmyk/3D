@@ -127,6 +127,34 @@ export const sound = {
     }
     this.kick(0.8);
   },
+  // cliquet de la roue : petit claquement sec, plus aigu quand elle va vite
+  tick(speed = 1) {
+    if (!enabled || !ensure()) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(); o.type = 'square';
+    o.frequency.setValueAtTime(1500 + 900 * Math.min(1, speed), t); o.frequency.exponentialRampToValueAtTime(420, t + 0.03);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.07, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+    o.connect(g).connect(master); o.start(t); o.stop(t + 0.05);
+  },
+  // verdict de la roue : accord qui monte, d'autant plus riche que le palier est haut (0 à 5)
+  fanfare(level = 2) {
+    if (!enabled || !ensure()) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    const t = ctx.currentTime;
+    const notes = [523, 659, 784, 1047, 1319, 1568].slice(0, 3 + Math.min(3, Math.floor(level / 2) + (level >= 4 ? 1 : 0)));
+    notes.forEach((fr, i) => {
+      const dt = i * 0.085;
+      for (const [type, mul, vol] of [['triangle', 1, 0.1], ['sawtooth', 0.5, 0.025]]) {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = fr * mul;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t + dt); g.gain.linearRampToValueAtTime(vol, t + dt + 0.02);
+        g.gain.setValueAtTime(vol, t + dt + 0.5); g.gain.exponentialRampToValueAtTime(0.001, t + dt + 1.4);
+        o.connect(g).connect(master); o.start(t + dt); o.stop(t + dt + 1.5);
+      }
+    });
+    if (level >= 4) this.goal(); // pépite ou phénomène : le stade explose
+  },
   // petit signal : le match se fige pour un choix
   chime() {
     if (!enabled || !ensure()) return;

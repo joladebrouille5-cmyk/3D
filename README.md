@@ -27,7 +27,10 @@ L'accueil propose **Débuter la partie**, **Charger la partie** (3 emplacements,
 2. **Choix du club** parmi les 218 clubs masculins du catalogue (`data/joueurs-v1.csv`). Tu peux chercher un club et filtrer par division. La carrière commence dans le **centre de formation** du club choisi.
 3. **Niveau et potentiel** :
    - Le **niveau actuel** dépend du centre choisi. Un grand centre donne un meilleur niveau de départ, mais la concurrence y est plus rude.
-   - Le **potentiel** est tiré au hasard, indépendamment du club, puis caché. Le staff n'en donne qu'une fourchette, qui se resserre avec le temps.
+   - Le **potentiel** se tire à la **roue du potentiel**, juste après le choix du club (un seul tour, pas de relance).
+     Chaque part a la taille de sa probabilité : Espoir modeste 16 %, Bon espoir 26 %, Bel espoir 27 %, Grand espoir 19 %,
+     Pépite 9 %, Phénomène 3 %. La roue donne le palier ; la valeur exacte, tirée dans ce palier, reste cachée.
+     Le staff n'en donne qu'une fourchette, qui se resserre avec le temps (`src/career/potential.js`).
    - Ce potentiel **évolue selon tes choix** : études, analyse vidéo, séances supplémentaires, surmenage, sorties, temps de jeu, blessures et événements de vie.
 4. **Chaque semaine**, tu choisis un thème d'entraînement, une intensité et une activité hors du terrain. Des événements de vie à choix peuvent survenir. Le coach annonce ensuite si tu es titulaire, remplaçant, non retenu ou blessé.
 5. **Les matchs** :

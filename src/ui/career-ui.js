@@ -11,6 +11,7 @@ import { avatar, faceUrl, faceIndexFor, faceSample } from './faces.js';
 import { extrasForWeek } from '../career/competitions.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
 import { sound } from './sound.js';
+import { TIERS, wheelSlices, drawTier, tierById } from '../career/potential.js';
 const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -237,16 +238,10 @@ function showClubPicker() {
       <div class="cd-facts"><div><span>Centre de formation</span><b class="stars">${stars(academyStars(c))}</b></div><div><span>Ton niveau de départ</span><b class="num">${start}</b></div></div>
       <p class="small">U17 : ${esc(lg17.name)}<br>U19 : ${esc(lg19.name)}</p>
       <p>Un centre réputé t'entoure de meilleurs joueurs et de meilleurs formateurs, mais la concurrence y est plus rude.</p>
-      <p><strong>Ton potentiel</strong> : tiré au hasard, indépendant du club. Il évoluera selon tes choix.</p>
+      <p><strong>Ton potentiel</strong> : c'est la roue qui décide, juste après — indépendamment du club. Il évoluera ensuite selon tes choix.</p>
       <p class="muted">${c.senior?.players?.length >= 11 ? 'Effectif professionnel : noms publiés par le club (notes estimées par le jeu).' : 'Effectif professionnel : non établi dans la collecte, joueurs générés.'}</p>
       <button class="primary" id="c-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
-    box.querySelector('#c-go').addEventListener('click', () => {
-      const f = G.form;
-      G.st = C.createCareer({ firstName: f.firstName, lastName: f.lastName, role: f.role, foot: f.foot, clubId: c.id, face: f.face ?? null });
-      G.slot = f.slot; G.form = null; G.pick = null;
-      persist();
-      renderHub();
-    });
+    box.querySelector('#c-go').addEventListener('click', () => showWheel(c));
   };
   el.querySelector('#c-q').addEventListener('input', (e) => { G.filter.q = e.target.value; renderList(); });
   el.querySelector('#c-level').addEventListener('change', (e) => { G.filter.level = e.target.value; renderList(); });
@@ -254,6 +249,138 @@ function showClubPicker() {
   el.querySelector('#c-back2').addEventListener('click', showNewCareer);
   renderList();
   if (G.pick) renderDetail();
+}
+
+// ------------------------------------------------------------------ roue du potentiel
+// Un seul tour, pas de relance : le sort fixe le palier, les choix feront le reste.
+const TIER_SHORT = { modeste: 'Modeste', bon: 'Bon espoir', bel: 'Bel espoir', grand: 'Grand espoir', pepite: 'Pépite', phenomene: 'Phénomène' };
+const tierStars = (t) => stars(C.toStars((t.lo + t.hi) / 2));
+
+function wheelSVG(face) {
+  const sl = wheelSlices();
+  const R = 90;
+  const pt = (a, r) => { const t = ((a - 90) * Math.PI) / 180; return `${(r * Math.cos(t)).toFixed(2)} ${(r * Math.sin(t)).toFixed(2)}`; };
+  const parts = sl.map((s, i) => {
+    const mid = (s.start + s.end) / 2, span = s.end - s.start;
+    return `<g class="ws" data-tier="${s.id}" data-i="${i}">
+      <path d="M0 0L${pt(s.start, R)}A${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${pt(s.end, R)}Z" fill="${s.tier.color}"/>
+      <path d="M0 0L${pt(s.start, R)}A${R} ${R} 0 ${span > 180 ? 1 : 0} 1 ${pt(s.end, R)}Z" fill="url(#w-shade)"/>
+      <text transform="rotate(${(mid - 90).toFixed(2)}) translate(84 0)" text-anchor="end" dominant-baseline="central" font-size="${span < 14 ? 6.2 : span < 24 ? 7 : 7.8}">${esc(TIER_SHORT[s.id].toUpperCase())}</text>
+    </g>`;
+  }).join('');
+  const seps = sl.map((s) => `<line x1="0" y1="0" x2="${pt(s.start, R).replace(' ', '" y2="')}"/>`).join('');
+  const lights = Array.from({ length: 28 }, (_, i) => { const [x, y] = pt((i * 360) / 28, 96.5).split(' '); return `<circle cx="${x}" cy="${y}" r="2.1" class="wl ${i % 2 ? 'odd' : ''}"/>`; }).join('');
+  const hub = face
+    ? `<clipPath id="w-hubclip"><circle r="17"/></clipPath><image href="${face}" x="-17" y="-19" width="34" height="38" clip-path="url(#w-hubclip)" preserveAspectRatio="xMidYMin slice"/>`
+    : `<text class="w-hubstar" text-anchor="middle" dominant-baseline="central">★</text>`;
+  return `<svg class="wheel" viewBox="-110 -114 220 224" role="img" aria-label="Roue du potentiel">
+    <defs>
+      <radialGradient id="w-shade" cx="0" cy="0" r="90" gradientUnits="userSpaceOnUse"><stop offset="0.2" stop-color="#000" stop-opacity="0.35"/><stop offset="0.75" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#000" stop-opacity="0.25"/></radialGradient>
+      <linearGradient id="w-gold" x1="0" y1="-1" x2="0" y2="1"><stop offset="0" stop-color="#fff2bf"/><stop offset="0.5" stop-color="#e2b23c"/><stop offset="1" stop-color="#8a5f12"/></linearGradient>
+      <radialGradient id="w-hub" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stop-color="#2a3a60"/><stop offset="1" stop-color="#070c18"/></radialGradient>
+    </defs>
+    <circle r="104" class="w-glow"/>
+    <g class="wheel-rot" id="wheel-rot">${parts}<g class="w-seps">${seps}</g></g>
+    <circle r="96.5" class="w-rim"/>${lights}
+    <circle r="21" fill="url(#w-hub)" stroke="url(#w-gold)" stroke-width="3"/>${hub}
+    <g class="wheel-ptr" id="wheel-ptr"><path d="M0 -84L-9.5 -104Q0 -110 9.5 -104Z" fill="url(#w-gold)" stroke="#5a3d08" stroke-width="1"/><circle cy="-102" r="2.4" fill="#fff6d6"/></g>
+  </svg>`;
+}
+
+function showWheel(club) {
+  const f = G.form;
+  const el = show(`<div class="panel-screen wheel-screen" style="${clubVars(club)}">
+    <header class="screen-head"><button class="icon-btn" id="w-back" aria-label="Retour">${icon('back', 20)}</button><h1>La roue du potentiel</h1></header>
+    <div class="wheel-body">
+      <div class="wheel-stage" id="wheel-stage">${wheelSVG(faceUrl(f.face))}</div>
+      <aside class="wheel-side" id="wheel-side">
+        <p class="w-eyebrow">${crest(club, 22)}<span>${esc(f.firstName)} ${esc(f.lastName)} · ${esc(club.name)}</span></p>
+        <h2>Jusqu'où iras-tu ?</h2>
+        <p class="w-lead">La roue fixe ton potentiel de départ. Une part plus grande, c'est un palier plus fréquent : le Phénomène ne sort qu'une fois sur trente-trois. Ensuite, ce sont tes choix qui le feront monter… ou baisser.</p>
+        <ul class="w-odds">${TIERS.map((t) => `<li style="--tier:${t.color}"><i></i><span>${esc(t.label)}</span><span class="stars">${tierStars(t)}</span><b>${Math.round(t.p * 100)} %</b></li>`).join('')}</ul>
+        <button class="primary w-spin" id="wheel-spin">${icon('next', 18)} Tourner la roue</button>
+      </aside>
+    </div>
+  </div>`);
+  el.querySelector('#w-back').addEventListener('click', showClubPicker);
+  el.querySelector('#wheel-spin').addEventListener('click', () => {
+    const tier = drawTier(Math.random());
+    el.querySelector('#w-back').disabled = true;
+    el.querySelector('#wheel-spin').disabled = true;
+    el.querySelector('#wheel-spin').textContent = 'La roue tourne…';
+    spinWheel(el, tier, () => wheelVerdict(el, club, tier));
+  });
+}
+
+function spinWheel(el, tier, done) {
+  const sl = wheelSlices();
+  const own = sl.filter((s) => s.id === tier.id);
+  const s = own[Math.floor(Math.random() * own.length)];
+  const target = s.start + (s.end - s.start) * (0.22 + Math.random() * 0.56); // jamais pile sur une frontière
+  const total = 6 * 360 + (360 - target); // la part visée finit sous le pointeur
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const dur = reduce ? 1200 : 5800;
+  const rot = el.querySelector('#wheel-rot'), ptr = el.querySelector('#wheel-ptr'), svg = el.querySelector('.wheel');
+  const under = (a) => { const w = (((360 - (a % 360)) % 360) + 360) % 360; return sl.findIndex((x) => w >= x.start && w < x.end); };
+  const ease = (x) => 1 - Math.pow(1 - x, 4);
+  let last = under(0), t0 = null;
+  svg.classList.add('spinning');
+  const frame = (now) => {
+    t0 ??= now;
+    const x = Math.min(1, (now - t0) / dur);
+    const a = total * ease(x);
+    rot.setAttribute('transform', `rotate(${a.toFixed(2)})`);
+    const i = under(a);
+    if (i !== last) {
+      last = i;
+      const speed = Math.pow(1 - x, 3);
+      sound.tick(speed);
+      ptr.animate?.([{ transform: `rotate(${-10 - 18 * (1 - speed)}deg)` }, { transform: 'rotate(0deg)' }], { duration: 90 + 160 * (1 - speed), easing: 'ease-out' });
+    }
+    if (x < 1) requestAnimationFrame(frame);
+    else { svg.classList.remove('spinning'); setTimeout(done, 380); }
+  };
+  requestAnimationFrame(frame);
+}
+
+function wheelVerdict(el, club, tier) {
+  const level = TIERS.indexOf(tier);
+  const svg = el.querySelector('.wheel');
+  svg.classList.add('decided');
+  svg.querySelectorAll('.ws').forEach((g) => g.classList.toggle('won', g.dataset.tier === tier.id));
+  sound.fanfare(level);
+  const stage = el.querySelector('#wheel-stage');
+  stage.style.setProperty('--tier', tier.color);
+  stage.classList.add(level >= 4 ? 'jackpot' : 'landed');
+  if (level >= 3) confetti(stage, level >= 5 ? 90 : level >= 4 ? 60 : 30, tier.color);
+  G.form.potential = tier.id;
+  const side = el.querySelector('#wheel-side');
+  side.innerHTML = `<p class="w-eyebrow">${crest(club, 22)}<span>La roue a parlé</span></p>
+    <h2 class="w-verdict" style="--tier:${tier.color}">${esc(tier.label)}</h2>
+    <p class="stars w-stars">${tierStars(tier)}</p>
+    <p class="w-blurb">${esc(tier.blurb)}</p>
+    <p class="muted small">Potentiel de départ entre ${C.pct(tier.lo)} et ${C.pct(tier.hi)}. Le staff ne le connaît pas encore précisément ; il bougera selon ton travail, ta discipline et ton temps de jeu.</p>
+    <button class="primary" id="wheel-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
+  side.classList.remove('enter-side'); void side.offsetWidth; side.classList.add('enter-side');
+  side.querySelector('#wheel-go').addEventListener('click', () => {
+    const fm = G.form;
+    G.st = C.createCareer({ firstName: fm.firstName, lastName: fm.lastName, role: fm.role, foot: fm.foot, clubId: club.id, face: fm.face ?? null, potential: fm.potential });
+    G.slot = fm.slot; G.form = null; G.pick = null;
+    persist();
+    renderHub();
+  });
+}
+
+function confetti(stage, n, color) {
+  const box = document.createElement('div');
+  box.className = 'w-confetti';
+  const cols = [color, '#ffd65a', '#ffffff', '#4ee08a', '#ff8a5c'];
+  box.innerHTML = Array.from({ length: n }, (_, i) => {
+    const dx = (Math.random() - 0.5) * 140, rot = Math.round(Math.random() * 720 - 360), delay = Math.random() * 0.25, dur = 1.4 + Math.random() * 1.2;
+    return `<i style="--dx:${dx.toFixed(1)}vmin;--rot:${rot}deg;--c:${cols[i % cols.length]};animation-delay:${delay.toFixed(2)}s;animation-duration:${dur.toFixed(2)}s;left:${(50 + (Math.random() - 0.5) * 20).toFixed(1)}%"></i>`;
+  }).join('');
+  stage.appendChild(box);
+  setTimeout(() => box.remove(), 3200);
 }
 
 // ------------------------------------------------------------------ tableau de bord
@@ -292,7 +419,7 @@ function profileCard(st) {
       <div class="pc-stats">
         <h2 class="sr-only">${esc(p.firstName)} ${esc(p.lastName)}</h2>
         <div class="lvl"><span class="label">Niveau actuel</span><span class="value">${C.pct(ca)}</span><span class="delta ${season >= 0 ? 'up' : 'down'}">${fmtLvl(season)} cette saison</span></div>
-        <div class="pot"><span class="label">Potentiel estimé par le staff</span><span class="stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
+        <div class="pot"><span class="label">Potentiel estimé par le staff${p.potentialTier ? ` <span class="tier-chip" style="--tier:${tierById(p.potentialTier.id)?.color ?? 'var(--flood)'}" title="Palier tiré à la roue en arrivant au centre">${esc(p.potentialTier.label)}</span>` : ''}</span><span class="stars">${stars(C.toStars(est.center))}</span><span class="muted">entre ${C.pct(est.lo)} et ${C.pct(est.hi)}</span></div>
         <p class="role-line">${esc(C.ROLES[p.role])}</p>
         ${p.contract ? `<p class="contract-line">${icon('save', 14)}<span>${p.loan ? `Prêté par ${esc(clubById(p.loan.parentId).name)} · ` : ''}${esc(C.CONTRACT_LABEL[p.contract.type] ?? 'Contrat')} · <b>${C.money(p.contract.salary)}</b>/mois · fin juin ${p.contract.until + 1}<br>Économies : <b>${C.money(p.money)}</b>${p.agent ? ' · agent' : ''}</span></p>` : ''}
       </div>
