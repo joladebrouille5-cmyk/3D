@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -50,6 +51,8 @@ public class MainActivity extends Activity {
                 return !"appassets.androidplatform.net".equals(request.getUrl().getHost());
             }
         });
+        // sans WebChromeClient, les boîtes alert()/confirm() sont ignorées (confirm répond toujours non)
+        webView.setWebChromeClient(new WebChromeClient());
         setContentView(webView);
         hideSystemBars();
         if (savedInstanceState != null) webView.restoreState(savedInstanceState);

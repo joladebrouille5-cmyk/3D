@@ -107,7 +107,24 @@ export function showHome() {
 }
 
 function openSave(slot) {
-  try { G.st = C.ensureState(loadCareer(slot)); G.slot = slot; G.showReview = null; renderHub(); } catch (e) { alert(e.message); }
+  try { G.st = C.ensureState(loadCareer(slot)); G.slot = slot; G.showReview = null; renderHub(); } catch (e) { flash(e.message); }
+}
+
+// Confirmation dans le jeu : la WebView Android n'affiche pas les boîtes natives (confirm() y répond toujours « non »)
+function askConfirm(text, okLabel = 'Confirmer') {
+  return new Promise((resolve) => {
+    const back = document.createElement('div');
+    back.className = 'dialog-back';
+    back.innerHTML = `<div class="dialog" role="alertdialog" aria-modal="true" aria-label="Confirmation"><p>${esc(text)}</p><div class="actions"><button id="dlg-no">Annuler</button><button class="primary" id="dlg-yes">${esc(okLabel)}</button></div></div>`;
+    document.body.append(back);
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); close(false); } };
+    const close = (v) => { back.remove(); window.removeEventListener('keydown', onKey, true); resolve(v); };
+    window.addEventListener('keydown', onKey, true);
+    back.querySelector('#dlg-no').addEventListener('click', () => close(false));
+    back.querySelector('#dlg-yes').addEventListener('click', () => close(true));
+    back.addEventListener('click', (e) => { if (e.target === back) close(false); });
+    back.querySelector('#dlg-yes').focus();
+  });
 }
 
 function showLoad() {
@@ -125,8 +142,8 @@ function showLoad() {
   el.querySelectorAll('[data-load]').forEach((b) => b.addEventListener('click', () => {
     openSave(Number(b.dataset.load));
   }));
-  el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
-    if (confirm(`Supprimer définitivement la sauvegarde de l'emplacement ${b.dataset.del} ?`)) { deleteSave(Number(b.dataset.del)); hasSaves() ? showLoad() : showHome(); }
+  el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+    if (await askConfirm(`Supprimer définitivement la sauvegarde de l'emplacement ${b.dataset.del} ?`, 'Supprimer')) { deleteSave(Number(b.dataset.del)); hasSaves() ? showLoad() : showHome(); }
   }));
   el.querySelector('#l-back').addEventListener('click', showHome);
   el.querySelector('#l-back2').addEventListener('click', showHome);
@@ -135,7 +152,8 @@ function showLoad() {
 // ------------------------------------------------------------------ création du joueur
 const POS_SPOTS = [['GK', 7, 50], ['CB', 22, 50], ['FB', 27, 16], ['DM', 40, 50], ['CM', 53, 34], ['AM', 66, 52], ['W', 75, 16], ['ST', 87, 50]];
 function showNewCareer() {
-  const f = G.form ?? { firstName: '', lastName: '', role: 'CM', foot: 'droit', slot: firstFreeSlot() ?? 1 };
+  const oldest = () => listSaves().filter((x) => !x.empty).sort((a, b) => (a.savedAt ?? 0) - (b.savedAt ?? 0))[0]?.slot ?? 1;
+  const f = G.form ?? { firstName: '', lastName: '', role: 'CM', foot: 'droit', slot: firstFreeSlot() ?? oldest() };
   f.faceSeed ??= Date.now();
   const sample = faceSample(f.faceSeed, 14);
   if (f.face == null || !sample.includes(f.face)) f.face = f.face ?? sample[0];
@@ -152,6 +170,7 @@ function showNewCareer() {
         <label>Prénom<input type="text" id="n-first" maxlength="20" value="${esc(f.firstName)}" autocomplete="off"></label>
         <label>Nom<input type="text" id="n-last" maxlength="24" value="${esc(f.lastName)}" autocomplete="off"></label>
         <label>Pied fort<select id="n-foot"><option ${f.foot === 'droit' ? 'selected' : ''}>droit</option><option ${f.foot === 'gauche' ? 'selected' : ''}>gauche</option></select></label>
+        ${saves.every((s) => !s.empty) ? `<p class="slot-full">${icon('save', 16)}<span>Tes ${saves.length} emplacements sont pleins : choisis la partie que la nouvelle remplacera.</span></p>` : ''}
         <label>Emplacement de sauvegarde<select id="n-slot">${saves.map((s) => `<option value="${s.slot}" ${f.slot === s.slot ? 'selected' : ''}>${s.slot} — ${s.empty ? 'vide' : `remplacer ${esc(s.name ?? 'la sauvegarde')}`}</option>`).join('')}</select></label>
       </div>
       <div class="nc-pos">
@@ -180,11 +199,11 @@ function showNewCareer() {
   const back = () => { G.form = null; showHome(); };
   el.querySelector('#n-back').addEventListener('click', back);
   el.querySelector('#n-back2').addEventListener('click', back);
-  el.querySelector('#n-next').addEventListener('click', () => {
+  el.querySelector('#n-next').addEventListener('click', async () => {
     const form = { ...readForm(), firstName: el.querySelector('#n-first').value.trim(), lastName: el.querySelector('#n-last').value.trim() };
     if (!form.firstName || !form.lastName) { el.querySelector('#n-err').textContent = 'Indique un prénom et un nom.'; return; }
-    const occupied = !saves.find((s) => s.slot === form.slot).empty;
-    if (occupied && !confirm(`L'emplacement ${form.slot} contient déjà une partie. La remplacer ?`)) return;
+    const prev = saves.find((s) => s.slot === form.slot);
+    if (!prev.empty && !(await askConfirm(`L'emplacement ${form.slot} contient la partie de ${prev.name ?? 'quelqu\'un'}. La remplacer par ta nouvelle carrière ?`, 'Remplacer'))) return;
     G.form = form;
     showClubPicker();
   });
@@ -964,7 +983,7 @@ export function initCareerUI() {
   setHomeHandler(showHome);
   // Retour Android / Échap sur un écran de carrière : revenir en arrière proprement
   window.addEventListener('keydown', (e) => {
-    if (root().hidden || e.key !== 'Escape') return;
+    if (root().hidden || e.key !== 'Escape' || document.querySelector('.dialog-back')) return;
     e.stopImmediatePropagation();
     if (G.showReview) { G.showReview = null; renderHub(); return; }
     if (G.st && G.st.phase === 'month_review') { C.closeMonthReview(G.st); persist(); renderHub(); return; }
