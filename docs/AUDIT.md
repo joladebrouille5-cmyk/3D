@@ -99,3 +99,14 @@ Observations sans correction :
 - **Logos des clubs amateurs** : Transfermarkt oppose une vérification anti-robot aux recherches depuis
   l'environnement de développement ; le script s'arrête sans la contourner. Procédure depuis un ordinateur
   personnel décrite dans le README.
+
+## 6. Suivi (12 novembre 2026, second passage)
+
+- **Choix en match** : pourcentage de réussite simulé pour chaque choix (24 simulations de la suite de l'action
+  sur une copie du match) ; annoncé ≈ réel sur près de 600 choix. Verdict ✓ / ✗ après le choix, bilan des décisions.
+- **Caméra** : sur téléphone, le panneau des choix ne cache plus l'action (zone visible prise en compte).
+- **Carrière** : les matchs font progresser (temps de jeu, adversaire, note, décisions) ; titularisation selon la
+  forme, la fraîcheur et un éventuel renfort ; 8 à 12 événements par saison, dont des événements liés au contexte.
+- **Moteur** : avantage du terrain (aucun auparavant : 27 victoires à l'extérieur contre 17 à domicile sur 60 matchs),
+  moins de frappes lointaines (24,5 tirs, 9,6 cadrés au lieu de 29 et 12), gardiens un peu moins infaillibles.
+

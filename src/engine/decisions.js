@@ -86,9 +86,10 @@ export function holderOptions(m, p, restartType = null) {
   const dGoal = dist(p.x, p.y, gx, 34);
   const shotAllowed = !restartType || (restartType === 'freekick' && m.restartDirect);
   if ((shotAllowed || (restartType === 'freekick' && dGoal < 30)) && dGoal < 34 && rel > 0.62) {
-    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType, bias: 0.13 });
+    const xg = xgEstimate(m, p, { pressure: pr, freekick: !!restartType, bias: 0.09 });
     // un tir termine presque toujours la possession : on le compare à la valeur de la garder
-    const hesitation = -0.004 + 0.0008 * Math.max(0, dGoal - 12) + 0.016 * pr - 0.014 * (p.attrs.shooting - 0.5);
+    // (les frappes lointaines sans angle deviennent plus rares)
+    const hesitation = -0.004 + 0.0011 * Math.max(0, dGoal - 12) + 0.016 * pr - 0.014 * (p.attrs.shooting - 0.5);
     const v = xg + 0.1 * here - here - hesitation;
     opts.push({ kind: 'shoot', u: v, xg: xgEstimate(m, p, { pressure: pr, freekick: !!restartType }) });
   }

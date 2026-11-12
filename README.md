@@ -139,17 +139,21 @@ Mesures sur 40 matchs entre équipes synthétiques (`npm run calibrate`), compar
 
 | Indicateur par match | Moteur actuel | Ordre de grandeur réel |
 |---|---:|---:|
-| Buts | ~2,65 | ~2,7-2,9 |
-| Tirs | ~29 | ~25 |
-| Tirs cadrés | ~12,5 | ~9 |
-| xG pré-tir total | ~2,6 (≈ buts) | ~2,7 |
+| Buts | ~2,6 | ~2,7-2,9 |
+| Tirs | ~24,5 | ~25 |
+| Tirs cadrés | ~9,6 | ~9 |
+| Arrêts du gardien | ~65 % des tirs cadrés | ~70 % |
+| Domicile / nul / extérieur | ~45 % / 30 % / 25 % (120 matchs) | ~44 % / 26 % / 30 % |
+| xG pré-tir total | ~2,5 (≈ buts) | ~2,7 |
 | Passes (deux équipes, hors dégagements) | ~1 150 | ~950-1 100 |
 | Réussite des passes | ~82 % | ~82-85 % |
-| Corners | ~9,3 | ~9-10 |
+| Corners | ~7,9 | ~9-10 |
 | Fautes | ~25 | ~22-24 |
 | Cartons jaunes / rouges | ~4,2 / ~0,07 | ~4 / ~0,15 |
 | Buts contre son camp | ~3 % des buts | ~3-4 % |
 
+- **Avantage du terrain** : l'équipe qui reçoit est portée par son public (passes et frappes un peu
+  plus précises, duels un peu mieux gagnés, arbitre un peu plus clément) ; rien sur terrain neutre.
 - **Corrections principales** :
   - passes en profondeur réservées aux vrais appels ;
   - frappes contrées dans la trajectoire ;

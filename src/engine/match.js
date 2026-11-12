@@ -112,6 +112,10 @@ export class Match {
     return team;
   }
 
+  // Avantage du terrain : la foule porte l'équipe qui reçoit (précision, duels) et pèse un peu
+  // sur l'arbitre. 0 pour l'équipe extérieure ou sur terrain neutre (competition.neutral).
+  home(p) { return this.teams[p.team].idx === 0 && !this.competition?.neutral ? 1 : 0; }
+
   // ---------------------------------------------------------------- repères
   absX(team, rel) { return team.dir > 0 ? rel * PITCH.length : (1 - rel) * PITCH.length; }
   relX(team, x) { return team.dir > 0 ? x / PITCH.length : (PITCH.length - x) / PITCH.length; }
@@ -776,7 +780,7 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      let pSave = clamp(1.11 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(0.96 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
       if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
@@ -794,7 +798,7 @@ export class Match {
         const s = this.rng.range(5, 11);
         b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(0.5, 4);
         if (b.z > 1.7 && this.rng.chance(0.6)) { b.vx = -Math.cos(out) * 3; b.vy = side * 2; b.z = 2.7; b.vz = 5; } // claquée au-dessus (nettement)
-        else if (this.rng.chance(0.62)) {
+        else if (this.rng.chance(0.72)) {
           // détournée en corner : le ballon file vers la ligne de but, à l'extérieur des poteaux
           const gx = this.ownGoalX(this.teams[p.team]);
           const vy = side * this.rng.range(6, 9), vx = Math.sign(gx - p.x || -Math.cos(out)) * this.rng.range(1.5, 3);
@@ -830,7 +834,7 @@ export class Match {
       b.shot = null;
       this.#deflect(p, 0.35, 1.2);
       // une frappe contrée file souvent derrière la ligne de but
-      if (this.rng.chance(0.58)) { const gx = this.ownGoalX(team); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - p.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
+      if (this.rng.chance(0.7)) { const gx = this.ownGoalX(team); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - p.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
       return;
     }
 
@@ -950,7 +954,7 @@ export class Match {
     const pr = pressureOn(this, p);
     const fatigue = 1 + 0.5 * (1 - p.energy);
     const d0 = dist(p.x, p.y, tx, ty);
-    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue);
+    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue * (1 - 0.08 * this.home(p)));
     const powErr = 1 + this.rng.gauss(0, (0.05 + 0.08 * (1 - p.attrs.passing)) * fatigue);
     const base = Math.atan2(ty - p.y, tx - p.x) + angErr;
     const d = Math.max(2, d0 * powErr);
@@ -1002,8 +1006,8 @@ export class Match {
     let aimZ = opts.header ? this.rng.range(0.2, 1.6) : style === 'chip' ? this.rng.range(1.6, 2.2) : style === 'power' ? this.rng.range(0.3, 1.7) : this.rng.range(0.15, 2.0);
     const fatigue = 1 + 0.4 * (1 - p.energy);
     const skill = opts.header ? p.attrs.aerial : p.attrs.shooting;
-    const sigma = (0.85 + 0.15 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue
-      * (style === 'placed' ? 0.8 : style === 'power' ? 1.25 : style === 'chip' ? 0.95 : 1);
+    const sigma = (0.75 + 0.2 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue
+      * (style === 'placed' ? 0.8 : style === 'power' ? 1.25 : style === 'chip' ? 0.95 : 1) * (1 - 0.08 * this.home(p));
     aimY += this.rng.gauss(0, sigma);
     aimZ = Math.max(0.05, aimZ + this.rng.gauss(0, sigma * 0.75));
     let speed = opts.header ? this.rng.range(10, 15) : opts.penalty ? this.rng.range(22, 28) : this.rng.range(17, 22) + 8 * p.attrs.shooting * this.rng.range(0.6, 1);
@@ -1079,7 +1083,7 @@ export class Match {
         if (b.shot) { b.shot.blocked = true; this.#log('contre', o.team, `Frappe contrée par ${o.name}.`, { player: o.id }); b.shot = null; }
         b.lastShot = { by: p.id, team: p.team, t: this.t };
         this.#deflect(o, 0.25, 0.8);
-        if (this.rng.chance(0.58)) { const gx = this.ownGoalX(this.teams[o.team]); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - o.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
+        if (this.rng.chance(0.7)) { const gx = this.ownGoalX(this.teams[o.team]); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - o.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
         return true;
       }
     }
@@ -1146,8 +1150,8 @@ export class Match {
     // couverture : chaque défenseur supplémentaire à portée réduit l'espace de sortie du dribbleur
     let cover = 0;
     for (const o of this.onPitch(def.team)) if (o !== def && o.role !== 'GK' && dist(o.x, o.y, att.x, att.y) < 3.2) cover++;
-    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2));
-    const pFoul = 0.018 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025);
+    const pWin = sigmoid(-0.2 + 2.2 * diff + (goalSide ? 0.35 : -0.5) + (slide ? 0.25 : 0) - (att.carry ? 0.2 : 0) + 0.55 * Math.min(cover, 2) + 0.2 * (this.home(def) - this.home(att)));
+    const pFoul = (0.018 + 0.03 * def.attrs.aggression + 0.03 * (1 - def.attrs.tackling) + (slide ? 0.08 : 0) + (goalSide ? 0 : 0.025)) * (1 - 0.08 * this.home(def) + 0.04 * this.home(att));
     const r = this.rng.next();
     // incident physique : évalué au contact, pas de quota
     const injuryRisk = 0.0025 * (slide ? 3 : 1) * (1.6 - att.energy);
