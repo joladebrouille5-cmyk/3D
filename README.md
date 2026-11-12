@@ -136,21 +136,26 @@ Mesures sur 40 matchs entre équipes synthétiques (`npm run calibrate`), compar
 
 | Indicateur par match | Moteur actuel | Ordre de grandeur réel |
 |---|---:|---:|
-| Buts | ~3,0 | ~2,7-2,9 |
+| Buts | ~2,65 | ~2,7-2,9 |
 | Tirs | ~29 | ~25 |
-| Tirs cadrés | ~13 | ~9 |
-| xG pré-tir total | ~2,9 (≈ buts) | ~2,7 |
-| Corners | ~7 | ~9-10 |
-| Fautes | ~26 | ~22-24 |
-| Cartons jaunes | ~5 | ~4 |
-| Résultats domicile / nul / extérieur | 40 / 28 / 32 % | ≈ 45 / 27 / 28 % |
+| Tirs cadrés | ~12,5 | ~9 |
+| xG pré-tir total | ~2,6 (≈ buts) | ~2,7 |
+| Passes (deux équipes, hors dégagements) | ~1 150 | ~950-1 100 |
+| Réussite des passes | ~82 % | ~82-85 % |
+| Corners | ~9,3 | ~9-10 |
+| Fautes | ~25 | ~22-24 |
+| Cartons jaunes / rouges | ~4,2 / ~0,07 | ~4 / ~0,15 |
+| Buts contre son camp | ~3 % des buts | ~3-4 % |
 
 - **Corrections principales** :
   - passes en profondeur réservées aux vrais appels ;
   - frappes contrées dans la trajectoire ;
   - parades et dégagements qui sortent en corner ;
   - couverture défensive dans les duels ;
-  - deux défauts de parade qui renvoyaient le ballon dans le but.
+  - deux défauts de parade qui renvoyaient le ballon dans le but ;
+  - ballons relâchés par le gardien qui repartaient dans son but (14 % de buts contre son camp, 3 % désormais) ;
+  - dégagements exclus du décompte des passes ; passes appuyées au sol plus difficiles à couper ;
+  - déviations de la tête des défenseurs sur centre qui sortent en corner (trajectoire toujours hors du cadre).
 - **xG** : l'indicateur affiché est calibré sur la résolution réelle des tirs ; le joueur décide sur sa propre perception de l'occasion.
 - **Ligne haute** : une ligne défensive haute laisse de l'espace dans son dos, que les attaquants exploitent par leurs appels.
 - **Écarts restants** :

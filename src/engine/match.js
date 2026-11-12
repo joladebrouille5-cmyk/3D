@@ -708,7 +708,9 @@ export class Match {
       const isGK = p.role === 'GK';
       const hands = isGK && inBox(p.x, p.y, this.ownGoalX(this.teams[p.team])) && !(b.pass && b.pass.team === p.team && b.pass.type !== 'header');
       let reach;
-      if (b.z < 0.7) reach = hands ? 1.3 : b.pass && b.pass.to === p.id ? 1.0 : b.pass && b.pass.team !== p.team ? 0.75 : 0.9;
+      // une passe appuyée au sol est difficile à couper : la portée de l'adversaire diminue avec la vitesse
+      const vb = Math.hypot(b.vx, b.vy);
+      if (b.z < 0.7) reach = hands ? 1.3 : b.pass && b.pass.to === p.id ? 1.0 : b.pass && b.pass.team !== p.team ? 0.72 * clamp(1.2 - vb / 30, 0.62, 1) : 0.9;
       else if (b.z < 2.5) reach = hands ? 1.6 : 1.0;
       else if (hands && b.z < 2.9) reach = 1.4;
       else continue;
@@ -731,7 +733,7 @@ export class Match {
       const w = cands.map((c) => {
         const a = c.p.attrs;
         const skill = c.hands ? 0.9 + a.gk : aerial ? 0.4 + a.aerial + 0.3 * a.positioning : 0.5 + 0.5 * a.positioning + 0.5 * a.accel;
-        const intended = b.pass && b.pass.to === c.p.id ? 1.3 : 1;
+        const intended = b.pass && b.pass.to === c.p.id ? 1.5 : 1;
         return skill * intended * (1.25 - c.d / c.reach);
       });
       win = cands[this.rng.weighted(w)];
@@ -780,7 +782,7 @@ export class Match {
         const s = this.rng.range(5, 11);
         b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(0.5, 4);
         if (b.z > 1.7 && this.rng.chance(0.6)) { b.vx = -Math.cos(out) * 3; b.vy = side * 2; b.z = 2.7; b.vz = 5; } // claquée au-dessus (nettement)
-        else if (this.rng.chance(0.45)) {
+        else if (this.rng.chance(0.62)) {
           // détournée en corner : le ballon file vers la ligne de but, à l'extérieur des poteaux
           const gx = this.ownGoalX(this.teams[p.team]);
           const vy = side * this.rng.range(6, 9), vx = Math.sign(gx - p.x || -Math.cos(out)) * this.rng.range(1.5, 3);
@@ -802,6 +804,9 @@ export class Match {
       const pCatch = clamp(0.55 + 0.45 * p.attrs.gk - (b.z > 2 ? 0.15 : 0) - Math.max(0, speed - 14) * 0.02, 0.2, 0.97);
       if (this.rng.chance(pCatch)) { this.#gainBall(p, true); return; }
       this.#deflect(p, 0.4, 1.4);
+      // un ballon relâché par le gardien repart vers le jeu, pas dans son propre but
+      const gxo = this.ownGoalX(team);
+      if (Math.sign(b.vx) === Math.sign(gxo - p.x) || Math.abs(gxo - p.x) < 1) b.vx = -Math.sign(gxo - p.x || (team.dir > 0 ? -1 : 1)) * Math.max(2, Math.abs(b.vx));
       return;
     }
 
@@ -813,7 +818,7 @@ export class Match {
       b.shot = null;
       this.#deflect(p, 0.35, 1.2);
       // une frappe contrée file souvent derrière la ligne de but
-      if (this.rng.chance(0.4)) { const gx = this.ownGoalX(team); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - p.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
+      if (this.rng.chance(0.58)) { const gx = this.ownGoalX(team); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - p.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
       return;
     }
 
@@ -843,7 +848,7 @@ export class Match {
     // contrôle au sol
     const pr = pressureOn(this, p);
     const intended = pass && pass.to === p.id;
-    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9) * 0.03 - pr * 0.1 + (intended ? 0.08 : -0.06) + (d < 0.5 ? 0.03 : 0);
+    let pCtrl = 0.66 + 0.33 * p.attrs.firstTouch - Math.max(0, speed - 9) * 0.03 - pr * 0.1 + (intended ? 0.12 : -0.06) + (d < 0.5 ? 0.03 : 0);
     if (pass && pass.lofted) pCtrl -= 0.06;
     if (pass && pass.type === 'through') pCtrl -= 0.1;
     if (p.role === 'GK' && pass && pass.team === p.team) pCtrl = Math.max(pCtrl, 0.97); // gardien sur passe d'un partenaire
@@ -908,6 +913,18 @@ export class Match {
       return;
     }
     // dégagement ou déviation de la tête
+    const ownGx = this.ownGoalX(team);
+    const wasCross = b.pass?.type === 'cross' || b.pass?.type === 'long';
+    if (wasCross && dist(p.x, p.y, ownGx, 34) < 18 && this.rng.chance(0.32)) {
+      // déviation de la tête derrière sa ligne, à l'extérieur des poteaux : corner
+      // trajectoire calculée pour franchir la ligne à l'extérieur des poteaux (jamais dans le but)
+      const side = p.y < 34 ? -1 : 1;
+      const yOut = side > 0 ? PITCH.goalY2 + this.rng.range(1.5, 6) : PITCH.goalY1 - this.rng.range(1.5, 6);
+      const T = this.rng.range(0.5, 0.9);
+      b.vx = (ownGx - p.x) / T + Math.sign(ownGx - p.x || 1) * 0.5; b.vy = (yOut - p.y) / T; b.z = Math.max(b.z, 1.6); b.vz = this.rng.range(2, 4);
+      b.pass = { from: p.id, to: null, team: p.team, type: 'header', t0: this.t };
+      return;
+    }
     const ang = (team.dir > 0 ? 0 : Math.PI) + this.rng.gauss(0, 0.6);
     const s = this.rng.range(8, 15) * (0.6 + 0.5 * p.attrs.aerial);
     b.vx = Math.cos(ang) * s; b.vy = Math.sin(ang) * s; b.vz = this.rng.range(2, 6);
@@ -921,7 +938,7 @@ export class Match {
     const pr = pressureOn(this, p);
     const fatigue = 1 + 0.5 * (1 - p.energy);
     const d0 = dist(p.x, p.y, tx, ty);
-    const angErr = this.rng.gauss(0, (0.018 + 0.07 * (1 - p.attrs.passing) + 0.05 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue);
+    const angErr = this.rng.gauss(0, (0.013 + 0.055 * (1 - p.attrs.passing) + 0.045 * pr + (opts.lofted ? 0.02 : 0) + (opts.through ? 0.04 : 0)) * fatigue);
     const powErr = 1 + this.rng.gauss(0, (0.05 + 0.08 * (1 - p.attrs.passing)) * fatigue);
     const base = Math.atan2(ty - p.y, tx - p.x) + angErr;
     const d = Math.max(2, d0 * powErr);
@@ -950,7 +967,7 @@ export class Match {
     b.pass = { from: p.id, to: opts.to ?? null, team: p.team, type: opts.cross ? 'cross' : opts.lofted ? 'long' : opts.through ? 'through' : 'short', lofted: !!opts.lofted, t0: this.t, offside: any ? offside : null, offsidePos };
     b.shot = null;
     p.touchCooldown = this.t + 0.35; p.carry = null; p.gkHolding = false;
-    team.stats.passes++; p.stats.passes++;
+    if (!opts.clear) { team.stats.passes++; p.stats.passes++; } // un dégagement n'est pas une passe
     this.#releaseBlock(p, base, opts.lofted ? 0.2 : 0.4);
     if (opts.cross) { if ((p.y < 34) === (team.dir > 0)) team.stats.crossesLeft++; else team.stats.crossesRight++; }
     this.nextChaseUpdate = 0;
@@ -1050,7 +1067,7 @@ export class Match {
         if (b.shot) { b.shot.blocked = true; this.#log('contre', o.team, `Frappe contrée par ${o.name}.`, { player: o.id }); b.shot = null; }
         b.lastShot = { by: p.id, team: p.team, t: this.t };
         this.#deflect(o, 0.25, 0.8);
-        if (this.rng.chance(0.4)) { const gx = this.ownGoalX(this.teams[o.team]); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - o.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
+        if (this.rng.chance(0.58)) { const gx = this.ownGoalX(this.teams[o.team]); const sp = Math.hypot(b.vx, b.vy) || 6; b.vx = Math.sign(gx - o.x || 1) * sp * 0.8; b.vy = (b.y < 34 ? -1 : 1) * sp * 0.4; }
         return true;
       }
     }

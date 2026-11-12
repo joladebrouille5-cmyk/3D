@@ -201,7 +201,7 @@ export function executeOption(m, p, choice, restartType = null) {
     case 'shoot': m.shoot(p, { freekick: restartType === 'freekick', style: choice.style }); break;
     case 'pass': m.pass(p, choice.tx, choice.ty, { to: choice.to, lofted: choice.lofted, through: choice.through, low: restartType === 'throw' }); break;
     case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true }); break;
-    case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + m.rng.range(-20, 20), 4, 64), { lofted: true }); break;
+    case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + m.rng.range(-20, 20), 4, 64), { lofted: true, clear: true }); break;
     case 'carry': m.carry(p, choice.dx, choice.dy, choice.speed ?? 0.75 + 0.25 * team.tv.direct); break;
     default: p.carry = null; p.nextDecision = m.t + 0.4;
   }
@@ -242,7 +242,7 @@ export function decideHolder(m, p, restartType) {
 
   if (!opts.length) {
     // aucune option : jeu long devant
-    m.pass(p, m.absX(team, Math.min(0.9, rel + 0.35)), 34 + rng.range(-15, 15), { lofted: true });
+    m.pass(p, m.absX(team, Math.min(0.9, rel + 0.35)), 34 + rng.range(-15, 15), { lofted: true, clear: true });
     return;
   }
 
