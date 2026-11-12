@@ -352,6 +352,7 @@ export function ensureState(st) {
   if (!st.month) initMonth(st);
   st.cups ??= [];
   st.trophies ??= [];
+  st.awards ??= [];
   st.player.intl ??= { caps: {}, goals: 0, best: null };
   const p = st.player;
   p.money ??= 0;
@@ -989,6 +990,10 @@ function endSeason(st) {
   st.trophies ??= [];
   if (pos === 1) st.trophies.push({ season: st.season, name: `Champion · ${st.league.name}`, kind: 'league', club: clubById(st.clubId).name });
   const cupRuns = (st.cups ?? []).map((c) => ({ name: c.name, reached: c.champion ? 'Vainqueur' : c.log.length ? c.log.at(-1).label : '—' }));
+  const awards = seasonAwards(st, pos, avg, caEnd);
+  st.awards ??= [];
+  st.awards.push(...awards);
+  st.seasonHonours = { trophies: st.trophies.filter((t) => t.season === st.season), awards };
   st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
   p.age++;
   const r = rngOf(st);
@@ -997,6 +1002,55 @@ function endSeason(st) {
   st.offers = buildOffers(st, pos, table.length);
   st.phase = 'season_end';
   log(st, `Fin de saison : ${pos}e sur ${table.length}. ${s.apps} matchs, ${s.goals} but(s). Niveau ${pct(s.caStart)} → ${pct(caEnd)}.`);
+  for (const a of awards) log(st, `Récompense : ${a.name}.`);
+}
+
+// Récompenses individuelles de fin de saison (seuils réalistes selon la longueur du championnat)
+function seasonAwards(st, pos, avg, ca) {
+  const s = st.seasonStats, p = st.player;
+  const len = st.league.rounds.length;
+  const r = rngOf(st);
+  const out = [];
+  const add = (name, kind = 'award') => out.push({ season: st.season, name, kind, club: clubById(st.clubId).name });
+  const lgShort = st.league.name.split(' · ')[0];
+  const leagueGoals = s.goals - (s.cupGoals ?? 0);
+  // meilleur buteur et meilleur passeur : comparés au total d'un concurrent tiré au sort
+  const topScorer = Math.round(len * (0.42 + 0.22 * r.next()));
+  const topAssist = Math.round(len * (0.22 + 0.12 * r.next()));
+  if (leagueGoals >= topScorer && leagueGoals >= 6) add(`Meilleur buteur · ${lgShort} (${leagueGoals} buts)`);
+  if ((s.assists ?? 0) >= topAssist && (s.assists ?? 0) >= 5) add(`Meilleur passeur · ${lgShort} (${s.assists} passes décisives)`);
+  if (avg != null && avg >= 7.25 && s.apps >= len * 0.6) add(`Équipe type · ${lgShort}`);
+  if (avg != null && avg >= 7.6 && s.apps >= len * 0.7) add(`Joueur de la saison · ${lgShort}`);
+  if (st.stage === 'Pro' && p.age <= 21 && avg != null && avg >= 7.0 && s.apps >= len * 0.5) add(`Meilleur espoir · ${lgShort}`);
+  if (st.stage === 'Pro' && p.age <= 21 && clubLevel(clubById(st.clubId)) <= 2 && ca >= 0.72 && avg != null && avg >= 7.1) add('Golden Boy', 'golden');
+  // Ballon d'or : réservé à l'élite (Ligue 1, coupes d'Europe, équipe de France)
+  if (st.stage === 'Pro' && clubLevel(clubById(st.clubId)) === 1 && avg != null) {
+    const majors = (st.trophies ?? []).filter((t) => t.season === st.season).length;
+    const score = ca * 100 + (avg - 7) * 20 + s.goals * 0.45 + (s.assists ?? 0) * 0.25 + majors * 5 + (p.intl?.caps?.A ?? 0) * 0.3 + (pos === 1 ? 3 : 0);
+    const rank = score >= 112 ? 1 : score >= 106 ? 2 + (score < 108 ? 1 : 0) : score >= 99 ? 4 + Math.floor((106 - score) / 1.2) : score >= 91 ? 11 + Math.floor((99 - score) * 2.2) : null;
+    if (rank) { add(rank === 1 ? 'Ballon d\'or' : `Ballon d'or : ${rank}e`, rank === 1 ? 'ballon' : 'ballon-rank'); st.ballonDor = [...(st.ballonDor ?? []), { season: st.season, rank }]; }
+  }
+  saveRng(st, r);
+  return out;
+}
+
+// Palmarès et statistiques de carrière (archives + saison en cours)
+export function careerRecord(st) {
+  const hist = st.history ?? [];
+  const totals = hist.reduce((a, h) => ({ apps: a.apps + h.apps, goals: a.goals + h.goals, assists: a.assists + (h.assists ?? 0), minutes: a.minutes + h.minutes, rated: a.rated + (h.rating ? h.apps : 0), ratingSum: a.ratingSum + (h.rating ? h.rating * h.apps : 0) }), { apps: 0, goals: 0, assists: 0, minutes: 0, rated: 0, ratingSum: 0 });
+  const s = st.seasonStats;
+  if (s && st.phase !== 'season_end' && st.phase !== 'retired') {
+    totals.apps += s.apps; totals.goals += s.goals; totals.assists += s.assists ?? 0; totals.minutes += s.minutes;
+    const sum = s.ratings.reduce((a, b) => a + b, 0); totals.rated += s.ratings.length; totals.ratingSum += sum;
+  }
+  const best = (k) => hist.filter((h) => h[k] != null).sort((a, b) => b[k] - a[k])[0] ?? null;
+  const peak = Math.max(currentCA(st), ...hist.map((h) => h.caEnd ?? 0));
+  const clubs = [...new Set(hist.map((h) => h.club))];
+  return {
+    totals: { ...totals, rating: totals.rated ? totals.ratingSum / totals.rated : null, seasons: new Set(hist.map((h) => h.season)).size, clubs: clubs.length },
+    records: { goals: best('goals'), assists: best('assists'), rating: hist.filter((h) => h.rating && h.apps >= 8).sort((a, b) => b.rating - a.rating)[0] ?? null, peak },
+    trophies: st.trophies ?? [], awards: st.awards ?? [], intl: st.player.intl ?? { caps: {}, goals: 0 }, ballonDor: st.ballonDor ?? [],
+  };
 }
 
 // Décision du club et offres pour la saison suivante

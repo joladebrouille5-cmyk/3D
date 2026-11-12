@@ -862,3 +862,25 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
 .of-terms b { color: var(--flood); }
 .rel-h { margin: 12px 0 2px !important; }
 .rel-h .ico-svg { color: var(--club2, var(--flood)); }
+
+/* palmarès */
+.palmares h2 { display: flex; gap: 8px; align-items: center; font: 800 1.35em/1 var(--f-display); color: var(--chalk); margin: 18px 0 10px; }
+.palmares h2 .ico-svg { color: var(--club2, var(--flood)); }
+.palmares .screen-head p { margin: 2px 0 0; }
+.pm-totals { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 10px 0; }
+.pm-totals > div { display: flex; flex-direction: column; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); }
+.pm-totals b { font: 900 2em/1 var(--f-display); color: var(--chalk); }
+.pm-totals span { font-size: 0.76em; color: var(--muted); }
+.cabinet { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.trophy { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 14px 10px; border-radius: var(--r-md);
+  background: radial-gradient(90% 70% at 50% 0%, rgba(255, 214, 90, 0.18), transparent 70%), rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 214, 90, 0.25); }
+.trophy .ico-svg { color: var(--flood); filter: drop-shadow(0 4px 10px rgba(255, 214, 90, 0.45)); }
+.trophy.league .ico-svg { color: #e8edf5; filter: drop-shadow(0 4px 10px rgba(200, 220, 255, 0.45)); }
+.trophy.ballon .ico-svg, .trophy.golden .ico-svg { color: #ffcf3a; }
+.trophy b { font: 800 1.05em/1.15 var(--f-display); color: var(--chalk); }
+.trophy span { font-size: 0.74em; color: var(--muted); }
+.honours { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+.honour { display: inline-flex; gap: 7px; align-items: center; padding: 6px 12px; border-radius: 999px; background: rgba(255, 214, 90, 0.12); border: 1px solid rgba(255, 214, 90, 0.4); font-weight: 700; font-size: 0.9em; }
+.honour .ico-svg { color: var(--flood); }
+@media (max-height: 520px) { .pm-totals { grid-template-columns: repeat(6, 1fr); } .pm-totals b { font-size: 1.5em; } .hub-actions span { display: none; } }
+@media (max-width: 700px) { .pm-totals { grid-template-columns: repeat(3, 1fr); } }

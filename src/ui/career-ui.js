@@ -518,7 +518,7 @@ export function renderHub() {
       <div class="hub-title">${crest(club, 52)}
         <div><strong>${esc(club.name)}</strong><span class="stage-pill">${esc(STAGE_LABEL[st.stage])}</span><br><span class="muted">Saison ${st.season}-${st.season + 1} · semaine ${Math.min(st.week + 1, n)}/${n}</span></div></div>
       ${seasonStrip(st)}
-      <div class="row hub-actions"><button id="hub-save">${icon('save', 18)}<span>Sauvegarder</span></button><button id="hub-home">${icon('home', 18)}<span>Accueil</span></button></div>
+      <div class="row hub-actions"><button id="hub-palmares" title="Palmarès">${icon('trophy', 18)}<span>Palmarès</span></button><button id="hub-save">${icon('save', 18)}<span>Sauvegarder</span></button><button id="hub-home">${icon('home', 18)}<span>Accueil</span></button></div>
     </header>
     <div class="hub-grid">${weekCard(st)}${profileCard(st)}${leagueCard(st)}</div>
   </div>${review ? monthReviewHtml(review, st, st.phase !== 'month_review') : ''}`);
@@ -528,6 +528,7 @@ export function renderHub() {
 function bindHub(el) {
   const st = G.st;
   el.querySelector('#hub-save').addEventListener('click', () => { if (persist()) flash('Partie sauvegardée.'); });
+  el.querySelector('#hub-palmares').addEventListener('click', () => renderPalmares(renderHub));
   el.querySelector('#hub-home').addEventListener('click', () => { persist(); showHome(); });
   el.querySelector('#hub-review')?.addEventListener('click', () => { G.showReview = st.lastMonthReview; renderHub(); });
   el.querySelector('#mr-close')?.addEventListener('click', () => {
@@ -607,6 +608,48 @@ function watchWeekMatch() {
 }
 
 // ------------------------------------------------------------------ fin de saison
+function honoursBlock(h) {
+  const list = [...(h?.trophies ?? []), ...(h?.awards ?? [])];
+  if (!list.length) return '';
+  return `<div class="honours">${list.map((t) => `<span class="honour ${t.kind}">${icon(t.kind === 'award' || t.kind === 'ballon-rank' ? 'star' : 'trophy', 18)}${esc(t.name)}</span>`).join('')}</div>`;
+}
+
+// Palmarès : vitrine, totaux, records, sélections, saison par saison
+function renderPalmares(back) {
+  const st = G.st;
+  const p = st.player;
+  const rec = C.careerRecord(st);
+  const T = rec.totals;
+  const club = clubById(st.clubId);
+  const cabinet = [...rec.trophies.map((t) => ({ ...t, big: true })), ...rec.awards.filter((a) => a.kind !== 'award' || /Joueur de la saison|Meilleur buteur/.test(a.name))];
+  const others = rec.awards.filter((a) => !cabinet.includes(a));
+  const caps = Object.entries(rec.intl.caps ?? {});
+  const seasonLabel = (y) => `${y}-${String(y + 1).slice(2)}`;
+  const el = show(`<div class="panel-screen palmares" style="${clubVars(club)}">
+    <header class="screen-head"><button class="icon-btn" id="pm-back" aria-label="Retour">${icon('back', 20)}</button>
+      ${p.face != null ? avatar({ face: p.face }, 56, 'se-face') : ''}<div><h1>Palmarès</h1><p class="muted">${esc(p.firstName)} ${esc(p.lastName)} · ${p.age} ans · ${esc(club.name)}</p></div></header>
+    <div class="pm-totals">
+      <div><b>${T.apps}</b><span>matchs</span></div><div><b>${T.goals}</b><span>buts</span></div><div><b>${T.assists}</b><span>passes déc.</span></div>
+      <div><b>${T.rating ? T.rating.toFixed(2).replace('.', ',') : '—'}</b><span>note moyenne</span></div><div><b>${caps.reduce((a, [, v]) => a + v, 0)}</b><span>sélections</span></div><div><b>${C.pct(rec.records.peak)}</b><span>niveau max.</span></div>
+    </div>
+    <h2>${icon('trophy', 18)} Vitrine</h2>
+    ${cabinet.length ? `<div class="cabinet">${cabinet.map((t) => `<div class="trophy ${t.kind}">${icon(t.kind === 'award' ? 'star' : 'trophy', 34)}<b>${esc(t.name)}</b><span>${seasonLabel(t.season)} · ${esc(t.club ?? '')}</span></div>`).join('')}</div>` : '<p class="muted">Ta vitrine est vide pour l\'instant. Un titre, une coupe, une distinction : tout viendra s\'afficher ici.</p>'}
+    ${others.length ? `<h2>${icon('star', 18)} Distinctions</h2><ul class="plain">${others.map((a) => `<li><span class="muted">${seasonLabel(a.season)}</span> · ${esc(a.name)}</li>`).join('')}</ul>` : ''}
+    <h2>${icon('chart', 18)} Records</h2>
+    <ul class="plain">
+      <li>Meilleure saison au but : ${rec.records.goals ? `<b>${rec.records.goals.goals} buts</b> (${seasonLabel(rec.records.goals.season)}, ${esc(rec.records.goals.club)})` : '—'}</li>
+      <li>Meilleur passeur : ${rec.records.assists && rec.records.assists.assists ? `<b>${rec.records.assists.assists} passes décisives</b> (${seasonLabel(rec.records.assists.season)})` : '—'}</li>
+      <li>Meilleure note sur une saison : ${rec.records.rating ? `<b>${rec.records.rating.rating.toFixed(2).replace('.', ',')}</b> (${seasonLabel(rec.records.rating.season)}, ${esc(rec.records.rating.club)})` : '—'}</li>
+      ${rec.ballonDor.length ? `<li>Ballon d'or : ${rec.ballonDor.map((b) => `${b.rank === 1 ? '<b>lauréat</b>' : `${b.rank}e`} en ${seasonLabel(b.season)}`).join(', ')}</li>` : ''}
+    </ul>
+    <h2>${icon('star', 18)} Équipes de France</h2>
+    ${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? '<b>France A</b>' : k === 'U21' ? 'Espoirs' : k} : <b>${v}</b>`).join(' · ')} · ${rec.intl.goals} but(s)</p>` : '<p class="muted">Pas encore de sélection.</p>'}
+    <h2>${icon('calendar', 18)} Saison par saison</h2>
+    ${st.history.length ? `<table class="table"><tr><th>Saison</th><th>Club</th><th>M</th><th>B</th><th>PD</th><th>Note</th><th>Rang</th></tr>${st.history.map((h) => `<tr><td>${seasonLabel(h.season)}${h.partial ? ' (1)' : ''}</td><td>${esc(h.club)} <span class="muted">${esc(h.stage)}</span></td><td>${h.apps}</td><td>${h.goals}</td><td>${h.assists ?? 0}</td><td>${h.rating ? h.rating.toFixed(1) : '—'}</td><td>${h.pos}/${h.teams}</td></tr>`).join('')}</table>` : '<p class="muted">Première saison en cours.</p>'}
+  </div>`);
+  el.querySelector('#pm-back').addEventListener('click', back);
+}
+
 function renderSeasonEnd() {
   const st = G.st;
   const h = st.history[st.history.length - 1];
@@ -616,6 +659,7 @@ function renderSeasonEnd() {
     <p>${esc(h.club)} ${esc(h.stage)} · ${esc(h.league)} : <strong>${h.pos}e sur ${h.teams}</strong></p>
     <p>${h.apps} matchs (${h.starts} titularisations), ${h.goals} but(s), ${h.minutes} minutes${h.rating ? `, note moyenne ${h.rating.toFixed(1)}` : ''}.</p>
     <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
+    ${honoursBlock(st.seasonHonours)}
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
     <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">
       ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span>
@@ -635,9 +679,10 @@ function renderRetired() {
     <h1>Fin de carrière</h1>
     <p>${esc(st.player.firstName)} ${esc(st.player.lastName)} : ${st.history.length} saisons, ${tot.apps} matchs, ${tot.goals} buts.</p>
     <ul class="plain">${st.history.map((h) => `<li>${h.season} · ${esc(h.club)} ${esc(h.stage)} · ${h.apps} matchs, ${h.goals} buts</li>`).join('')}</ul>
-    <div class="actions"><button class="primary" id="r-home">Accueil</button></div>
+    <div class="actions"><button id="r-palm">${icon('trophy', 18)} Palmarès</button><button class="primary" id="r-home">Accueil</button></div>
   </div>`);
   el.querySelector('#r-home').addEventListener('click', showHome);
+  el.querySelector('#r-palm').addEventListener('click', () => renderPalmares(renderRetired));
 }
 
 export function initCareerUI() {
