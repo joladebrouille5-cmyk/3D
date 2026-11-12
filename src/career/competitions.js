@@ -6,7 +6,7 @@
 //   championnat de 26 ou de 34 journées.
 
 import { registerClub, clubById, CLUBS, clubLevel, academyQuality, SENIOR_CA, FOREIGN_CLUBS, divisionCA } from './clubs.js';
-import { FOREIGN_CUPS, YOUTH_CUPS, EURO_SPOTS, countryInfo } from './countries.js';
+import { FOREIGN_CUPS, YOUTH_CUPS, EURO_SPOTS, countryInfo, UEFA_COUNTRIES } from './countries.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
 import { registerColors } from '../ui/crest.js';
 import { NAMES } from '../data/names.js';
@@ -239,7 +239,8 @@ export function buildCups(st, len) {
     // coupe nationale du pays du club
     if (club.foreign) { const cup = countryInfo(club.country).cup; if (cup) cups.push(mk(cup)); }
     else cups.push(mk('cdf', clubLevel(club) <= 2 ? 2 : 0));
-    if (clubLevel(club) === 1 && !club.synthetic) {
+    // coupes d'Europe : clubs des pays européens seulement (pas l'Arabie saoudite ni la MLS)
+    if (clubLevel(club) === 1 && !club.synthetic && (!club.foreign || UEFA_COUNTRIES.has(club.country))) {
       const prev = st.history.at(-1);
       const sameClub = prev && prev.club === club.name && prev.stage === 'Pro';
       const prestige = club.foreign ? club.strength - divisionCA(club) : CLUB_PRESTIGE[club.id] ?? 0;

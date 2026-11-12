@@ -11,9 +11,13 @@ import { countryInfo, langLevel } from '../src/career/countries.js';
 
 test('catalogue étranger : onze championnats, effectifs adultes, forces cohérentes', () => {
   const ids = FOREIGN.leagues.map((l) => l.id).sort();
-  assert.deepEqual(ids, ['bel1', 'eng1', 'eng2', 'esp1', 'esp2', 'ger1', 'ger2', 'ita1', 'ita2', 'ned1', 'por1']);
-  for (const l of FOREIGN.leagues) assert.ok(l.clubs.length >= 16, `${l.name} : ${l.clubs.length} clubs`);
-  for (const c of FOREIGN.clubs) assert.ok(c.players.length >= 14, `effectif trop court : ${c.name} (${c.players.length})`);
+  assert.deepEqual(ids, ['bel1', 'eng1', 'eng2', 'esp1', 'esp2', 'ger1', 'ger2', 'ita1', 'ita2', 'ksa1', 'ned1', 'ned2', 'por1', 'por2', 'sco1', 'tur1', 'usa1']);
+  for (const l of FOREIGN.leagues) assert.ok(l.clubs.length >= 12, `${l.name} : ${l.clubs.length} clubs`);
+  // presque tous les effectifs sont fournis ; les rares manquants sont complétés par des joueurs générés
+  const short = FOREIGN.clubs.filter((c) => c.players.length < 14);
+  assert.ok(short.length <= 25, `effectifs courts : ${short.map((c) => c.name).join(', ')}`);
+  const lafc = buildTeamSquad(clubById('usa-los-angeles'), 'Pro', 2026, null);
+  assert.equal(lafc.starters.length, 11);
   for (const c of FOREIGN.clubs) {
     for (const [name, , , age] of c.players) assert.ok(age >= 18, `mineur dans le catalogue : ${name} (${c.name})`);
   }
@@ -42,14 +46,16 @@ test('un club étranger a son championnat, un effectif réel et un salaire à so
 
 test('coupes d\'Europe : vrais clubs des sept pays, plus leurs doubles fictifs', () => {
   const ids = EURO_CLUBS.map((c) => c.id);
+  assert.ok(ids.includes('sco-celtic') && ids.includes('tur-galatasaray') && !ids.includes('eu-celtic') && !ids.includes('eu-galatasaray'), 'Écosse et Turquie réelles');
+  assert.ok(!EURO_CLUBS.some((c) => c.country === 'Arabie saoudite' || c.country === 'États-Unis'), 'pas de clubs hors d\'Europe');
   assert.ok(ids.includes('esp-real-madrid') && ids.includes('eng-manchester-city') && ids.includes('ger-bayern-munich'));
   for (const fake of ['eu-real-madrid', 'eu-manchester-city', 'eu-bayern-munich', 'eu-juventus', 'eu-benfica', 'eu-psv', 'eu-club-bruges']) assert.ok(!ids.includes(fake), fake);
   for (const country of ['Italie', 'Portugal', 'Pays-Bas', 'Belgique']) assert.ok(EURO_CLUBS.some((c) => c.foreign && c.country === country), country);
-  assert.ok(ids.includes('eu-galatasaray') && ids.includes('eu-celtic'), 'les autres pays restent fictifs');
+  assert.ok(ids.includes('eu-dinamo-zagreb') && ids.includes('eu-bodo-glimt'), 'les autres pays restent fictifs');
 });
 
 test('chaque pays a sa coupe nationale, sa langue et son échelle de salaires', () => {
-  for (const country of ['Angleterre', 'Espagne', 'Italie', 'Allemagne', 'Portugal', 'Pays-Bas', 'Belgique']) {
+  for (const country of ['Angleterre', 'Espagne', 'Italie', 'Allemagne', 'Portugal', 'Pays-Bas', 'Belgique', 'Écosse', 'Turquie', 'Arabie saoudite', 'États-Unis']) {
     const club = FOREIGN_CLUBS.find((c) => c.country === country && c.tier === 1);
     const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: `pays-${country}` });
     st.stage = 'Pro'; st.clubId = club.id;

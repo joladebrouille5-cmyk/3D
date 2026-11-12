@@ -14,9 +14,9 @@ const raw = JSON.parse(readFileSync(join(root, 'tools/foreign-raw.json'), 'utf8'
 const LOGOS = process.argv[2] ?? null;
 const SEASON_START = `${raw.season.slice(0, 4)}-07-01`;
 
-const norm = (s) => String(s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const norm = (s) => String(s).replace(/ı/g, 'i').replace(/İ/g, 'I').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const slug = (s) => norm(s).replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const STOP = new Set(['fc', 'cf', 'afc', 'f', 'c', 'a', 'cd', 'ud', 'sd', 'rcd', 'club', 'de', 'del', 'la', 'el', 'balompie', 'futbol', 'and', 'the', 'sad', 'ca',
+const STOP = new Set(['al', 'jong', 'jk', 'sfk', 'fk', 'sc', 'fc', 'cf', 'afc', 'f', 'c', 'a', 'cd', 'ud', 'sd', 'rcd', 'club', 'de', 'del', 'la', 'el', 'balompie', 'futbol', 'and', 'the', 'sad', 'ca',
   'ac', 'as', 'ss', 'ssc', 'us', 'acf', 'bc', 'calcio', 'sc', 'sv', 'vfl', 'vfb', 'tsg', 'fsv', 'bv', 'kv', 'krc', 'kaa', 'rsc', 'kvc', 'vv', 'sk', 'fk', 'gd', 'cs', 'sl', 'royal', 'futebol', 'clube', 'do', 'da', 'voetbal']);
 const toks = (s) => norm(s).replace(/&/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !STOP.has(t));
 
@@ -42,10 +42,12 @@ const CODES = {
   benfica: 'SLB', porto: 'FCP', 'sporting-cp': 'SCP', braga: 'SCB', 'vitoria-de-guimaraes': 'VSC', 'academico-de-viseu': 'VIS', 'estoril-praia': 'EST', 'estrela-da-amadora': 'EAM',
   'gil-vicente': 'GIL', 'rio-ave': 'RIO', 'casa-pia': 'CPI', 'santa-clara': 'SCL',
   psv: 'PSV', ajax: 'AJA', feyenoord: 'FEY', az: 'AZ', 'n-e-c': 'NEC', 'ado-den-haag': 'ADO', 'go-ahead-eagles': 'GAE', 'fortuna-sittard': 'FOR', 'sparta-rotterdam': 'SPA', 'pec-zwolle': 'PEC', 'willem-ii': 'WIL',
+  'dundee-united': 'DDU', 'new-york-red-bulls': 'NYR', 'new-york-city': 'NYC', 'columbus-crew': 'CLB', 'colorado-rapids': 'COL', 'los-angeles': 'LAF', 'la-galaxy': 'LAG',
+  'inter-miami': 'MIA', 'al-hilal': 'HIL', 'al-nassr': 'NAS', 'al-ittihad': 'ITT', 'al-ahli': 'AHL',
   'club-brugge': 'BRU', 'cercle-brugge': 'CER', 'union-sg': 'USG', anderlecht: 'AND', 'standard-liege': 'STA', 'oh-leuven': 'OHL', 'lommel-sk': 'LOM', 'la-louviere': 'RAL', 'sint-truiden': 'STV', 'zulte-waregem': 'ZWA', genk: 'KRC', gent: 'KAA',
 };
 // noms d'usage en français quand le libellé du tableau est trop court
-const NAME_FIX = { psv: 'PSV Eindhoven', az: 'AZ Alkmaar', 'n-e-c': 'NEC Nimègue', 'union-sg': 'Union Saint-Gilloise', 'oh-leuven': 'OH Louvain', 'standard-liege': 'Standard de Liège' };
+const NAME_FIX = { 'los-angeles': 'Los Angeles FC', psv: 'PSV Eindhoven', az: 'AZ Alkmaar', 'n-e-c': 'NEC Nimègue', 'union-sg': 'Union Saint-Gilloise', 'oh-leuven': 'OH Louvain', 'standard-liege': 'Standard de Liège' };
 // Hiérarchie interne (écart à la force moyenne du championnat). Valeurs de jeu, indicatives.
 const PRESTIGE = {
   'manchester-city': 0.06, arsenal: 0.06, liverpool: 0.06, chelsea: 0.045, 'manchester-united': 0.035, 'tottenham-hotspur': 0.03, 'newcastle-united': 0.03,
@@ -60,10 +62,21 @@ const PRESTIGE = {
   benfica: 0.055, porto: 0.055, 'sporting-cp': 0.055, braga: 0.03, 'vitoria-de-guimaraes': 0.012, famalicao: 0.006, 'santa-clara': 0.004,
   psv: 0.055, feyenoord: 0.05, ajax: 0.05, az: 0.03, twente: 0.02, utrecht: 0.015, 'go-ahead-eagles': 0.008, heerenveen: 0.004,
   'club-brugge': 0.055, 'union-sg': 0.045, anderlecht: 0.035, genk: 0.03, antwerp: 0.025, gent: 0.02, 'standard-liege': 0.012, mechelen: 0.004,
+  celtic: 0.07, rangers: 0.06, 'heart-of-midlothian': 0.015, aberdeen: 0.01, hibernian: 0.01,
+  'galatasaray-s-k': 0.065, galatasaray: 0.065, 'fenerbahce-s-k': 0.06, fenerbahce: 0.06, 'besiktas-j-k': 0.04, besiktas: 0.04, trabzonspor: 0.025, 'istanbul-basaksehir': 0.015, samsunspor: 0.008,
+  'al-hilal': 0.075, 'al-nassr': 0.07, 'al-ittihad': 0.065, 'al-ahli': 0.06, 'al-qadsiah': 0.035, 'al-ettifaq': 0.015, 'al-shabab': 0.012, 'al-taawoun': 0.01,
+  'inter-miami': 0.04, 'los-angeles': 0.035, lafc: 0.035, 'la-galaxy': 0.02, 'columbus-crew': 0.02, 'fc-cincinnati': 0.025, cincinnati: 0.025, 'seattle-sounders': 0.02, 'philadelphia-union': 0.02,
+  'nashville-sc': 0.015, 'orlando-city': 0.015, 'new-york-city': 0.012,
+  'benfica-b': -0.02, 'porto-b': -0.02, 'sporting-cp-b': -0.02, 'jong-ajax': -0.015, 'jong-psv': -0.015, 'jong-az': -0.015, 'jong-fc-utrecht': -0.02,
 };
 // Force de base de chaque championnat (Ligue 1 : 0,63 ; PSG ≈ 0,695). Valeurs de jeu, indicatives.
-const LEAGUE_BASE = { eng1: 0.675, eng2: 0.6, esp1: 0.655, esp2: 0.575, ita1: 0.645, ita2: 0.57, ger1: 0.65, ger2: 0.585, por1: 0.6, ned1: 0.595, bel1: 0.59 };
-const COUNTRY_CODE = { Angleterre: 'eng', Espagne: 'esp', Italie: 'ita', Allemagne: 'ger', Portugal: 'por', 'Pays-Bas': 'ned', Belgique: 'bel' };
+const LEAGUE_BASE = {
+  eng1: 0.675, eng2: 0.6, esp1: 0.655, esp2: 0.575, ita1: 0.645, ita2: 0.57, ger1: 0.65, ger2: 0.585, por1: 0.6, ned1: 0.595, bel1: 0.59,
+  por2: 0.54, ned2: 0.535, bel2: 0.53, sco1: 0.57, tur1: 0.6, ksa1: 0.595, usa1: 0.585,
+};
+const COUNTRY_CODE = { Angleterre: 'eng', Espagne: 'esp', Italie: 'ita', Allemagne: 'ger', Portugal: 'por', 'Pays-Bas': 'ned', Belgique: 'bel', 'Écosse': 'sco', Turquie: 'tur', 'Arabie saoudite': 'ksa', 'États-Unis': 'usa' };
+// équipes réserves engagées en deuxième division (Benfica B, Jong Ajax…) : jamais promues
+const isB = (name) => /\s(B|II)$/.test(name) || /^Jong\s/.test(name);
 
 // Poste précis (Wikidata) → rôle du jeu ; sinon poste générique du tableau d'effectif
 const ROLE_BY_LABEL = [
@@ -124,6 +137,7 @@ mkdirSync(outDir, { recursive: true });
 const leagues = [], clubs = [];
 let kept = 0, minors = 0, unknown = 0;
 for (const lg of raw.leagues) {
+  if (!lg.clubs?.length) { console.log(`  championnat ignoré (aucun club collecté) : ${lg.name}`); continue; }
   const cc = COUNTRY_CODE[lg.country];
   const ids = [];
   for (const c of lg.clubs) {
@@ -150,10 +164,11 @@ for (const lg of raw.leagues) {
     }
     const strength = Math.round((LEAGUE_BASE[lg.id] + (PRESTIGE[key] ?? (hashNum(id) - 0.5) * 0.016)) * 1000) / 1000;
     // code : premier mot significatif du nom (« 1. FC Köln » → KOL, « SS Lazio » → LAZ)
-    const words = name.split(/\s+/).filter((w) => /^\p{L}/u.test(w));
+    const words = name.split(/[\s-]+/).filter((w) => /^\p{L}/u.test(w) && !/^(B|II)$/.test(w));
     const word = words.find((w) => w.length > 3 && !STOP.has(norm(w))) ?? words.find((w) => !STOP.has(norm(w))) ?? words[0] ?? name;
-    const code = CODES[key] ?? word.normalize('NFKD').replace(/[̀-ͯ]/g, '').slice(0, 3).toUpperCase();
-    clubs.push({ id, name: NAME_FIX[key] ?? name, short: code, country: lg.country, league: lg.id, tier: lg.level, wiki: c.title, colors: colorsOf(c.kit), crest, strength, players });
+    const base = norm(word).replace(/[^a-z]/g, '').toUpperCase();
+    const code = CODES[key] ?? (isB(name) ? `${base.slice(0, 2)}B` : base.slice(0, 3));
+    clubs.push({ id, b: isB(name) || undefined, name: NAME_FIX[key] ?? name, short: code, country: lg.country, league: lg.id, tier: lg.level, wiki: c.title, colors: colorsOf(c.kit), crest, strength, players });
     ids.push(id);
   }
   leagues.push({ id: lg.id, name: lg.name, country: lg.country, tier: lg.level, clubs: ids });

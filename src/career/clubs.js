@@ -28,7 +28,7 @@ export const FOREIGN_LEAGUES = FOREIGN.leagues;
 export const FOREIGN_CLUBS = FOREIGN.clubs.map((c) => {
   const lg = FOREIGN.leagues.find((l) => l.id === c.league);
   return {
-    id: c.id, name: c.name, short: c.short, foreign: true, country: c.country, leagueId: c.league, tier: c.tier, strength: c.strength,
+    id: c.id, name: c.name, short: c.short, foreign: true, country: c.country, leagueId: c.league, tier: c.tier, strength: c.strength, reserveTeam: !!c.b,
     senior: { level: c.tier, competition: lg?.name ?? c.league, group: 'Unique', players: c.players, status: 'wikipedia' },
     reserve: null, u17: null, u19: null,
     // centre de formation : coéquipiers et adversaires de jeunes toujours fictifs (noms de la langue du pays)
@@ -49,9 +49,9 @@ refreshForeignAverages();
 export const FOREIGN_AVG0 = { ...FOREIGN_AVG };
 // Centres de formation d'un pays : clubs français du catalogue, ou clubs étrangers du pays
 export const ACADEMY_COUNTRIES = ['France', ...[...new Set(FOREIGN.leagues.map((l) => l.country))]];
-export const academiesOf = (country) => (country === 'France' || !country ? CLUBS : FOREIGN_CLUBS.filter((c) => c.country === country));
-// Tous les clubs professionnels (France + étranger), pour les offres et les prêts
-export const PRO_CLUBS = () => [...CLUBS.filter((c) => c.senior), ...FOREIGN_CLUBS];
+export const academiesOf = (country) => (country === 'France' || !country ? CLUBS : FOREIGN_CLUBS.filter((c) => c.country === country && !c.reserveTeam));
+// Tous les clubs professionnels (France + étranger), pour les offres et les prêts (pas les équipes réserves)
+export const PRO_CLUBS = () => [...CLUBS.filter((c) => c.senior), ...FOREIGN_CLUBS.filter((c) => !c.reserveTeam)];
 
 export const LEVEL_NAMES = { 1: 'Ligue 1', 2: 'Ligue 2', 3: 'Ligue 3', 4: 'National 1', 5: 'National 2', 6: 'Club formateur amateur' };
 

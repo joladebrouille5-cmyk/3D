@@ -17,6 +17,8 @@ for (const c of CLUBS) if (c.senior) FR_COMPETITION[c.senior.level] ??= c.senior
 
 // Montées / descentes par paire de divisions étrangères (champion et suivants ↔ derniers)
 const FOREIGN_SWAP = { eng: 3, esp: 3, ita: 3, ger: 2, por: 2, ned: 2, bel: 2 };
+// équipes réserves (Benfica B, Jong Ajax…) : jamais promues
+const isB = (id) => !!clubById(id)?.reserveTeam;
 // France : L1↔L2 et L2↔L3 : 2 ; L3↔N1 : un par groupe de N1 ; N1↔N2 : un par groupe de N2
 const FR_SWAP_TOP = { 1: 2, 2: 2 };
 
@@ -78,7 +80,7 @@ export function advanceWorld(st, table) {
     if (!d1 || !d2) continue;
     const n = FOREIGN_SWAP[cc] ?? 2;
     const r1 = rank(d1.clubs), r2 = rank(d2.clubs);
-    const relegated = r1.slice(-n), promoted = r2.slice(0, n);
+    const relegated = r1.slice(-n), promoted = r2.filter((id) => !isB(id)).slice(0, n);
     for (const id of relegated) { moves[id] = { ...(moves[id] ?? {}), leagueId: d2.id }; down.push(id); }
     for (const id of promoted) { moves[id] = { ...(moves[id] ?? {}), leagueId: d1.id }; up.push(id); }
   }

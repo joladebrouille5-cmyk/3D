@@ -26,7 +26,8 @@ const SHOTS = process.argv[3] || null;
   await page.evaluate(() => { localStorage.clear(); localStorage.setItem('generation-football.view3d', 'off'); });
   await page.reload();
   await page.waitForSelector('#h-new');
-  assert.equal(await page.isDisabled('#h-load'), true, 'aucune sauvegarde au départ');
+  // sans sauvegarde, « Charger » reste ouvert pour importer un fichier
+  assert.match(await page.textContent('#h-load'), /importer un fichier/, 'aucune sauvegarde au départ : import proposé');
   await shot('c1-home');
 
   // création du joueur

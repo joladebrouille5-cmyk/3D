@@ -12,7 +12,13 @@ export const COUNTRIES = {
   Portugal: { lang: 'portugais', press: 'portugaise', cup: 'tpo', langStart: 0, names: 'pt', youth: 'Championnat du Portugal', youthCup: null, flag: '🇵🇹' },
   'Pays-Bas': { lang: 'néerlandais', press: 'néerlandaise', cup: 'knvb', langStart: 0.3, names: 'nl', youth: 'Championnat des Pays-Bas', youthCup: null, flag: '🇳🇱' },
   Belgique: { lang: 'néerlandais', press: 'belge', cup: 'cbe', langStart: 0.6, names: 'nl', youth: 'Championnat de Belgique', youthCup: null, flag: '🇧🇪' },
+  'Écosse': { lang: 'anglais', press: 'écossaise', cup: 'sco', langStart: 0.1, names: 'en', youth: 'Championnat d\'Écosse', youthCup: null, flag: '🏴󠁧󠁢󠁳󠁣󠁴󠁿' },
+  Turquie: { lang: 'turc', press: 'turque', cup: 'tuc', langStart: 0, names: 'tr', youth: 'Championnat de Turquie', youthCup: null, flag: '🇹🇷' },
+  'Arabie saoudite': { lang: 'arabe', press: 'saoudienne', cup: 'ksc', langStart: 0.2, names: 'ar', youth: 'Championnat d\'Arabie saoudite', youthCup: null, flag: '🇸🇦' },
+  'États-Unis': { lang: 'anglais', press: 'américaine', cup: 'usoc', langStart: 0.1, names: 'en', youth: 'Championnat des États-Unis', youthCup: null, flag: '🇺🇸' },
 };
+// pays dont les clubs disputent les coupes d'Europe
+export const UEFA_COUNTRIES = new Set(['France', 'Angleterre', 'Espagne', 'Italie', 'Allemagne', 'Portugal', 'Pays-Bas', 'Belgique', 'Écosse', 'Turquie']);
 // la France, pour un joueur étranger qui y joue (langue du vestiaire, presse)
 COUNTRIES.France = { lang: 'français', press: 'française', cup: null, langStart: 0, names: null, youth: 'Championnat de France', youthCup: null, flag: '🇫🇷' };
 export const countryInfo = (country) => COUNTRIES[country] ?? { lang: 'la langue locale', press: 'locale', cup: null, langStart: 0, names: null, youth: 'Championnat', youthCup: null };
@@ -24,6 +30,7 @@ export const langLevel = (p, country) => (homeCountry(p) === country ? 1 : p.lan
 // Salaire mensuel de référence (k€) d'un joueur au niveau moyen du championnat (Ligue 1 : 42)
 export const LEAGUE_SALARY = {
   eng1: 85, eng2: 16, esp1: 50, esp2: 8, ita1: 44, ita2: 7, ger1: 55, ger2: 12, por1: 14, ned1: 14, bel1: 12,
+  por2: 3, ned2: 3, bel2: 3, sco1: 10, tur1: 28, ksa1: 130, usa1: 40,
 };
 
 // Coupes nationales des pays étrangers (tours et place dans la saison, de 0 à 1)
@@ -34,6 +41,10 @@ export const FOREIGN_CUPS = {
   dfb: { country: 'Allemagne', name: 'Coupe d\'Allemagne', short: 'Coupe d\'Allemagne', rounds: ['1er tour', '2e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.06, 0.28, 0.46, 0.62, 0.76, 0.94] },
   tpo: { country: 'Portugal', name: 'Coupe du Portugal', short: 'Coupe du Portugal', rounds: ['3e tour', '4e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.36, 0.48, 0.62, 0.76, 0.94] },
   knvb: { country: 'Pays-Bas', name: 'Coupe des Pays-Bas', short: 'Coupe des Pays-Bas', rounds: ['1er tour', '2e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.26, 0.38, 0.52, 0.62, 0.74, 0.86] },
+  sco: { country: 'Écosse', name: 'Coupe d\'Écosse', short: 'Coupe d\'Écosse', rounds: ['4e tour', '5e tour', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.4, 0.55, 0.68, 0.8, 0.94] },
+  tuc: { country: 'Turquie', name: 'Coupe de Turquie', short: 'Coupe de Turquie', rounds: ['Phase de groupes', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.3, 0.5, 0.64, 0.78, 0.92] },
+  ksc: { country: 'Arabie saoudite', name: 'Coupe du Roi d\'Arabie saoudite', short: 'King\'s Cup', rounds: ['8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.3, 0.5, 0.72, 0.92] },
+  usoc: { country: 'États-Unis', name: 'US Open Cup', short: 'US Open Cup', rounds: ['3e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.2, 0.35, 0.5, 0.7, 0.85] },
   cbe: { country: 'Belgique', name: 'Coupe de Belgique', short: 'Coupe de Belgique', rounds: ['7e tour', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.26, 0.38, 0.5, 0.62, 0.84] },
 };
 
@@ -46,4 +57,4 @@ export const YOUTH_CUPS = {
 };
 
 // En coupe d'Europe, les meilleurs clubs réels de chaque pays remplacent leurs doubles fictifs
-export const EURO_SPOTS = { Angleterre: 6, Espagne: 5, Italie: 5, Allemagne: 5, Portugal: 3, 'Pays-Bas': 3, Belgique: 2 };
+export const EURO_SPOTS = { Angleterre: 6, Espagne: 5, Italie: 5, Allemagne: 5, Portugal: 3, 'Pays-Bas': 3, Belgique: 2, 'Écosse': 2, Turquie: 2 };
