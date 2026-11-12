@@ -31,7 +31,8 @@ function resolveKitClash(teams) {
 }
 
 export class Match {
-  constructor({ home, away, seed = 'graine', userTeam = 0, competition = DEFAULT_COMPETITION, aiTeams = null, delegateUser = false } = {}) {
+  constructor({ home, away, seed = 'graine', userTeam = 0, competition = DEFAULT_COMPETITION, aiTeams = null, delegateUser = false, forkOf = null, forkSeed = '' } = {}) {
+    if (forkOf) { this.#adopt(forkOf, forkSeed); return; }
     this.seed = String(seed);
     const hid = typeof home === 'string' ? home : home.def.id, aid = typeof away === 'string' ? away : away.def.id;
     this.rng = new Rng(`match:${hid}:${aid}:${this.seed}`);
@@ -60,6 +61,17 @@ export class Match {
     this.kickoffTeamFirstHalf = this.rng.chance(0.5) ? 0 : 1;
     this.#log('coup_envoi', null, `Coup d'envoi. ${this.teams[0].name} – ${this.teams[1].name}.`, { major: true });
     this.#setRestart('kickoff', this.kickoffTeamFirstHalf, 52.5, 34);
+  }
+
+  // Copie indépendante de l'état courant, avec son propre aléa : sert à rejouer plusieurs fois
+  // la suite d'une action (pourcentages de réussite des choix) sans toucher au vrai match.
+  fork(seed = '') { return new Match({ forkOf: this, forkSeed: seed }); }
+  #adopt(src, seed) {
+    const { rng, frames, events, commandLog, ...rest } = src;
+    Object.assign(this, structuredClone(rest));
+    this.rng = new Rng(`${rng.seed}:${rng.draws}:fork:${seed}`);
+    this.frames = []; this.events = []; this.commandLog = [];
+    this.forked = true;
   }
 
   // ---------------------------------------------------------------- construction
@@ -1264,6 +1276,7 @@ export class Match {
 
   // ---------------------------------------------------------------- replay
   #recordFrame() {
+    if (this.forked) return;
     const n = this.players.length;
     const f = new Float32Array(5 + n * 2);
     f[0] = this.t; f[1] = this.ball.x; f[2] = this.ball.y; f[3] = this.ball.z; f[4] = this.ball.owner ?? -1;

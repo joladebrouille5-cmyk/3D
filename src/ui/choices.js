@@ -6,10 +6,10 @@
 import { holderOptions, pressureOn } from '../engine/decisions.js';
 
 const dist = (a, b, c, d) => Math.hypot(a - c, b - d);
-const riskLabel = (r) => (r == null ? '' : r < 0.18 ? 'risque faible' : r < 0.38 ? 'risque moyen' : 'risque élevé');
+// le risque chiffré est désormais affiché à part (pourcentage de réussite simulé) : plus de mention dans le texte
+const riskLabel = () => '';
 const riskClass = (r) => (r == null ? '' : r < 0.18 ? 'low' : r < 0.38 ? 'mid' : 'high');
 const xgClass = (x) => (x > 0.15 ? 'low' : x > 0.07 ? 'mid' : 'high');
-const pct = (x) => Math.max(1, Math.round(x * 100));
 const first = (q) => q.name.split(' ')[0];
 const short = (q) => `${first(q)} (n° ${q.num})`;
 // ordre d'affichage : du plus décisif au plus prudent
@@ -25,6 +25,7 @@ function pick(cands, recent = [], order = CAT_ORDER, max = 4) {
   const cats = new Set();
   for (const c of scored) if (!cats.has(c.cat) && out.length < max) { out.push(c); cats.add(c.cat); }
   for (const c of scored) if (!out.includes(c) && out.length < max) out.push(c);
+  for (const c of out) c.hint = (c.hint ?? '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '');
   return out.sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat));
 }
 
@@ -60,7 +61,7 @@ export function ballChoices(m, u, recent = []) {
   if (shot && shot.xg >= 0.025) {
     const gk = m.gk(1 - u.team);
     const gkOut = gk && Math.abs(gk.x - gx) > 5.5;
-    add({ key: 'shot-placed', cat: 'shot', opt: { ...shot, style: 'placed' }, icon: 'shoot', label: dGoal < 14 ? 'Ajuster le gardien' : 'Frappe placée', hint: `≈ ${pct(shot.xg)} % · viser le petit filet`, cls: xgClass(shot.xg), score: shot.u + 0.02 });
+    add({ key: 'shot-placed', cat: 'shot', opt: { ...shot, style: 'placed' }, icon: 'shoot', label: dGoal < 14 ? 'Ajuster le gardien' : 'Frappe placée', hint: 'viser le petit filet', cls: xgClass(shot.xg), score: shot.u + 0.02 });
     if (dGoal > 13) add({ key: 'shot-power', cat: 'shot', opt: { ...shot, style: 'power' }, icon: 'physique', label: dGoal > 23 ? 'Tenter sa chance de loin' : 'Frappe en force', hint: 'puissante, moins précise', cls: xgClass(shot.xg * 0.9), score: shot.u + 0.005 + (lead < 0 && late ? 0.02 : 0) });
     if (gkOut && dGoal < 28) add({ key: 'shot-chip', cat: 'shot', opt: { ...shot, style: 'chip' }, icon: 'cross', label: 'Piquer au-dessus du gardien', hint: 'le gardien est sorti de sa ligne', cls: 'mid', score: shot.u + 0.035 });
   }

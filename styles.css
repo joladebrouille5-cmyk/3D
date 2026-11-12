@@ -270,13 +270,6 @@ table.stats td:nth-child(2) { text-align: center; color: var(--muted); font-size
 .ch-t { display: flex; flex-direction: column; min-width: 0; }
 .ch-t b { font-size: 0.95em; line-height: 1.2; }
 .ch-t small { font-size: 0.76em; color: var(--muted); }
-.ch-risk { display: flex; gap: 3px; align-items: flex-end; height: 16px; }
-.ch-risk i { width: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
-.ch-risk i:nth-child(1) { height: 6px; } .ch-risk i:nth-child(2) { height: 11px; } .ch-risk i:nth-child(3) { height: 16px; }
-.ch-opt.low .ch-risk i:nth-child(1) { background: var(--ok); }
-.ch-opt.mid .ch-risk i:nth-child(-n+2) { background: var(--warn); }
-.ch-opt.high .ch-risk i { background: var(--bad); }
-.ch-opt.low .ch-ic { color: var(--ok); } .ch-opt.mid .ch-ic { color: var(--warn); } .ch-opt.high .ch-ic { color: #ff9b9b; }
 .ch-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
 .ch-skip { font-size: 0.8em; padding: 5px 12px; background: transparent; color: var(--muted); }
 #pad-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 4; background: rgba(6, 10, 20, 0.85); border: 1px solid var(--line); padding: 4px 12px; border-radius: 14px; font-size: 0.85em; pointer-events: none; }
@@ -964,4 +957,32 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
   .w-odds li { padding: 2px 8px; font-size: 0.86em; }
   .w-spin { padding: 8px 16px; }
   .w-blurb { font-size: 1em; }
+}
+
+/* ------------------------------------------------------------ chances de réussite des choix */
+.ch-opt { grid-template-columns: auto auto 1fr auto; }
+.ch-pct { display: flex; flex-direction: column; align-items: flex-end; min-width: 64px; text-align: right; }
+.ch-pct b { font: 900 1.45em/1 var(--f-display); font-variant-numeric: tabular-nums; color: var(--chalk); transition: color 0.2s; }
+.ch-pct small { font-size: 0.66em; color: var(--muted); white-space: nowrap; }
+.ch-pct.calc b { opacity: 0.55; }
+.ch-pct[data-tier="hi"] b { color: var(--ok); }
+.ch-pct[data-tier="mid"] b { color: var(--warn); }
+.ch-pct[data-tier="lo"] b { color: var(--bad); }
+.ch-opt:has(.ch-pct[data-tier="hi"]) { box-shadow: inset 3px 0 0 var(--ok); }
+.ch-opt:has(.ch-pct[data-tier="mid"]) { box-shadow: inset 3px 0 0 var(--warn); }
+.ch-opt:has(.ch-pct[data-tier="lo"]) { box-shadow: inset 3px 0 0 var(--bad); }
+#pad-hint.fb-ok, #pad-hint.fb-ko { font-weight: 700; font-size: 0.95em; padding: 6px 16px; animation: fb-in 0.25s ease both; }
+#pad-hint.fb-ok { border-color: rgba(78, 224, 138, 0.6); color: var(--ok); }
+#pad-hint.fb-ko { border-color: rgba(255, 103, 103, 0.6); color: var(--bad); }
+@keyframes fb-in { from { opacity: 0; transform: translate(-50%, -6px) scale(0.96); } to { opacity: 1; transform: translate(-50%, 0); } }
+.sum-dec { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 3px; }
+.sum-dec li { display: grid; grid-template-columns: 44px 1fr 48px 20px; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); font-size: 0.88em; }
+.sum-dec .min { font: 800 1em var(--f-display); color: var(--muted); }
+.sum-dec .dl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-dec .dp { text-align: right; font: 800 1em var(--f-display); color: var(--muted); }
+.sum-dec .dr { font-weight: 900; text-align: center; }
+.sum-dec li.ok .dr { color: var(--ok); } .sum-dec li.ko .dr { color: var(--bad); }
+@media (max-height: 520px) {
+  .ch-pct { min-width: 54px; } .ch-pct b { font-size: 1.25em; } .ch-pct small { font-size: 0.6em; }
+  .sum-dec li { font-size: 0.8em; padding: 2px 6px; }
 }

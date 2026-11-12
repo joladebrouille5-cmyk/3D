@@ -11,6 +11,7 @@ import { icon } from './icons.js';
 import { sound } from './sound.js';
 import { avatar, matchFace } from './faces.js';
 import { ballChoices, defendChoices, supportChoices, restartChoices, choiceTargets } from './choices.js';
+import { createPredictor, createJudge, goalOf } from '../engine/predict.js';
 import { matchRating } from '../career/career.js';
 import { extractResult } from '../career/play.js';
 
@@ -48,6 +49,7 @@ export function startMatch(cfg) {
   const u = S.career ? S.m.players.find((p) => p.isUser) : null;
   const canControl = !!u && u.role !== 'GK';
   // choix en match : activés pour un joueur de champ, désactivables (l'IA joue alors pour toi)
+  S.judge = null;
   S.ctl = { enabled: canControl, manual: canControl, zoom: 1.7, userId: u?.id ?? null, wasOn: !!u?.onPitch, lastOwner: null, lastBallChoice: -99, lastOffChoice: -99, made: 0 };
   S.choice = null; $('#choices').hidden = true;
   S.renderer.cam.zoom = 1;
@@ -118,6 +120,7 @@ function frame(now) {
       while (S.acc >= SIM.dt && n < 2000) {
         S.prev = snapshot();
         m.step();
+        checkJudge();
         S.acc -= SIM.dt; n++;
         if (handleNewEvents()) { S.acc = 0; break; }
         if (m.phase === 'fulltime') break;
@@ -366,14 +369,64 @@ function openChoice(ch, u) {
   const box = $('#choices');
   const vs = ch.vs != null ? m.players[ch.vs] : null;
   box.innerHTML = `<div class="ch-head">${face(u, 40, 'ch-me')}<div class="ch-ht"><strong>${esc(ch.title)}</strong><span>${esc(ch.sub)}</span></div>${vs ? face(vs, 40, 'ch-vs') : ''}</div>
-    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}${c.opt?.to != null ? `<span class="ch-mate">${face(m.players[c.opt.to], 22)}</span>` : ''}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
+    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}${c.opt?.to != null ? `<span class="ch-mate">${face(m.players[c.opt.to], 22)}</span>` : ''}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-pct calc" title="Chance de réussite : la suite de l'action est simulée plusieurs fois par le moteur"><b>…</b><small>${esc(goalOf(c, ch.type).label)}</small></span></button>`).join('')}</div>
     <div class="ch-foot"><button id="ch-auto" class="ch-skip">${icon('auto', 16)} Laisser l'instinct décider</button></div>`;
   box.hidden = false;
   S.choice.inset = panelInset(box);
+  // pourcentages de réussite : simulés en tâche de fond, affichés au fur et à mesure
+  const pred = createPredictor(m, u.id, ch.list, 24, ch.type);
+  S.choice.pred = pred;
+  const run = () => {
+    if (!S.choice || S.choice.pred !== pred) return;
+    const done = pred.work(14);
+    showPcts(box, pred, done);
+    if (!done) setTimeout(run, 0);
+  };
+  setTimeout(run, 40);
   sound.chime();
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
   box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
   refreshUI(true); // l'horloge et le score affichés correspondent à l'instant du choix
+}
+
+// niveau de confiance d'un pourcentage (un but n'a pas la même échelle qu'une passe)
+function pctTier(p, kind) {
+  const [hi, mid] = kind === 'goal' ? [0.25, 0.1] : kind === 'receive' ? [0.45, 0.2] : [0.65, 0.4];
+  return p >= hi ? 'hi' : p >= mid ? 'mid' : 'lo';
+}
+function showPcts(box, pred, done) {
+  pred.items.forEach((it, i) => {
+    const el = box.querySelector(`.ch-opt[data-i="${i}"] .ch-pct`);
+    const p = pred.pct(it);
+    if (!el || p == null) return;
+    el.querySelector('b').textContent = `${Math.round(p * 100)} %`;
+    el.classList.toggle('calc', !done);
+    el.dataset.tier = pctTier(p, it.goal.kind);
+    if (it.card && done && it.card / it.runs >= 0.15) el.querySelector('small').textContent = `${it.goal.label} · carton ${Math.round((it.card / it.runs) * 100)} %`;
+  });
+}
+
+// Retour après un choix : l'issue réelle, jugée avec les mêmes règles que les simulations
+const OUTCOME = {
+  goal: ['But !', 'Pas de but'], pass: ['Passe réussie', 'Passe perdue'], cross: ['Centre pour un partenaire', 'Centre perdu'],
+  keep: ['Ballon gardé', 'Ballon perdu'], win: ['Ballon récupéré', 'Pas de récupération'], foul: ['Action stoppée', 'Faute manquée'],
+  stop: ['Action stoppée', 'L\'adversaire avance'], teamkeep: ['Possession gardée', 'Possession perdue'], receive: ['Ballon reçu', 'Ballon pas reçu'],
+};
+function checkJudge() {
+  const J = S.judge;
+  if (!J) return;
+  const r = J.j.check();
+  if (!r) return;
+  S.judge = null;
+  if (r.ended) return;
+  const m = S.m;
+  (m.userChoices ??= []).push({ minute: J.minute, label: J.c.label, p: J.p, ok: !!r.ok, kind: J.goal.kind, card: !!r.card });
+  const [yes, no] = OUTCOME[J.goal.kind] ?? ['Réussi', 'Raté'];
+  const h = $('#pad-hint');
+  h.textContent = `${r.ok ? '✓' : '✗'} ${r.ok ? yes : no}${J.p != null ? ` · ${Math.round(J.p * 100)} % annoncé` : ''}`;
+  h.className = r.ok ? 'fb-ok' : 'fb-ko';
+  h.hidden = false;
+  clearTimeout(S.hintTimer); S.hintTimer = setTimeout(() => { h.hidden = true; h.className = ''; }, 2400);
 }
 
 // part du terrain couverte par le panneau des choix (à droite sur téléphone, en bas sinon)
@@ -394,6 +447,9 @@ function pickChoice(i) {
     if (c.plan) m.queueCommand({ type: 'restartPlan', playerId: u.id, plan: c.plan });
     else if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
     else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent, ...(c.spot ?? {}) });
+    const it = ch.pred?.items[i];
+    const goal = goalOf(c, ch.type);
+    S.judge = { j: createJudge(m, u.id, c, goal), c, goal, minute: m.minute(), p: it && it.runs ? ch.pred.pct(it) : null };
     S.ctl.made++;
     S.ctl.recent = [...(S.ctl.recent ?? []), c.key].slice(-4);
     // le vestiaire juge l'état d'esprit : jeu collectif ou exploit personnel forcé
@@ -411,7 +467,7 @@ function pickChoice(i) {
 
 function flashHint(text) {
   const h = $('#pad-hint');
-  h.textContent = text; h.hidden = false;
+  h.textContent = text; h.hidden = false; h.className = '';
   clearTimeout(S.hintTimer); S.hintTimer = setTimeout(() => { h.hidden = true; }, 1400);
 }
 
@@ -877,8 +933,10 @@ function openModal(html, { closable = true, onClose } = {}) {
   root.dataset.closable = closable ? '1' : '';
   S.onModalClose = onClose || null;
   const first = root.querySelector('button.primary, select, input, button');
-  first?.focus();
-  return root.querySelector('.modal');
+  first?.focus({ preventScroll: true });
+  const modal = root.querySelector('.modal');
+  if (modal) modal.scrollTop = 0;
+  return modal;
 }
 
 function closeModal() {
@@ -972,13 +1030,24 @@ function showSummary() {
       <ul><li><b>${r.minutes}'</b>joués</li><li><b>${u.stats.goals}</b>but${u.stats.goals > 1 ? 's' : ''}</li><li><b>${u.stats.shots}</b>tir${u.stats.shots > 1 ? 's' : ''}</li><li><b>${u.stats.passesOk}/${u.stats.passes}</b>passes</li><li><b>${u.stats.tackles}</b>tacles</li><li><b>${S.ctl.made}</b>choix</li></ul></div>`
       : `<div class="sum-me">${face(u, 64)}<div><span class="muted">Ton match</span><b class="sum-note">—</b></div><p class="muted">Tu n'es pas entré en jeu.</p></div>`;
   }
+  // tes décisions : issue réelle face à la chance annoncée
+  const dec = m.userChoices ?? [];
+  let decisions = '';
+  if (S.career && dec.length) {
+    const won = dec.filter((d) => d.ok).length;
+    const known = dec.filter((d) => d.p != null);
+    const exp = known.reduce((a, d) => a + d.p, 0), got = known.filter((d) => d.ok).length;
+    const verdict = known.length < 3 ? '' : got > exp + 0.8 ? 'Mieux que prévu : tes choix ont payé.' : got < exp - 0.8 ? 'En dessous des chances annoncées : pas de réussite aujourd\'hui.' : 'Conforme aux chances annoncées.';
+    decisions = `<h3>Tes décisions · ${won} réussie${won > 1 ? 's' : ''} sur ${dec.length}</h3>
+      <ul class="sum-dec">${dec.map((d) => `<li class="${d.ok ? 'ok' : 'ko'}"><span class="min">${esc(d.minute)}'</span><span class="dl">${esc(d.label)}</span>${d.p != null ? `<span class="dp">${Math.round(d.p * 100)} %</span>` : '<span class="dp">—</span>'}<span class="dr">${d.ok ? '✓' : '✗'}</span></li>`).join('')}</ul>
+      ${verdict ? `<p class="muted small">${verdict}${known.length ? ` Réussites attendues : ${exp.toFixed(1)} · obtenues : ${got}.` : ''}</p>` : ''}`;
+  }
   openModal(`<div class="sum-head">${crest(m.teams[0], 54)}<h1>${esc(m.teams[0].name)} ${m.score[0]} – ${m.score[1]} ${esc(m.teams[1].name)}</h1>${crest(m.teams[1], 54)}</div>
     ${S.career ? '' : `<p class="muted small">Graine « ${esc(m.seed)} » · empreinte ${esc(m.fingerprint())}</p>`}
-    ${me}
+    ${me}${decisions}
     <h3>Buts</h3>${goals.length ? `<ul class="sum-goals">${goals.map((g) => `<li><span class="min">${esc(g.minute)}'</span>${g.player != null ? face(m.players[g.player], 24) : ''}<span>${esc(g.text.replace(/\s*\(.*\)\s*$/, ''))}</span></li>`).join('')}</ul>` : '<p>Aucun but.</p>'}
     <h3>Statistiques</h3>
     <div class="cmp-list">${row('Tirs', a.shots, b.shots)}${row('Cadrés', a.onTarget, b.onTarget)}${row('xG pré-tir', a.xg, b.xg, (v) => v.toFixed(2))}${row('Passes réussies', pc(a), pc(b), (v) => `${v} %`)}${row('Corners', a.corners ?? 0, b.corners ?? 0)}${row('Fautes', a.fouls, b.fouls)}</div>
-    <p class="note">Un total d'occasions élevé n'est pas une dette de buts : le résultat a émergé des actions, sans score décidé à l'avance.</p>
     ${S.career ? '<div class="actions"><button id="sum-close">Revoir le match</button><button class="primary" id="sum-career">Retour à la carrière</button></div>'
     : '<div class="actions"><button id="sum-close">Revoir le match</button><button id="sum-home">Accueil</button><button id="sum-same">Rejouer avec la même graine</button><button class="primary" id="sum-new">Nouveau match</button></div>'}`);
   $('#sum-close').addEventListener('click', closeModal);
@@ -1004,6 +1073,7 @@ function quickResult() {
     if (ti != null && !m.aiTeams.includes(ti)) m.aiTeams.push(ti);
     if (S.ctl.engaged) { m.queueCommand({ type: 'control', playerId: S.ctl.userId, on: false }); S.ctl.engaged = false; }
     S.ctl.manual = false; if (S.choice) pickChoice(-1);
+    S.judge = null;
     S.quick = true;
     const chunk = () => {
       for (let i = 0; i < 3000 && m.phase !== 'fulltime'; i++) { m.step(); }

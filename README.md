@@ -230,3 +230,18 @@ accueil avec un vrai match IA en perspective, vignette d'album du joueur, bande 
 - `docs/concept-enrichi.md` : document de conception complet.
 - `docs/effectifs-v1.md` : annexe des effectifs publics sourcés (saison 2026-2027, collecte du 11 novembre 2026).
 - `data/joueurs-v1.csv` : occurrences équipe–nom avec provenance et statut. Tous les enregistrements ont `import_autorise=false`, et le prototype ne les lit pas.
+
+## Pourcentages de réussite des choix
+
+Chaque choix proposé en match affiche sa chance de réussite. Elle n'est pas estimée à côté du moteur :
+la suite de l'action est **rejouée 24 fois** dans une copie du match (`Match.fork`, `src/engine/predict.js`),
+avec un autre aléa à chaque fois, et on compte les réussites. Le pourcentage dépend donc de tout ce que
+simule le moteur : tes attributs et ta fraîcheur, ceux du partenaire visé, le placement et la qualité des
+adversaires (interception, tacle, gardien), la pression et la distance.
+
+- Ce qui compte comme une réussite dépend du choix : passe réussie, ballon gardé, but, ballon récupéré,
+  action adverse stoppée, ballon reçu…
+- Après ton choix, le même arbitre juge l'issue réelle : ✓ ou ✗ s'affiche avec le pourcentage annoncé ;
+  le bilan du match liste tes décisions (réussites attendues / obtenues).
+- Calibration mesurée sur 581 choix : annoncé 51 % → réel 52 %, annoncé 88 % → réel 92 %, annoncé 30 % → réel 37 %.
+
