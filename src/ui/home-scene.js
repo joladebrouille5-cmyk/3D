@@ -40,7 +40,7 @@ export function startHomeScene(canvas, clubId = null) {
     });
     const [bx, by, bz] = st.prev.b;
     const ball = { x: bx + (m.ball.x - bx) * k, y: by + (m.ball.y - by) * k, z: bz + (m.ball.z - bz) * k };
-    renderer.follow(ball.x * 0.6 + 52.5 * 0.4, ball.y * 0.5 + 34 * 0.5, 1.45, 0.03);
+    renderer.follow(ball.x * 0.5 + 52.5 * 0.5, ball.y * 0.4 + 34 * 0.6, 1.12, 0.03);
     renderer.draw({ teams: m.teams.map((t) => ({ ...t })), players, ball, ownerId: m.ball.owner });
     if (m.phase === 'fulltime') { startHomeScene(canvas, clubId); return; }
     st.raf = requestAnimationFrame(frame);

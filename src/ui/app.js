@@ -1025,7 +1025,12 @@ function showMenu() {
 
 export function showQuickMatchSetup() { showSetup(); }
 export function setHomeHandler(fn) { S.onHome = fn; }
-export function initMatchUI() { bind(); window.__gfPace = () => S.pace; }
+export function initMatchUI() {
+  bind();
+  window.__gfPace = () => S.pace;
+  // aide au test visuel : rejouer la célébration d'un but de l'équipe donnée
+  window.__gfGoalFx = (team = 0) => S.m && goalBanner({ team, player: S.m.players.find((p) => p.team === team && p.role === 'ST')?.id ?? null, minute: S.m.minute(), own: false });
+}
 
 function bind() {
   S.renderer = new PitchRenderer($('#pitch'));

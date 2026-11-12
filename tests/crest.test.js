@@ -2,12 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CLUBS } from '../src/career/clubs.js';
+import { existsSync } from 'node:fs';
 import { crestSVG, clubColors, initials } from '../src/ui/crest.js';
 
 test('chaque club du catalogue a un écusson SVG valide et stable', () => {
   for (const c of CLUBS) {
     const svg = crestSVG(c, 40);
-    assert.match(svg, /^<svg[\s\S]*<\/svg>$|^<img [^>]*src="assets\/crests(-l1)?\/[a-z0-9-]+\.png"/);
+    assert.match(svg, /^<svg[\s\S]*<\/svg>$|^<img [^>]*src="assets\/crests(-l1|-tm)?\/[a-z0-9-]+\.png"/);
+    const src = svg.match(/src="([^"]+)"/)?.[1];
+    if (src) assert.ok(existsSync(new URL(`../${src}`, import.meta.url)), `fichier du logo présent : ${src}`);
     assert.equal(svg, crestSVG(c, 40), `écusson stable pour ${c.id}`);
     assert.ok(initials(c.name).length >= 1);
   }

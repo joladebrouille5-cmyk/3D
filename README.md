@@ -167,14 +167,21 @@ Le mode **Match court** est le mode par défaut. Le moteur simule toujours les 9
 
 Le mode **Temps réel** (vitesses 1× à 8×) reste disponible dans le menu du match et sur l'écran du match amical. La recette `npm run ui-check-pace` vérifie la durée.
 
-### Écussons
+### Logos et habillage
 
-Les logos officiels des clubs sont des marques protégées et ne sont pas inclus. Chaque club reçoit un **écusson généré** :
-- forme, motif et initiales stables ;
-- **couleurs réelles** du club quand elles sont connues (`src/data/club-colors.js`), couleurs déterministes sinon ;
-- les mêmes couleurs servent pour les maillots en match.
+Jeu à usage personnel : les **vrais logos** des clubs sont utilisés quand ils ont pu être récupérés, par ordre de priorité :
+1. `assets/crests-tm/` — logos Transfermarkt (identifiants dans `tools/tm-ids.json`, trouvés par `node tools/tm-ids.mjs` ;
+   images téléchargées par le workflow `.github/workflows/tm-crests.yml`, le serveur d'images n'étant pas joignable depuis
+   l'environnement de développement) ;
+2. `assets/crests-l1/` — clubs passés par la Ligue 1 ;
+3. `assets/crests/` — Wikimedia Commons (`tools/fetch-crests.mjs`, workflow manuel).
 
-Pour utiliser tes propres images (sous ta responsabilité quant aux droits), ajoute-les dans `assets/crests/` et déclare-les dans `CREST_IMAGES` du même fichier.
+Couverture : Ligue 1 18/18, Ligue 2 16/18, National 14/18 (59 clubs sur 218). Les autres reçoivent un **écusson généré**
+aux couleurs réelles du club (`src/data/club-colors.js`), couleurs aussi utilisées pour les maillots.
+
+Direction artistique « nuit de match » : terrain sous quatre projecteurs (ombres croisées, tribunes, panneaux LED, filets),
+accueil avec un vrai match IA en perspective, vignette d'album du joueur, bande de résultats de la saison, icônes dessinées
+(`src/ui/icons.js`). Polices embarquées (licence OFL, `assets/fonts/`) : Big Shoulders Display et Archivo.
 
 ## Hors de ce lot
 

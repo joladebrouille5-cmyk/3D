@@ -78,14 +78,14 @@ function patternSvg(pat, p, s, t) {
 // Écusson SVG (chaîne). `size` en pixels CSS.
 export function crestImage(id) {
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  return CREST_IMAGES[base] ?? CREST_LOCAL[base] ?? CREST_TM[base] ?? CREST_FILES[base] ?? null;
+  return CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base] ?? null;
 }
 
 export function crestSVG(club, size = 40) {
   const id = club.clubId ?? club.id;
   // logo officiel téléchargé (tools/fetch-crests.mjs) ou image fournie, sinon écusson généré
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  const img = CREST_IMAGES[base] ?? CREST_LOCAL[base] ?? CREST_TM[base] ?? CREST_FILES[base];
+  const img = CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base];
   if (img) return `<img class="crest-img" src="${img}" width="${size}" height="${size}" alt="" loading="lazy" decoding="async">`;
   const c = clubColors(id);
   const txt = initials(club.name ?? id);
