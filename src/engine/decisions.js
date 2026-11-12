@@ -113,6 +113,7 @@ export function holderOptions(m, p, restartType = null) {
     let gain = threat(m, team, q.x, q.y) + RETAIN;
     if (isGK) gain -= 0.012;
     if (m.t < (q.callUntil ?? 0)) gain += 0.03; // un partenaire demande le ballon : signal, pas ordre
+    if (p.returnTo === q.id && m.t < (p.returnUntil ?? 0)) gain += 0.06; // une-deux : rendre le ballon
     if (qRel > rel) gain += 0.006 * tv.direct * ((qRel - rel) * 4);
     else gain += 0.005 * (1 - tv.direct);
     if (lofted) gain -= 0.014 * (1 - tv.direct) + 0.004;
@@ -197,7 +198,7 @@ export function executeOption(m, p, choice, restartType = null) {
   const team = m.teams[p.team];
   const rel = m.relX(team, p.x);
   switch (choice.kind) {
-    case 'shoot': m.shoot(p, { freekick: restartType === 'freekick' }); break;
+    case 'shoot': m.shoot(p, { freekick: restartType === 'freekick', style: choice.style }); break;
     case 'pass': m.pass(p, choice.tx, choice.ty, { to: choice.to, lofted: choice.lofted, through: choice.through, low: restartType === 'throw' }); break;
     case 'cross': m.pass(p, choice.tx, choice.ty, { lofted: true, cross: true }); break;
     case 'clear': m.pass(p, m.absX(team, Math.min(0.85, rel + 0.4)), clamp(p.y + m.rng.range(-20, 20), 4, 64), { lofted: true }); break;
@@ -206,11 +207,38 @@ export function executeOption(m, p, choice, restartType = null) {
   }
 }
 
+// Option correspondant au plan choisi pour un coup de pied arrêté
+function plannedOption(m, p, opts, plan) {
+  const team = m.teams[p.team];
+  const gx = m.oppGoalX(team);
+  const best = (list) => list.sort((a, b) => b.u - a.u)[0] ?? null;
+  if (plan.kind === 'shoot') { const o = opts.find((x) => x.kind === 'shoot'); return o ? { ...o, style: plan.style } : null; }
+  if (plan.kind === 'cross') {
+    const o = opts.find((x) => x.kind === 'cross') ?? { kind: 'cross' };
+    const near = plan.post === 'near';
+    const side = p.y < 34 ? -1 : 1; // côté du tireur
+    return { ...o, kind: 'cross', tx: gx - team.dir * (near ? 5.5 : 8), ty: near ? 34 + side * 3 : 34 - side * 5.5 };
+  }
+  if (plan.kind === 'short') return best(opts.filter((x) => x.kind === 'pass' && !x.lofted && dist(p.x, p.y, m.players[x.to].x, m.players[x.to].y) < 16));
+  if (plan.kind === 'long') return best(opts.filter((x) => x.kind === 'pass' && x.lofted));
+  return null;
+}
+
 // Décision du porteur. `restartType` restreint les options lors d'une remise en jeu.
 export function decideHolder(m, p, restartType) {
-  if (restartType === 'penalty') { m.shoot(p, { penalty: true }); return; }
+  const plan = p.restartPlan;
+  p.restartPlan = null;
+  if (restartType === 'penalty') {
+    m.shoot(p, { penalty: true, ...(plan?.kind === 'penalty' ? { aimSide: plan.side, style: plan.style, userPenalty: true } : {}) });
+    return;
+  }
   const { opts, throwIn, rel, team } = holderOptions(m, p, restartType);
   const rng = m.rng;
+  // coup de pied arrêté décidé par le joueur (carrière)
+  if (plan && restartType) {
+    const pick = plannedOption(m, p, opts, plan);
+    if (pick) { executeOption(m, p, pick, restartType); return; }
+  }
 
   if (!opts.length) {
     // aucune option : jeu long devant

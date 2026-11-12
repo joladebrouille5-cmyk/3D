@@ -7,6 +7,7 @@ import { CATALOG } from '../data/catalog.js';
 import { startMatch, showQuickMatchSetup, setHomeHandler } from './app.js';
 import { crestSVG, clubColors } from './crest.js';
 import { icon } from './icons.js';
+import { avatar, faceUrl, faceIndexFor, faceSample } from './faces.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
 const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
@@ -64,7 +65,7 @@ export function showHome() {
   const last = saves[0];
   const lc = last?.clubId ? clubById(last.clubId) : null;
   const ticket = last ? `<button class="ticket" id="h-continue" style="${lc ? clubVars(lc) : ''}">
-      <span class="tk-band">${lc ? crest(lc, 46) : icon('ball', 30)}</span>
+      <span class="tk-band">${last.face != null ? `<span class="tk-face">${avatar({ face: last.face }, 54)}${lc ? `<span class="tk-mini">${crestSVG(lc, 22)}</span>` : ''}</span>` : lc ? crest(lc, 46) : icon('ball', 30)}</span>
       <span class="tk-body"><small>Reprendre la carrière</small><b>${esc(last.name)}</b><span>${esc(last.club)} · ${esc(last.stage)} · ${last.age} ans</span></span>
       <span class="tk-stub">${icon('play', 22)}<small>Continuer</small></span>
     </button>` : '';
@@ -109,7 +110,7 @@ function showLoad() {
   const el = show(`<div class="panel-screen narrow">
     <header class="screen-head"><button class="icon-btn" id="l-back2" aria-label="Retour">${icon('back', 20)}</button><h1>Charger la partie</h1></header>
     <ul class="slots">${saves.map((s) => `<li style="${s.clubId ? clubVars(clubById(s.clubId)) : ''}">
-      <span class="slot-crest">${s.clubId ? crest(clubById(s.clubId), 40) : `<span class="slot-n">${s.slot}</span>`}</span>
+      <span class="slot-crest">${s.face != null ? avatar({ face: s.face }, 46) : s.clubId ? crest(clubById(s.clubId), 40) : `<span class="slot-n">${s.slot}</span>`}</span>
       <strong>Emplacement ${s.slot}</strong>
       ${s.empty ? '<span class="muted">vide</span>' : s.corrupt ? '<span class="error">sauvegarde illisible</span>' : `<span>${esc(s.name)} · ${s.age} ans · ${esc(s.club)} (${esc(s.stage)}) · saison ${esc(s.season)}, semaine ${s.week} · niveau ${s.ca}<br><span class="muted">Sauvegardé le ${new Date(s.savedAt).toLocaleString('fr-FR')}</span></span>`}
       <span class="row">${s.empty ? '' : `${s.corrupt ? '' : `<button class="primary" data-load="${s.slot}">Charger</button>`}<button data-del="${s.slot}">Supprimer</button>`}</span>
@@ -130,12 +131,19 @@ function showLoad() {
 const POS_SPOTS = [['GK', 7, 50], ['CB', 22, 50], ['FB', 27, 16], ['DM', 40, 50], ['CM', 53, 34], ['AM', 66, 52], ['W', 75, 16], ['ST', 87, 50]];
 function showNewCareer() {
   const f = G.form ?? { firstName: '', lastName: '', role: 'CM', foot: 'droit', slot: firstFreeSlot() ?? 1 };
+  f.faceSeed ??= Date.now();
+  const sample = faceSample(f.faceSeed, 14);
+  if (f.face == null || !sample.includes(f.face)) f.face = f.face ?? sample[0];
   const saves = listSaves();
   const el = show(`<div class="panel-screen narrow new-career">
     <header class="screen-head"><button class="icon-btn" id="n-back2" aria-label="Retour">${icon('back', 20)}</button><h1>Nouveau joueur</h1></header>
     <p class="lead">Tu as 15 ans. Ton potentiel sera tiré au hasard : personne ne le connaît, pas même toi.</p>
     <div class="nc-grid">
       <div class="nc-fields">
+        <div class="face-pick"><span class="fp-label">Ton visage</span>
+          <div class="face-row" role="radiogroup" aria-label="Choisir son visage">${(sample.includes(f.face) ? sample : [f.face, ...sample.slice(0, 13)]).map((i) => `<button type="button" class="face ${i === f.face ? 'on' : ''}" data-face="${i}" role="radio" aria-checked="${i === f.face}">${avatar({ face: i }, 52)}</button>`).join('')}</div>
+          <button type="button" class="ghost small" id="n-faces">${icon('replay', 16)} Autres visages</button>
+        </div>
         <label>Prénom<input type="text" id="n-first" maxlength="20" value="${esc(f.firstName)}" autocomplete="off"></label>
         <label>Nom<input type="text" id="n-last" maxlength="24" value="${esc(f.lastName)}" autocomplete="off"></label>
         <label>Pied fort<select id="n-foot"><option ${f.foot === 'droit' ? 'selected' : ''}>droit</option><option ${f.foot === 'gauche' ? 'selected' : ''}>gauche</option></select></label>
@@ -154,6 +162,12 @@ function showNewCareer() {
     <div id="n-err" class="error"></div>
     <div class="actions"><button id="n-back">Retour</button><button class="primary" id="n-next">Choisir le club ${icon('next', 18)}</button></div>
   </div>`);
+  const readForm = () => ({ ...f, firstName: el.querySelector('#n-first').value, lastName: el.querySelector('#n-last').value, role: el.querySelector('#n-role').value, foot: el.querySelector('#n-foot').value, slot: Number(el.querySelector('#n-slot').value) });
+  el.querySelectorAll('.face').forEach((b) => b.addEventListener('click', () => {
+    f.face = Number(b.dataset.face);
+    el.querySelectorAll('.face').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+  }));
+  el.querySelector('#n-faces').addEventListener('click', () => { G.form = { ...readForm(), faceSeed: Date.now(), face: null }; showNewCareer(); });
   const roleSel = el.querySelector('#n-role');
   const syncPos = () => el.querySelectorAll('.pos').forEach((b) => b.classList.toggle('on', b.dataset.pos === roleSel.value));
   el.querySelectorAll('.pos').forEach((b) => b.addEventListener('click', () => { roleSel.value = b.dataset.pos; syncPos(); }));
@@ -162,7 +176,7 @@ function showNewCareer() {
   el.querySelector('#n-back').addEventListener('click', back);
   el.querySelector('#n-back2').addEventListener('click', back);
   el.querySelector('#n-next').addEventListener('click', () => {
-    const form = { firstName: el.querySelector('#n-first').value.trim(), lastName: el.querySelector('#n-last').value.trim(), role: roleSel.value, foot: el.querySelector('#n-foot').value, slot: Number(el.querySelector('#n-slot').value) };
+    const form = { ...readForm(), firstName: el.querySelector('#n-first').value.trim(), lastName: el.querySelector('#n-last').value.trim() };
     if (!form.firstName || !form.lastName) { el.querySelector('#n-err').textContent = 'Indique un prénom et un nom.'; return; }
     const occupied = !saves.find((s) => s.slot === form.slot).empty;
     if (occupied && !confirm(`L'emplacement ${form.slot} contient déjà une partie. La remplacer ?`)) return;
@@ -225,7 +239,7 @@ function showClubPicker() {
       <button class="primary" id="c-go">Commencer au centre de formation ${icon('next', 18)}</button>`;
     box.querySelector('#c-go').addEventListener('click', () => {
       const f = G.form;
-      G.st = C.createCareer({ firstName: f.firstName, lastName: f.lastName, role: f.role, foot: f.foot, clubId: c.id });
+      G.st = C.createCareer({ firstName: f.firstName, lastName: f.lastName, role: f.role, foot: f.foot, clubId: c.id, face: f.face ?? null });
       G.slot = f.slot; G.form = null; G.pick = null;
       persist();
       renderHub();
@@ -269,7 +283,7 @@ function profileCard(st) {
   return `<section class="card profile">
     <div class="pc-row">
       <figure class="sticker" aria-label="Vignette de ${esc(p.firstName)} ${esc(p.lastName)}">
-        <div class="st-photo"><span class="st-crest">${crest(club, 28)}</span><span class="st-role">${ROLE_ABBR[p.role]}</span>${silhouette(p.number ?? 27)}</div>
+        <div class="st-photo ${faceUrl(p.face) ? 'has-face' : ''}"><span class="st-crest">${crest(club, 28)}</span><span class="st-role">${ROLE_ABBR[p.role]}</span>${faceUrl(p.face) ? `<img class="st-face" src="${faceUrl(p.face)}" alt=""><span class="st-num">${p.number ?? 27}</span>` : silhouette(p.number ?? 27)}</div>
         <figcaption><b>${esc(p.firstName)} ${esc(p.lastName)}</b><span>${p.age} ans · pied ${esc(p.foot)}</span></figcaption>
       </figure>
       <div class="pc-stats">
@@ -318,6 +332,11 @@ function previewBlock(st) {
   </div>`;
 }
 
+function rivalLine(st, rival) {
+  const cc = clubColors(st.clubId);
+  return `<p class="rival">${avatar({ face: rival.real ? null : faceIndexFor(`${st.clubId}:${rival.name}`, st.stage === 'U17' || st.stage === 'U19'), name: rival.name, color: cc.primary, text: cc.text }, 30)}<span>Concurrent direct au poste : <b>${esc(rival.name)}</b> · niveau ${C.pct(rival.ca)}</span></p>`;
+}
+
 function weekCard(st) {
   const p = st.player;
   const n = C.seasonLength(st);
@@ -343,7 +362,7 @@ function weekCard(st) {
         <span class="vs">${md.home ? 'Domicile' : 'Extérieur'}</span>
         <span class="fx ${md.home ? '' : 'me'}">${crest(clubById(md.home ? md.opponentId : st.clubId), 54)}<b>${esc(md.home ? opp : myName)}</b></span>
       </div>
-      <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? ` Concurrent direct : ${esc(md.rival.name)}.` : ''}</p>
+      <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}</p>${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? rivalLine(st, md.rival) : ''}
       <div class="options">
         ${inSquad ? `<button class="primary cta" id="w-watch">${icon('play', 20)}<span>${canPlay ? 'Jouer le match' : 'Suivre le match'}<small>${canPlay ? 'Tu fais les choix de ton joueur aux moments clés' : 'Le gardien est piloté par l\'IA'}</small></span></button><button id="w-sim">${icon('skip', 18)} Simuler le match</button>`
           : `<button class="primary cta" id="w-sim">${icon('skip', 20)}<span>Voir le résultat</span></button><button id="w-watch">${icon('stadium', 18)} Regarder depuis la tribune</button>`}
@@ -356,7 +375,7 @@ function weekCard(st) {
   const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
   return `<section class="card week">${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
-    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? ` <span class="muted">concurrent : ${esc(sel.rival.name)}</span>` : ''}</p>` : '<p class="muted">Pas de match cette semaine.</p>'}
+    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span></p>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
     <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''}"><span class="ci">${icon(FOCUS_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>
@@ -411,7 +430,7 @@ function monthReviewHtml(rv, st, closable) {
   const others = rv.sources.filter((x) => !['train', 'off'].includes(x.kind));
   const maxAbs = Math.max(0.002, ...rv.attrs.map((a) => Math.abs(a.d)));
   return `<div class="modal-backdrop" id="mr-backdrop"><div class="modal review" role="dialog" aria-modal="true">
-    <h1>${icon('chart', 24)} Bilan du mois ${rv.index} <small>semaines ${rv.fromWeek} à ${rv.toWeek} · saison ${rv.season}-${rv.season + 1}</small></h1>
+    <h1>${st.player.face != null ? avatar({ face: st.player.face }, 44, 'mr-face') : icon('chart', 24)} Bilan du mois ${rv.index} <small>semaines ${rv.fromWeek} à ${rv.toWeek} · saison ${rv.season}-${rv.season + 1}</small></h1>
     <div class="kpis">
       <div><span class="label">Niveau</span><span class="value">${C.pct(rv.ca[0])} → ${C.pct(rv.ca[1])}</span>${chip('', dCa, { digits: 1 })}</div>
       <div><span class="label">Potentiel estimé</span><span class="value stars">${stars(C.toStars(e1.center))}</span><span class="muted">${C.pct(e0.lo)}–${C.pct(e0.hi)} → ${C.pct(e1.lo)}–${C.pct(e1.hi)}</span>${chip('Ce mois-ci', rv.paDelta, { digits: 2, title: 'Variation réelle du potentiel ce mois-ci, en points (détail par source ci-dessous)' })}</div>
@@ -550,6 +569,7 @@ function watchWeekMatch() {
     match: m,
     career: {
       followTeam: setup.userTeam,
+      face: p.face ?? null,
       competition: `${st.league.name} · journée ${st.week + 1}`,
       label: setup.inSquad ? `Joueur : ${p.firstName} ${p.lastName} (n° ${m.players.find((x) => x.isUser)?.num}) — ${st.matchday.selection}` : `Dans les tribunes : ${p.firstName} ${p.lastName} (${st.matchday.selection})`,
       onFinish: (match) => {
@@ -566,6 +586,7 @@ function renderSeasonEnd() {
   const st = G.st;
   const h = st.history[st.history.length - 1];
   const el = show(`<div class="panel-screen narrow season-end" style="${clubVars(clubById(st.clubId))}">
+    ${st.player.face != null ? avatar({ face: st.player.face }, 72, 'se-face') : ''}
     <p class="muted">${icon('trophy', 18)} Bilan de la saison</p>
     <h1>Fin de saison ${h.season}-${h.season + 1}</h1>
     <p>${esc(h.club)} ${esc(h.stage)} · ${esc(h.league)} : <strong>${h.pos}e sur ${h.teams}</strong></p>

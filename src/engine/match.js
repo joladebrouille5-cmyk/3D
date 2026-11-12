@@ -151,7 +151,8 @@ export class Match {
       else if (c.type === 'ctrl') { if (this.control) { this.control.dx = clamp(c.dx || 0, -1, 1); this.control.dy = clamp(c.dy || 0, -1, 1); this.control.sprint = !!c.sprint; } }
       else if (c.type === 'act') this.#userAction(c.action, c.dx || 0, c.dy || 0);
       else if (c.type === 'choice') this.#userChoice(c.playerId, c.opt);
-      else if (c.type === 'intent') this.#userIntent(c.playerId, c.kind);
+      else if (c.type === 'intent') this.#userIntent(c.playerId, c.kind, c);
+      else if (c.type === 'restartPlan') { const p = this.players[c.playerId]; if (p) p.restartPlan = c.plan; }
     }
   }
 
@@ -212,24 +213,42 @@ export class Match {
     if (this.ball.owner !== p.id) { this.#log('choix', p.team, `${p.name} n'a plus le ballon : le choix arrive trop tard.`, { player: p.id, hidden: true }); return; }
     p.lastChoice = { kind: opt.kind, t: this.t };
     if (opt.kind === 'carry') { executeOption(this, p, { ...opt, speed: 0.95 }); p.nextDecision = this.t + 1.4; return; }
-    if (opt.kind === 'hold') { p.carry = null; p.nextDecision = this.t + 1.2; return; }
+    if (opt.kind === 'hold') { p.carry = null; p.nextDecision = this.t + (opt.wait ?? 1.2); return; }
     executeOption(this, p, opt);
+    if (opt.oneTwo && opt.to != null) {
+      // une-deux : je file dans l'espace, le partenaire est incité à me rendre le ballon
+      p.runUntil = this.t + 4; p.userRun = this.t + 4;
+      const q = this.players[opt.to];
+      if (q) { q.returnTo = p.id; q.returnUntil = this.t + 4; }
+    }
   }
 
   // Intentions sans ballon : orientent le placement et les gestes de l'agent, sans le télécommander
-  #userIntent(playerId, kind) {
+  #userIntent(playerId, kind, extra = {}) {
     const p = this.players[playerId];
     if (!p || !p.onPitch || this.phase !== 'play') return;
     const until = this.t + 4;
-    if (kind === 'press') p.userIntent = { kind: 'press', until };
-    else if (kind === 'cover') p.userIntent = { kind: 'cover', until };
-    else if (kind === 'tackle') {
-      const h = this.ball.owner != null ? this.players[this.ball.owner] : null;
-      if (h && h.team !== p.team && !h.gkHolding && dist(p.x, p.y, h.x, h.y) < 2.2 && this.t >= p.tackleCooldown) this.#duel(p, h);
-      else p.userIntent = { kind: 'press', until: this.t + 3, tackle: true };
-    } else if (kind === 'run') { p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; }
-    else if (kind === 'call') p.callUntil = this.t + 3;
-    else p.userIntent = null;
+    const h = this.ball.owner != null ? this.players[this.ball.owner] : null;
+    const opp = !!h && h.team !== p.team && !h.gkHolding;
+    const near = opp && dist(p.x, p.y, h.x, h.y) < 2.4 && this.t >= p.tackleCooldown;
+    switch (kind) {
+      case 'press': case 'cover': case 'track': case 'block': case 'shepherd': p.userIntent = { kind, until }; break;
+      case 'tackle': case 'slide':
+        if (near) this.#duel(p, h, kind === 'slide' ? 'slide' : 'stand');
+        else p.userIntent = { kind: 'press', until: this.t + 3, tackle: kind === 'slide' ? 'slide' : 'stand' };
+        break;
+      case 'foul':
+        if (near) this.#foul(p, h, false, true, true);
+        else p.userIntent = { kind: 'press', until: this.t + 3, foul: true };
+        break;
+      case 'run': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; break;
+      case 'diag': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.userIntent = { kind: 'diag', until: this.t + 3.5, own: true }; break;
+      case 'call': p.callUntil = this.t + 3; break;
+      case 'overlap': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.userIntent = { kind, until, own: true }; break;
+      case 'drop': p.callUntil = this.t + 3.5; p.userIntent = { kind, until, own: true }; break;
+      case 'spot': p.userIntent = { kind: 'spot', until: this.t + 5, x: extra.x, y: extra.y, own: true }; break;
+      default: p.userIntent = null;
+    }
   }
 
   // Applique les intentions en cours (à chaque pas, après l'organisation collective)
@@ -240,12 +259,27 @@ export class Match {
       if (!it || !p.onPitch) continue;
       if (this.t > it.until || this.phase !== 'play') { p.userIntent = null; continue; }
       const h = b.owner != null ? this.players[b.owner] : null;
+      const team = this.teams[p.team];
+      if (it.own) {
+        // placements quand ton équipe a le ballon (ou qu'un centre est en l'air)
+        const crossing = b.owner == null && b.pass && b.pass.team === p.team;
+        if (!crossing && (!h || h.team !== p.team || h.id === p.id)) { p.userIntent = null; continue; }
+        const dir = team.dir;
+        if (it.kind === 'spot') { p.tx = it.x; p.ty = it.y; }
+        else if (h && it.kind === 'overlap') { const side = h.y < 34 ? -1 : 1; p.tx = clamp(h.x + dir * 9, 2, PITCH.length - 2); p.ty = clamp(h.y + side * 4, 2, PITCH.width - 2); }
+        else if (h && it.kind === 'drop') { p.tx = h.x + dir * 7; p.ty = h.y + (p.y - h.y) * 0.4; }
+        else if (h && it.kind === 'diag') { p.tx = clamp(p.x + dir * 9, 2, PITCH.length - 2); p.ty = h.y < 34 ? Math.max(p.y, 40) : Math.min(p.y, 28); }
+        p.urgency = 1;
+        continue;
+      }
       if (!h || h.team === p.team) { p.userIntent = null; continue; }
-      const gx = this.ownGoalX(this.teams[p.team]);
+      const gx = this.ownGoalX(team);
       if (it.kind === 'press') {
         const gdx = gx - h.x, gdy = 34 - h.y, gl = Math.hypot(gdx, gdy) || 1;
         p.tx = h.x + h.vx * 0.3 + (gdx / gl) * 1.2; p.ty = h.y + h.vy * 0.3 + (gdy / gl) * 1.2; p.urgency = 1;
-        if (it.tackle && dist(p.x, p.y, h.x, h.y) < 1.5 && this.t >= p.tackleCooldown && !h.gkHolding) { p.userIntent = null; this.#duel(p, h); }
+        const close = dist(p.x, p.y, h.x, h.y) < 1.6 && this.t >= p.tackleCooldown && !h.gkHolding;
+        if (close && it.foul) { p.userIntent = null; this.#foul(p, h, false, true, true); }
+        else if (close && it.tackle) { p.userIntent = null; this.#duel(p, h, it.tackle); }
       } else if (it.kind === 'cover') {
         // se placer dans la ligne de passe vers l'adversaire le plus dangereux proche
         let best = null, bd = 25;
@@ -255,6 +289,23 @@ export class Match {
           if (d < bd) { bd = d; best = o; }
         }
         if (best) { p.tx = h.x + (best.x - h.x) * 0.55; p.ty = h.y + (best.y - h.y) * 0.55; p.urgency = 0.95; }
+      } else if (it.kind === 'track') {
+        // suivre l'appel : coller l'attaquant le plus avancé proche, côté but
+        let best = null, bd = 22;
+        for (const o of this.onPitch(h.team)) {
+          if (o.id === h.id || o.role === 'GK') continue;
+          const d = dist(o.x, o.y, p.x, p.y) + Math.abs(o.x - gx) * 0.4;
+          if (d < bd) { bd = d; best = o; }
+        }
+        if (best) { const gdx = gx - best.x, gl = Math.abs(gdx) || 1; p.tx = best.x + (gdx / gl) * 1.4 + best.vx * 0.3; p.ty = best.y + best.vy * 0.3; p.urgency = 1; }
+      } else if (it.kind === 'shepherd') {
+        // côté but et légèrement à l'intérieur : le porteur est poussé vers la ligne de touche
+        const gdx = gx - h.x, gl = Math.abs(gdx) || 1, inward = Math.sign(34 - h.y) || 1;
+        p.tx = h.x + (gdx / gl) * 1.6 + h.vx * 0.3; p.ty = h.y + inward * 1.1 + h.vy * 0.3; p.urgency = 1;
+      } else if (it.kind === 'block') {
+        // fermer l'angle de frappe : dans l'axe porteur → but, à trois mètres
+        const gdx = gx - h.x, gdy = 34 - h.y, gl = Math.hypot(gdx, gdy) || 1;
+        p.tx = h.x + (gdx / gl) * 3; p.ty = h.y + (gdy / gl) * 3; p.urgency = 1;
       }
     }
   }
@@ -412,6 +463,14 @@ export class Match {
     const out = pl.filter((p) => p.role !== 'GK' && !p.injured);
     if (!out.length) return pl[0].id;
     if (type === 'goalkick') return (this.gk(teamIdx) || pl[0]).id;
+    // ton joueur (carrière) tire les coups de pied arrêtés quand il en a le profil
+    const me = out.find((p) => p.isUser);
+    if (me) {
+      const bestShot = Math.max(...out.map((p) => p.attrs.shooting)), bestPass = Math.max(...out.map((p) => p.attrs.passing));
+      if (type === 'penalty' && (me.attrs.shooting >= bestShot - 0.1 || me.role === 'ST')) return me.id;
+      if (type === 'freekick' && this.restart?.direct && me.attrs.shooting >= bestShot - 0.12) return me.id;
+      if (type === 'corner' && ['W', 'AM', 'CM', 'FB'].includes(me.role) && me.attrs.passing >= bestPass - 0.12) return me.id;
+    }
     if (type === 'penalty' || (type === 'freekick' && this.restart?.direct)) return [...out].sort((a, b) => b.attrs.shooting - a.attrs.shooting)[0].id;
     if (type === 'corner') return [...out].sort((a, b) => (b.attrs.passing + (b.role === 'W' || b.role === 'AM' ? 0.1 : 0)) - (a.attrs.passing + (a.role === 'W' || a.role === 'AM' ? 0.1 : 0)))[0].id;
     if (type === 'kickoff') return (out.find((p) => p.role === 'ST') || out[out.length - 1]).id;
@@ -701,7 +760,8 @@ export class Match {
 
     // gardien sur un tir : arrêt possible, pas garanti
     if (hands && shot && shot.team !== p.team) {
-      const pSave = clamp(1.11 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      let pSave = clamp(1.11 - (d / reach) * 0.32 - Math.max(0, speed - 20) * 0.01 + 0.15 * (p.attrs.gk - 0.6), 0.05, 0.97);
+      if (shot.chip && Math.abs(p.x - this.ownGoalX(this.teams[p.team])) > 4) pSave *= 0.4;
       if (this.rng.chance(pSave)) {
         this.teams[p.team].stats.saves++;
         const shooter = this.players[shot.by];
@@ -904,16 +964,21 @@ export class Match {
     const gk = this.gk(1 - p.team);
     const gkY = gk ? gk.y : 34;
     // visée : côté opposé au gardien, marge selon le sang-froid
-    const sideHigh = opts.aimDy != null ? opts.aimDy > 0 : gkY < 34 ? true : gkY > 34 ? false : this.rng.chance(0.5);
-    const margin = this.rng.range(0.6, 1.5) + (1 - p.attrs.composure) * 0.6;
-    let aimY = sideHigh ? PITCH.goalY2 - margin : PITCH.goalY1 + margin;
-    let aimZ = opts.header ? this.rng.range(0.2, 1.6) : this.rng.range(0.15, 2.0);
+    const style = opts.style ?? null;
+    const sideHigh = opts.aimSide != null ? opts.aimSide > 0 : opts.aimDy != null ? opts.aimDy > 0 : gkY < 34 ? true : gkY > 34 ? false : this.rng.chance(0.5);
+    const margin = (style === 'placed' ? this.rng.range(0.45, 1.0) : this.rng.range(0.6, 1.5)) + (1 - p.attrs.composure) * 0.6;
+    let aimY = opts.aimSide === 0 ? 34 + this.rng.gauss(0, 0.5) : sideHigh ? PITCH.goalY2 - margin : PITCH.goalY1 + margin;
+    let aimZ = opts.header ? this.rng.range(0.2, 1.6) : style === 'chip' ? this.rng.range(1.6, 2.2) : style === 'power' ? this.rng.range(0.3, 1.7) : this.rng.range(0.15, 2.0);
     const fatigue = 1 + 0.4 * (1 - p.energy);
     const skill = opts.header ? p.attrs.aerial : p.attrs.shooting;
-    const sigma = (0.85 + 0.15 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue;
+    const sigma = (0.85 + 0.15 * d * (1.4 - skill) + 1.2 * pr + (opts.header ? 0.5 : 0) + (opts.freekick ? 0.35 : 0)) * fatigue
+      * (style === 'placed' ? 0.8 : style === 'power' ? 1.25 : style === 'chip' ? 0.95 : 1);
     aimY += this.rng.gauss(0, sigma);
     aimZ = Math.max(0.05, aimZ + this.rng.gauss(0, sigma * 0.75));
-    const speed = opts.header ? this.rng.range(10, 15) : opts.penalty ? this.rng.range(22, 28) : this.rng.range(17, 22) + 8 * p.attrs.shooting * this.rng.range(0.6, 1);
+    let speed = opts.header ? this.rng.range(10, 15) : opts.penalty ? this.rng.range(22, 28) : this.rng.range(17, 22) + 8 * p.attrs.shooting * this.rng.range(0.6, 1);
+    if (!opts.header && style === 'placed') speed *= 0.86;
+    if (!opts.header && style === 'power') speed = Math.min(34, speed + 4.5);
+    if (!opts.header && style === 'chip') speed = this.rng.range(11, 14);
     const D = dist(p.x, p.y, goalX, aimY);
     const T = D / speed;
     const ang = Math.atan2(aimY - p.y, goalX - p.x);
@@ -929,7 +994,14 @@ export class Match {
       px = q.x; py = q.y; pz = q.z;
     }
     const onTarget = !!crossing && crossing.y > PITCH.goalY1 && crossing.y < PITCH.goalY2 && crossing.z < PITCH.goalHeight;
-    b.shot = { by: p.id, team: p.team, t0: this.t, xg, onTarget, gkMisread: this.rng.chance(0.12), header: !!opts.header, penalty: !!opts.penalty, x: p.x, y: p.y };
+    b.shot = { by: p.id, team: p.team, t0: this.t, xg, onTarget, gkMisread: this.rng.chance(0.12), header: !!opts.header, penalty: !!opts.penalty, x: p.x, y: p.y, chip: style === 'chip' };
+    // penalty de ton joueur : le gardien choisit un côté au moment de la frappe
+    if (opts.userPenalty && gk) {
+      const g = this.rng.next();
+      const guess = g < 0.42 ? -1 : g < 0.84 ? 1 : 0;
+      gk.y = 34 + guess * 2.6;
+      b.shot.gkGuess = guess;
+    }
     p.touchCooldown = this.t + 0.6; p.carry = null;
     team.stats.shots++; team.stats.xg += xg; p.stats.shots++;
     if (onTarget) team.stats.onTarget++;
@@ -1030,7 +1102,7 @@ export class Match {
     }
   }
 
-  #duel(def, att) {
+  #duel(def, att, force = null) {
     const b = this.ball;
     const dteam = this.teams[def.team];
     def.tackleCooldown = this.t + 1.6;
@@ -1038,7 +1110,7 @@ export class Match {
     // le défenseur est-il entre l'attaquant et son but ?
     const goalSide = Math.abs(def.x - ownGoalX) < Math.abs(att.x - ownGoalX) - 0.2;
     const attSpeed = Math.hypot(att.vx, att.vy);
-    const slide = !goalSide && attSpeed > 4.5 && this.rng.chance(0.25 + 0.3 * def.attrs.aggression);
+    const slide = force === 'slide' ? true : force === 'stand' ? false : !goalSide && attSpeed > 4.5 && this.rng.chance(0.25 + 0.3 * def.attrs.aggression);
     const diff = def.attrs.tackling * (0.8 + 0.2 * def.energy) - att.attrs.dribbling * (0.8 + 0.2 * att.energy);
     // couverture : chaque défenseur supplémentaire à portée réduit l'espace de sortie du dribbleur
     let cover = 0;
@@ -1073,12 +1145,12 @@ export class Match {
     if (this.rng.chance(injuryRisk)) this.#injury(att);
   }
 
-  #foul(def, att, slide, goalSide) {
+  #foul(def, att, slide, goalSide, tactical = false) {
     const dteam = this.teams[def.team];
     dteam.stats.fouls++;
-    const sev = this.rng.next() * (0.55 + 0.45 * def.attrs.aggression) + (slide ? 0.35 : 0) + (goalSide ? 0 : 0.12);
+    const sev = tactical ? 0.74 + this.rng.next() * 0.32 : this.rng.next() * (0.55 + 0.45 * def.attrs.aggression) + (slide ? 0.35 : 0) + (goalSide ? 0 : 0.12);
     const inOwnBox = inBox(att.x, att.y, this.ownGoalX(dteam));
-    this.#log('faute', def.team, `Faute de ${def.name} (${dteam.short}) sur ${att.name}${inOwnBox ? ' dans la surface' : ''}.`, { player: def.id, major: inOwnBox });
+    this.#log('faute', def.team, `${tactical ? 'Faute tactique' : 'Faute'} de ${def.name} (${dteam.short}) sur ${att.name}${inOwnBox ? ' dans la surface' : ''}.`, { player: def.id, major: inOwnBox });
     let red = false;
     // rouge direct : tacle glissé violent du dernier défenseur (annulation d'une occasion nette)
     if (sev > 1.32 && slide && !goalSide) red = true;

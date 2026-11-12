@@ -8,8 +8,10 @@ import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
 import { crestSVG } from './crest.js';
 import { icon } from './icons.js';
-import { ballChoices, defendChoices, supportChoices, choiceTargets } from './choices.js';
+import { avatar, matchFace } from './faces.js';
+import { ballChoices, defendChoices, supportChoices, restartChoices, choiceTargets } from './choices.js';
 import { matchRating } from '../career/career.js';
+import { extractResult } from '../career/play.js';
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,6 +71,12 @@ export function startMatch(cfg) {
 }
 
 function userTeamIdx() { return S.m?.userTeam ?? null; }
+// pastille visage (joueurs fictifs) ou initiales aux couleurs du club (joueurs réels)
+function face(p, size = 28, cls = '') {
+  if (!p) return '';
+  const t = S.m.teams[p.team];
+  return avatar({ face: matchFace(S.m, p, S.career?.face ?? null), name: p.name, color: t.colors.primary, text: t.colors.text }, size, cls);
+}
 function viewTeamIdx() { return userTeamIdx() ?? S.career?.followTeam ?? 0; }
 
 // ------------------------------------------------------------------ boucle
@@ -290,7 +298,19 @@ const CHOICE_GAP = { ball: 7, off: 22 };
 const CHOICE_GAP_TF = { ball: 160, off: 300 }; // temps forts : seulement les situations clés
 function checkChoice() {
   const m = S.m, c = S.ctl;
-  if (!c.enabled || !c.manual || m.phase !== 'play' || S.replay) return false;
+  if (!c.enabled || !c.manual || S.replay) return false;
+  if (performance.now() < (S.goalUntil ?? 0)) return false; // pas de choix pendant la célébration d'un but
+  // coup de pied arrêté confié à ton joueur : penalty, corner, coup franc direct
+  const r = m.restart;
+  if (m.phase === 'dead' && r && r.taker === c.userId && ['penalty', 'corner', 'freekick'].includes(r.type)) {
+    c.restartAsked ??= new Set();
+    if (!c.restartAsked.has(r.started)) {
+      c.restartAsked.add(r.started);
+      const rc = restartChoices(m, m.players[c.userId], r);
+      if (rc) { openChoice(rc, m.players[c.userId]); return true; }
+    }
+  }
+  if (m.phase !== 'play') return false;
   if (S.pace.mode === 'court' && !S.pace.isLive) return false; // seulement pendant les temps forts
   const G = S.pace.mode === 'tf' ? CHOICE_GAP_TF : CHOICE_GAP;
   const u = m.players[c.userId];
@@ -309,26 +329,31 @@ function checkChoice() {
     if (c.made + c.skipped >= Math.min(10, 1 + Math.floor(10 * simDone / 5400))) return false;
   }
   const relU = m.relX(team, u.x);
-  if (justGot && m.t - c.lastBallChoice >= G.ball && !u.gkHolding && (!tf || relU > 0.6)) {
-    ch = ballChoices(m, u); c.lastBallChoice = m.t;
+  // temps forts : au plus 3 choix « sans ballon » de chaque sorte, le reste pour les actions décisives
+  c.byType ??= { ball: 0, defend: 0, support: 0 };
+  const offOk = (k) => !tf || c.byType[k] < 3;
+  if (justGot && m.t - c.lastBallChoice >= G.ball && !u.gkHolding && (!tf || relU > 0.5)) {
+    ch = ballChoices(m, u, c.recent); c.lastBallChoice = m.t;
   } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= G.off) {
     const d = Math.hypot(owner.x - u.x, owner.y - u.y);
-    if (owner.team !== u.team && d < 9 && !owner.gkHolding && (!tf || m.relX(team, owner.x) < 0.35)) { ch = defendChoices(m, u, owner); c.lastOffChoice = m.t; }
-    else if (owner.team === u.team && d < 28 && d > 6) {
-      if (relU > m.relX(team, owner.x) - 0.04 && relU > (tf ? 0.66 : 0.45)) { ch = supportChoices(m, u, owner); c.lastOffChoice = m.t; }
+    if (owner.team !== u.team && d < 9 && !owner.gkHolding && offOk('defend') && (!tf || m.relX(team, owner.x) < 0.35)) { ch = defendChoices(m, u, owner, c.recent); c.lastOffChoice = m.t; }
+    else if (owner.team === u.team && d < 28 && d > 6 && offOk('support')) {
+      if (relU > m.relX(team, owner.x) - 0.04 && relU > (tf ? 0.66 : 0.45)) { ch = supportChoices(m, u, owner, c.recent); c.lastOffChoice = m.t; }
     }
   }
   if (!ch || !ch.list.length) return false;
+  if (c.byType[ch.type] != null) c.byType[ch.type]++;
   openChoice(ch, u);
   return true;
 }
 
 function openChoice(ch, u) {
   const m = S.m;
-  S.choice = { ...ch, targets: ch.type === 'ball' ? choiceTargets(m, u, ch) : null, opened: performance.now() };
+  S.choice = { ...ch, targets: ch.type === 'ball' || ch.type === 'support' ? choiceTargets(m, u, ch) : null, opened: performance.now() };
   const box = $('#choices');
-  box.innerHTML = `<div class="ch-head"><strong>${esc(ch.title)}</strong><span>${esc(ch.sub)}</span></div>
-    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
+  const vs = ch.vs != null ? m.players[ch.vs] : null;
+  box.innerHTML = `<div class="ch-head">${face(u, 40, 'ch-me')}<div class="ch-ht"><strong>${esc(ch.title)}</strong><span>${esc(ch.sub)}</span></div>${vs ? face(vs, 40, 'ch-vs') : ''}</div>
+    <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}${c.opt?.to != null ? `<span class="ch-mate">${face(m.players[c.opt.to], 22)}</span>` : ''}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
     <div class="ch-foot"><button id="ch-auto" class="ch-skip">${icon('auto', 16)} Laisser l'instinct décider</button></div>`;
   box.hidden = false;
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
@@ -343,11 +368,14 @@ function pickChoice(i) {
   const c = ch.list[i];
   if (!c) S.ctl.skipped = (S.ctl.skipped ?? 0) + 1;
   if (c) {
-    if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
-    else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent });
+    if (c.plan) m.queueCommand({ type: 'restartPlan', playerId: u.id, plan: c.plan });
+    else if (c.opt) m.queueCommand({ type: 'choice', playerId: u.id, opt: c.opt });
+    else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent, ...(c.spot ?? {}) });
     S.ctl.made++;
-    flashHint(`${c.icon} ${c.label}`);
-    if (S.pace.mode === 'tf') S.hl.follow = m.t + 4; // on regarde la suite de l'action
+    S.ctl.recent = [...(S.ctl.recent ?? []), c.key].slice(-4);
+    flashHint(c.label);
+    // on regarde la suite de l'action (pour un coup de pied arrêté : jusqu'après la frappe)
+    if (S.pace.mode === 'tf') S.hl.follow = (c.plan && m.restart ? m.restart.readyAt : m.t) + (c.plan ? 6 : 4);
   }
   S.choice = null;
   $('#choices').hidden = true;
@@ -397,13 +425,15 @@ function goalBanner(ev) {
   const t = m.teams[ev.team];
   const mine = S.career && ev.player === S.ctl.userId && !ev.own;
   const scorer = ev.player != null && !ev.own ? m.players[ev.player] : null;
-  el.innerHTML = `<span class="gb-crest">${crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, 64)}</span>
+  const scorerFace = scorer ? matchFace(m, scorer, S.career?.face ?? null) : null;
+  el.innerHTML = `<span class="gb-crest">${scorerFace != null ? `<span class="gb-face">${face(scorer, 84)}<span class="gb-mini">${crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, 30)}</span></span>` : crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, 64)}</span>
     <span class="gb-txt"><strong>${mine ? 'Tu marques' : ev.own ? 'Contre son camp' : 'But'}</strong>
     <span class="gb-who">${scorer ? esc(scorer.name) : esc(t.name)} · ${esc(ev.minute)}'</span>
     <span class="gb-score">${esc(m.teams[0].short)} <b>${m.score[0]}</b><i>–</i><b>${m.score[1]}</b> ${esc(m.teams[1].short)}</span></span>`;
   el.style.setProperty('--team', t.colors.primary); el.style.setProperty('--team2', t.colors.secondary);
   S.renderer.celebrate(t.colors);
   el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  S.goalUntil = performance.now() + 3000;
   clearTimeout(S.goalTimer); S.goalTimer = setTimeout(() => { el.hidden = true; }, 3000);
 }
 
@@ -522,7 +552,7 @@ function renderLeft() {
     const p = m.players[id];
     const [lbl, cls] = energyState(p);
     if (S.selectedId === p.id || S.subDraft.outId === p.id) li.classList.add('sel');
-    li.innerHTML = `<span class="num">${p.num}</span><span>${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.yellow ? '<span class="card-y" title="Averti"></span>' : ''}${p.injured ? '<span class="inj" title="Gêne physique signalée">+</span>' : ''}</span>${seeState ? `<span class="state ${cls}" title="Estimation du staff">${lbl}</span>` : '<span class="state" title="État non connu">—</span>'}`;
+    li.innerHTML = `<span class="num">${p.num}</span><span class="pl-name">${face(p, 24)}${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.yellow ? '<span class="card-y" title="Averti"></span>' : ''}${p.injured ? '<span class="inj" title="Gêne physique signalée">+</span>' : ''}</span>${seeState ? `<span class="state ${cls}" title="Estimation du staff">${lbl}</span>` : '<span class="state" title="État non connu">—</span>'}`;
     li.addEventListener('click', () => onPlayerClick(p.id, 'xi'));
     li.addEventListener('dragover', (e) => { if (own) e.preventDefault(); });
     li.addEventListener('drop', (e) => { e.preventDefault(); const inId = Number(e.dataTransfer.getData('text/plain')); S.subMode = true; S.subDraft = { outId: p.id, inId }; S.subError = null; renderLeft(); });
@@ -537,7 +567,7 @@ function renderLeft() {
     const gone = p.used && !p.onPitch;
     if (gone) li.className = 'off';
     if (S.subDraft.inId === p.id || S.selectedId === p.id) li.classList.add('sel');
-    li.innerHTML = `<span class="num">${p.num}</span><span>${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.sentOff ? '<span class="card-r"></span>' : ''}</span><span class="state">${gone ? (p.sentOff ? 'expulsé' : 'sorti') : 'banc'}</span>`;
+    li.innerHTML = `<span class="num">${p.num}</span><span class="pl-name">${face(p, 24)}${esc(p.name)} <span class="meta">${ROLE_ABBR[p.role]}</span>${p.sentOff ? '<span class="card-r"></span>' : ''}</span><span class="state">${gone ? (p.sentOff ? 'expulsé' : 'sorti') : 'banc'}</span>`;
     if (!gone) {
       li.draggable = own;
       li.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', String(p.id)));
@@ -884,11 +914,27 @@ function showSummary() {
   if (m.phase !== 'fulltime') return;
   const goals = m.events.filter((e) => e.type === 'but');
   const [a, b] = m.teams.map((t) => t.stats);
-  openModal(`<h1>${esc(m.teams[0].name)} ${m.score[0]} – ${m.score[1]} ${esc(m.teams[1].name)}</h1>
-    <p class="muted">Graine « ${esc(m.seed)} » · empreinte ${esc(m.fingerprint())}</p>
-    <h3>Buts</h3><p>${goals.length ? goals.map((g) => `${esc(g.minute)}' ${esc(g.text)}`).join('<br>') : 'Aucun but.'}</p>
-    <h3>Bilan</h3>
-    <p>Tirs ${a.shots} – ${b.shots} · cadrés ${a.onTarget} – ${b.onTarget} · xG pré-tir ${a.xg.toFixed(2)} – ${b.xg.toFixed(2)} · passes ${a.passesOk}/${a.passes} – ${b.passesOk}/${b.passes}</p>
+  const crest = (t, n) => crestSVG({ id: t.def.clubId ?? t.def.id, name: t.def.name }, n);
+  const row = (label, x, y, fmt = (v) => v) => {
+    const tot = (x + y) || 1;
+    return `<div class="cmp"><b>${fmt(x)}</b><span>${label}</span><b>${fmt(y)}</b>
+      <i class="cmp-bar"><i style="width:${(x / tot) * 100}%;background:${m.teams[0].colors.primary}"></i><i style="width:${(y / tot) * 100}%;background:${m.teams[1].colors.primary}"></i></i></div>`;
+  };
+  const pc = (t) => (t.passes ? Math.round((t.passesOk / t.passes) * 100) : 0);
+  let me = '';
+  if (S.career && S.ctl.userId != null) {
+    const u = m.players[S.ctl.userId];
+    const r = extractResult(m, S.career.followTeam);
+    me = r.minutes ? `<div class="sum-me">${face(u, 64)}<div><span class="muted">Ton match</span><b class="sum-note">${r.rating.toFixed(1)}</b></div>
+      <ul><li><b>${r.minutes}'</b>joués</li><li><b>${u.stats.goals}</b>but${u.stats.goals > 1 ? 's' : ''}</li><li><b>${u.stats.shots}</b>tir${u.stats.shots > 1 ? 's' : ''}</li><li><b>${u.stats.passesOk}/${u.stats.passes}</b>passes</li><li><b>${u.stats.tackles}</b>tacles</li><li><b>${S.ctl.made}</b>choix</li></ul></div>`
+      : `<div class="sum-me">${face(u, 64)}<div><span class="muted">Ton match</span><b class="sum-note">—</b></div><p class="muted">Tu n'es pas entré en jeu.</p></div>`;
+  }
+  openModal(`<div class="sum-head">${crest(m.teams[0], 54)}<h1>${esc(m.teams[0].name)} ${m.score[0]} – ${m.score[1]} ${esc(m.teams[1].name)}</h1>${crest(m.teams[1], 54)}</div>
+    ${S.career ? '' : `<p class="muted small">Graine « ${esc(m.seed)} » · empreinte ${esc(m.fingerprint())}</p>`}
+    ${me}
+    <h3>Buts</h3>${goals.length ? `<ul class="sum-goals">${goals.map((g) => `<li><span class="min">${esc(g.minute)}'</span>${g.player != null ? face(m.players[g.player], 24) : ''}<span>${esc(g.text.replace(/\s*\(.*\)\s*$/, ''))}</span></li>`).join('')}</ul>` : '<p>Aucun but.</p>'}
+    <h3>Statistiques</h3>
+    <div class="cmp-list">${row('Tirs', a.shots, b.shots)}${row('Cadrés', a.onTarget, b.onTarget)}${row('xG pré-tir', a.xg, b.xg, (v) => v.toFixed(2))}${row('Passes réussies', pc(a), pc(b), (v) => `${v} %`)}${row('Corners', a.corners ?? 0, b.corners ?? 0)}${row('Fautes', a.fouls, b.fouls)}</div>
     <p class="note">Un total d'occasions élevé n'est pas une dette de buts : le résultat a émergé des actions, sans score décidé à l'avance.</p>
     ${S.career ? '<div class="actions"><button id="sum-close">Revoir le match</button><button class="primary" id="sum-career">Retour à la carrière</button></div>'
     : '<div class="actions"><button id="sum-close">Revoir le match</button><button id="sum-home">Accueil</button><button id="sum-same">Rejouer avec la même graine</button><button class="primary" id="sum-new">Nouveau match</button></div>'}`);

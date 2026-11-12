@@ -40,7 +40,7 @@ export const OFFPITCH = {
 export const ROLES = { GK: 'Gardien', CB: 'Défenseur central', FB: 'Latéral', DM: 'Milieu défensif', CM: 'Milieu central', AM: 'Milieu offensif', W: 'Ailier', ST: 'Avant-centre' };
 
 // ------------------------------------------------------------------ création
-export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed }) {
+export function createCareer({ firstName, lastName, role, foot = 'droit', clubId, seed, face = null }) {
   const club = clubById(clubId);
   if (!club) throw new Error(`Club inconnu : ${clubId}`);
   const s = String(seed ?? Math.floor(Math.random() * 1e9));
@@ -54,7 +54,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
   const st = {
     version: SAVE_VERSION, seed: s, createdAt: Date.now(),
     player: {
-      firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27,
+      firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face,
       attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6,
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [],
     },
@@ -725,7 +725,7 @@ export function acceptOffer(st, idx) {
 // Résumé lisible pour la liste des sauvegardes
 export function summary(st) {
   const club = clubById(st.clubId);
-  return { name: `${st.player.firstName} ${st.player.lastName}`, clubId: club.id, club: club.name, stage: STAGE_LABEL[st.stage], age: st.player.age, season: `${st.season}-${st.season + 1}`, week: st.week + 1, ca: pct(currentCA(st)) };
+  return { name: `${st.player.firstName} ${st.player.lastName}`, face: st.player.face ?? null, clubId: club.id, club: club.name, stage: STAGE_LABEL[st.stage], age: st.player.age, season: `${st.season}-${st.season + 1}`, week: st.week + 1, ca: pct(currentCA(st)) };
 }
 
 // Note de match à partir des statistiques du moteur (bornée)
