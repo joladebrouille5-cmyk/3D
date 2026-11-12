@@ -150,7 +150,9 @@ function weekStart(st) {
   if (st.week === Math.round(WINTER_WINDOW * len) && !st.window) {
     const offers = winterOffers(st, currentCA(st), r);
     if (offers.length) { st.window = { week: st.week, offers }; log(st, `Mercato d'hiver : ${offers.length} club(s) se manifestent.`); }
+    maybeSigning(st, r);
   }
+  if (st.week === 2) maybeSigning(st, r);
   if (st.window && st.week !== st.window.week) st.window = null; // la fenêtre se referme
   saveRng(st, r);
   if (st.callup) log(st, `Convocation : ${st.callup.label}.`);
@@ -254,7 +256,7 @@ function applyExtraResult(st, res) {
       if (ex.kind === 'nat') { p.pa += 0.002; p.morale += 0.03; p.fans += 0.04; } else p.trust += (rating - 6.3) * 0.02;
       relationsAfterMatch(p, res, rating, outcome);
       const r = rngOf(st);
-      progress(st, 'tactique', 0.2 * (res.minutes / 90), r);
+      matchGrowth(st, res, md.opponentId, r);
       saveRng(st, r);
     });
     if (ex.kind === 'cup') {
@@ -297,20 +299,75 @@ export function fixtureOfWeek(st) {
   return { home, opponentId: home ? f[1] : f[0] };
 }
 
-// Sélection : comparaison avec le concurrent direct, pondérée par la confiance du coach
+// Forme récente : moyenne des trois dernières notes (0 si moins de deux matchs)
+export function recentForm(st) {
+  const r = st.seasonStats?.ratings ?? [];
+  if (r.length < 2) return 0;
+  const last = r.slice(-3);
+  return last.reduce((a, b) => a + b, 0) / last.length - 6.6;
+}
+// petit aléa reproductible propre à une semaine (forme du concurrent, choix du coach)
+function weekNoise(st, salt) {
+  let h = 2166136261;
+  const str = `${st.seed}:${st.season}:${st.week}:${st.clubId}:${salt}`;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0) / 4294967296 - 0.5;
+}
+
+// Sélection : comparaison avec le concurrent direct, pondérée par la confiance du coach,
+// la forme du moment (la tienne et la sienne), la fraîcheur, et un éventuel renfort recruté au poste.
 export function selectionForecast(st) {
   const p = st.player;
-  if (p.injuryWeeks > 0) return { status: 'blessé', rival: null };
+  if (p.injuryWeeks > 0) return { status: 'blessé', rival: null, reason: null };
   const club = clubById(st.clubId);
-  const rival = rivalFor(club, st.stage, st.season, st.league, p.role);
-  const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) + 0.02 * ((p.team ?? 0.5) - 0.5) - (p.fresh < 0.35 ? 0.02 : 0);
+  const base = rivalFor(club, st.stage, st.season, st.league, p.role);
+  const youth = st.stage === 'U17' || st.stage === 'U19';
+  const len = st.league?.rounds?.length || 30;
+  // le concurrent progresse aussi au fil de la saison, et a ses semaines avec et sans
+  const drift = (st.week / len) * (youth ? 0.03 : 0.01);
+  let rival = { ...base, ca: base.ca + drift, form: weekNoise(st, 'rival') * 0.03 };
+  const sg = st.signing;
+  if (sg && sg.season === st.season && sg.clubId === st.clubId && sg.week <= st.week) {
+    const s2 = { name: sg.name, ca: sg.ca + drift * 0.5, real: false, form: weekNoise(st, 'signing') * 0.03, signing: true };
+    if (s2.ca + s2.form > rival.ca + rival.form) rival = s2;
+  }
+  const form = recentForm(st);
+  const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) + 0.02 * ((p.team ?? 0.5) - 0.5)
+    + clamp(form * 0.03, -0.025, 0.025) - (p.fresh < 0.35 ? 0.02 : 0);
+  const them = rival.ca + rival.form;
   // en équipe première, un jeune doit nettement dépasser le titulaire en place pour lui prendre sa place
   const edge = st.stage === 'Pro' ? 0.015 : 0;
-  let status = me >= rival.ca + edge ? 'titulaire' : me >= rival.ca - 0.065 ? 'remplaçant' : 'non retenu';
+  let status = me >= them + edge ? 'titulaire' : me >= them - 0.065 ? 'remplaçant' : 'non retenu';
+  let reason = status === 'titulaire' ? (form > 0.35 ? 'forme' : null) : form < -0.35 ? 'méforme' : rival.signing ? 'recrue' : rival.form > 0.008 ? 'concurrent' : null;
+  // le coach ménage un joueur à bout de forces
+  if (status === 'titulaire' && p.fresh < 0.32) { status = 'remplaçant'; reason = 'fatigue'; }
   // en formation, les éducateurs font tourner : après trois semaines sans convocation, place sur le banc
-  const youth = st.stage === 'U17' || st.stage === 'U19';
-  if (status === 'non retenu' && youth && (st.seasonStats?.streakOut ?? 0) >= 3 && me >= rival.ca - 0.11) status = 'remplaçant';
-  return { status, rival };
+  if (status === 'non retenu' && youth && (st.seasonStats?.streakOut ?? 0) >= 3 && me >= them - 0.11) { status = 'remplaçant'; reason = 'rotation'; }
+  return { status, rival: { name: rival.name, ca: rival.ca, real: rival.real, signing: !!rival.signing }, reason };
+}
+
+export const SELECTION_REASON = {
+  forme: 'Tu es en forme : le coach te fait confiance.',
+  méforme: 'Tes derniers matchs ont été difficiles : le coach hésite.',
+  recrue: 'Le renfort recruté à ton poste passe devant toi.',
+  concurrent: 'Ton concurrent sort d\'une très bonne semaine.',
+  fatigue: 'Le coach te ménage : ta fraîcheur est trop basse.',
+  rotation: 'Les éducateurs font tourner l\'effectif.',
+};
+
+// Renfort recruté au poste (début de saison ou mercato d'hiver), quand tu es installé
+function maybeSigning(st, r) {
+  if (st.signing?.season === st.season && st.signing?.clubId === st.clubId) return;
+  const sel = selectionForecast(st);
+  if (sel.status !== 'titulaire' || !r.chance(st.stage === 'U17' || st.stage === 'U19' ? 0.18 : 0.3)) return;
+  const first = ['Mathis', 'Nolan', 'Yanis', 'Rayan', 'Enzo', 'Lenny', 'Kylian', 'Ilyes', 'Sacha', 'Timéo', 'Malik', 'Owen', 'Bastien', 'Evan'];
+  const last = ['Lebrun', 'Fontaine', 'Marchal', 'Diallo', 'Perrin', 'Gauthier', 'Camara', 'Roussel', 'Mercier', 'Benali', 'Lemoine', 'Traoré', 'Royer', 'Colin'];
+  const name = `${r.pick(first)} ${r.pick(last)}`;
+  const ca = currentCA(st) + r.range(-0.015, 0.025); // un vrai concurrent : parfois meilleur, parfois non
+  st.signing = { name, ca, season: st.season, clubId: st.clubId, week: st.week };
+  const msg = `Le club recrute à ton poste : ${name} (niveau ${pct(ca)}). La concurrence est relancée.`;
+  log(st, msg);
+  (st.lastReport ??= { lines: [] }).lines.push(msg);
 }
 
 // ------------------------------------------------------------------ registre des effets
@@ -453,9 +510,14 @@ export function submitWeek(st, choices) {
   st.lastReport = rep;
   // événement de vie
   st.eventCooldown = Math.max(0, st.eventCooldown - 1);
-  const ev = st.eventCooldown === 0 && p.injuryWeeks === 0 && r.chance(0.24) ? pickEvent(st, r) : null;
+  // un événement lié à la situation peut arriver plus tôt ; sinon un événement de la vie courante
+  let ev = null;
+  if (p.injuryWeeks === 0) {
+    if (st.eventCooldown <= 1 && r.chance(0.5)) ev = pickEvent(st, r, true);
+    if (!ev && st.eventCooldown === 0 && r.chance(0.3)) ev = pickEvent(st, r);
+  }
   saveRng(st, r);
-  if (ev) { st.pendingEvent = ev; st.phase = 'event'; st.eventCooldown = 3; return st; }
+  if (ev) { st.pendingEvent = ev; st.phase = 'event'; st.eventCooldown = 2; return st; }
   toMatchday(st);
   return st;
 }
@@ -500,8 +562,9 @@ function progress(st, focus, growthMul, r) {
   const ca = currentCA(st);
   const coach = 0.7 + 0.6 * academyQuality(club) * (st.stage === 'U17' || st.stage === 'U19' ? 1 : 0.85);
   const gap = clamp((p.pa - ca) / 0.2, -0.6, 1.2);
-  const play = st.seasonStats.minutes > 0 && st.seasonStats.apps > st.week * 0.5 ? 1.12 : st.seasonStats.notSelected > st.week * 0.6 ? 0.9 : 1;
-  let d = 0.0028 * ageFactor(p.age) * coach * growthMul * (0.6 + 0.8 * p.morale) * (p.fresh < 0.4 ? 0.6 : 1) * play * gap;
+  // le temps de jeu compte surtout via les matchs eux-mêmes (matchGrowth) ; ici, l'élan d'un joueur qui joue
+  const play = st.seasonStats.minutes > 0 && st.seasonStats.apps > st.week * 0.5 ? 1.04 : st.seasonStats.notSelected > st.week * 0.6 ? 0.9 : 1;
+  let d = 0.0025 * ageFactor(p.age) * coach * growthMul * (0.6 + 0.8 * p.morale) * (p.fresh < 0.4 ? 0.6 : 1) * play * gap;
   if (p.age >= 30) d -= 0.0008 * (p.age - 29);
   if (gap < 0) d = Math.min(d, 0.0015 * gap);
   if (r) d *= 1 + r.gauss(0, 0.15);
@@ -515,6 +578,24 @@ function progress(st, focus, growthMul, r) {
   const scale = sum > 0 ? d / (sum / tw) : 0;
   for (const k of ATTRS) if (prop[k]) p.attrs[k] = clamp(p.attrs[k] + prop[k] * scale, 0.05, 0.97);
   return currentCA(st) - ca;
+}
+
+// Le match fait progresser : temps de jeu, niveau de l'adversaire, note du match, et la qualité
+// de tes décisions quand tu joues le match toi-même (réussir au-delà des chances annoncées).
+function matchGrowth(st, res, oppId, r) {
+  const p = st.player;
+  const ca = currentCA(st);
+  const opp = clubById(oppId);
+  const oppCA = opp ? teamStrength(opp, st.stage, st.league) : ca;
+  const challenge = clamp(1 + (oppCA - ca) * 4, 0.7, 1.4);
+  const perf = clamp(((res.rating ?? 6.3) - 6.3) / 1.2, -0.5, 1);
+  progress(st, 'match', (res.minutes / 90) * (0.42 + 0.3 * perf) * challenge, r);
+  const ch = res.choices;
+  if (ch && ch.made) {
+    const edge = clamp((ch.ok - ch.expected) * 0.0015 + ch.made * 0.0004, -0.003, 0.006);
+    p.attrs.decisions = clamp(p.attrs.decisions + edge, 0.05, 0.97);
+    p.attrs.composure = clamp(p.attrs.composure + edge * 0.6, 0.05, 0.97);
+  }
 }
 
 function injure(st, r, rep) {
@@ -720,14 +801,93 @@ EVENTS.push(
   },
 );
 
-function pickEvent(st, r) {
+// Événements liés au contexte : ils arrivent quand la situation s'y prête (après un match raté
+// ou brillant, face au concurrent, sur le banc, en fin de contrat, avant un gros match…).
+const lastRating = (st) => st.seasonStats?.ratings?.at(-1) ?? null;
+const benchStreak = (st) => { const m = st.month?.matches ?? []; let n = 0; for (let i = m.length - 1; i >= 0 && !m[i].started; i--) n++; return n; };
+EVENTS.push(
+  {
+    id: 'convocation', ctx: true, when: (st) => lastRating(st) != null && lastRating(st) < 5.9,
+    text: () => 'Après ton match raté, le coach te convoque dans son bureau.',
+    options: [
+      { label: 'Reconnaître tes erreurs', apply: (st) => { st.player.trust += 0.04; st.player.morale -= 0.02; return 'Le coach apprécie ta lucidité. « On repart de là. »'; } },
+      { label: 'Rejeter la faute sur l\'équipe', apply: (st) => { st.player.team -= 0.06; st.player.trust -= 0.03; st.player.morale += 0.02; return 'Le message fait le tour du vestiaire. Ça passe mal.'; } },
+      { label: 'Demander des séances vidéo en plus', apply: (st, r) => { st.player.pa += 0.002; st.player.fresh -= 0.04; progress(st, 'tactique', 0.2, r); return 'Tu décortiques tes erreurs avec l\'adjoint. Tu les vois maintenant.'; } },
+    ],
+  },
+  {
+    id: 'presse', ctx: true, when: (st) => lastRating(st) != null && lastRating(st) >= 7.7,
+    text: (st) => `Après ton grand match, la presse locale te consacre un article : « la pépite de ${clubById(st.clubId).name} ».`,
+    options: [
+      { label: 'Garder les pieds sur terre', apply: (st) => { st.player.discipline += 0.03; st.player.trust += 0.02; return 'Le coach découpe l\'article et l\'affiche… avec tes axes de progrès en dessous.'; } },
+      { label: 'Savourer et partager', apply: (st) => { st.player.fans += 0.06; st.player.morale += 0.04; st.player.team -= 0.02; return 'Ton téléphone n\'arrête pas de vibrer. Les supporters adorent.'; } },
+      { label: 'Te voir déjà au sommet', apply: (st) => { st.player.morale += 0.06; st.player.discipline -= 0.05; st.player.team -= 0.05; st.player.pa -= 0.002; return 'Quelques anciens te trouvent changé. Attention.'; } },
+    ],
+  },
+  {
+    id: 'duel', ctx: true, when: (st) => !!selectionForecast(st).rival && st.player.injuryWeeks === 0,
+    text: (st) => `Ton concurrent au poste, ${selectionForecast(st).rival.name}, te glisse une remarque piquante à l'entraînement.`,
+    options: [
+      { label: 'Répondre sur le terrain', apply: (st, r) => { st.player.trust += 0.03; st.player.fresh -= 0.06; progress(st, 'technique', 0.2, r); return 'Tu sors le grand jeu à l\'opposition. Le staff a vu.'; } },
+      { label: 'L\'ignorer', apply: (st) => { st.player.discipline += 0.02; st.player.morale -= 0.01; return 'Tu restes concentré. Il cherchera quelqu\'un d\'autre.'; } },
+      { label: 'Lui répondre sèchement', apply: (st, r) => { st.player.team -= 0.05; st.player.discipline -= 0.03; st.player.morale += 0.02; if (r.chance(0.35)) { st.player.trust -= 0.04; return 'Le ton monte, le coach doit séparer tout le monde. Il n\'a pas aimé.'; } return 'Le ton monte, puis chacun repart de son côté.'; } },
+    ],
+  },
+  {
+    id: 'banc', ctx: true, when: (st) => benchStreak(st) >= 3,
+    text: () => 'Trois matchs sans débuter : tu ronges ton frein sur le banc.',
+    options: [
+      { label: 'Demander une explication au coach', apply: (st, r) => { if (st.player.discipline > 0.55 && r.chance(0.6)) { st.player.trust += 0.05; return 'Discussion franche : il te donne des objectifs clairs et te promet ta chance.'; } st.player.trust -= 0.03; return '« Je fais mes choix. » La porte se referme.'; } },
+      { label: 'Redoubler d\'efforts à l\'entraînement', apply: (st, r) => { st.player.trust += 0.03; st.player.fresh -= 0.08; progress(st, 'physique', 0.25, r); return 'Tu arrives le premier, tu pars le dernier.'; } },
+      { label: (st) => (st.stage === 'Pro' || st.stage === 'Réserve' ? 'Faire savoir que tu veux être prêté' : 'Demander à jouer avec la catégorie au-dessous'), apply: (st) => { st.player.wantsLoan = st.season; st.player.trust -= 0.03; st.player.morale += 0.02; return st.stage === 'Pro' || st.stage === 'Réserve' ? 'Ton entourage fait passer le message : des clubs pourraient se manifester au mercato.' : 'Les éducateurs prennent note de ton envie de jouer.'; } },
+    ],
+  },
+  {
+    id: 'finContrat', ctx: true, when: (st) => !!st.player.contract && st.player.contract.until === st.season && st.player.contract.type !== 'aspirant' && st.week >= 8,
+    text: () => 'Dernière année de contrat : le club tarde à te proposer une prolongation.',
+    options: [
+      { label: 'Faire pression via les médias', apply: (st) => { st.player.fans += 0.03; st.player.trust -= 0.06; st.player.leverage = st.season; return 'Ton interview fait du bruit. Les clubs intéressés sont prévenus.'; } },
+      { label: 'Montrer ton attachement au club', apply: (st) => { st.player.trust += 0.04; st.player.fans += 0.05; return 'Les supporters apprécient. Le président aussi.'; } },
+      { label: 'Laisser ton agent gérer', apply: (st) => { st.player.morale += 0.02; return st.player.agent ? 'Ton agent prend les choses en main. Toi, tu joues.' : 'Sans agent, rien ne bouge vraiment. Tu te concentres sur le terrain.'; } },
+    ],
+  },
+  {
+    id: 'blessureAmi', ctx: false, when: (st) => (st.player.team ?? 0.5) > 0.45,
+    text: () => 'Ton meilleur ami dans l\'équipe se blesse gravement à l\'entraînement.',
+    options: [
+      { label: 'Lui rendre visite chaque semaine', apply: (st) => { st.player.team += 0.06; st.player.fresh -= 0.03; st.player.morale -= 0.02; return 'Il n\'oubliera pas. Le vestiaire non plus.'; } },
+      { label: 'Rester concentré sur toi', apply: (st) => { st.player.morale -= 0.04; st.player.trust += 0.01; return 'Tu lui envoies un message et tu te remets au travail.'; } },
+    ],
+  },
+  {
+    id: 'grosMatch', ctx: true, when: (st) => { const fx = fixtureOfWeek(st); if (!fx || fx.bye) return false; const t = standings(st); const i = t.findIndex((x) => x.id === fx.opponentId); return i >= 0 && i < 3 && st.week >= 4; },
+    text: (st) => `Semaine de gros match contre ${nameOf(st, fixtureOfWeek(st).opponentId)}, sur le podium. L'ambiance monte au centre.`,
+    options: [
+      { label: 'Prendre la parole dans le vestiaire', apply: (st) => { if ((st.player.team ?? 0.5) > 0.5 || st.player.trust > 0.6) { st.player.team += 0.05; st.player.morale += 0.03; return 'Tes mots portent. Tout le monde est prêt à mourir sur le terrain.'; } st.player.team -= 0.03; return 'Quelques anciens lèvent les yeux au ciel. Pas encore ta place.'; } },
+      { label: 'Te préparer dans ton coin', apply: (st) => { st.player.fresh += 0.05; st.player.morale += 0.01; return 'Sieste, étirements, vidéo de ton vis-à-vis. Tu es prêt.'; } },
+      { label: 'Charger l\'adversaire en conférence', apply: (st) => { st.player.fans += 0.05; st.player.discipline -= 0.02; st.player.trust -= 0.02; return 'La phrase tourne en boucle. L\'adversaire est remonté.'; } },
+    ],
+  },
+  {
+    id: 'retourSelection', ctx: true, when: (st) => !!st.player.intl?.best && (st.month?.matches ?? []).some((m) => m.comp && /France|U1|U2|Espoirs/.test(m.comp)),
+    text: () => 'De retour de sélection, les jambes lourdes. Le coach te propose de souffler cette semaine.',
+    options: [
+      { label: 'Souffler', apply: (st) => { st.player.fresh += 0.15; st.player.trust -= 0.02; return 'Tu récupères. Ton concurrent en profite pour se montrer.'; } },
+      { label: 'Enchaîner', apply: (st) => { st.player.trust += 0.03; st.player.fresh -= 0.05; return 'Le coach apprécie. Ton corps, un peu moins.'; } },
+    ],
+  },
+);
+
+function pickEvent(st, r, ctxOnly = false) {
   const recent = st.recentEvents ?? [];
-  const all = EVENTS.filter((e) => e.when(st));
+  const all = EVENTS.filter((e) => (!ctxOnly || e.ctx) && e.when(st));
   // pas deux fois le même événement à peu d'intervalle
   const pool = all.filter((e) => !recent.includes(e.id));
+  if (ctxOnly && !pool.length) return null;
+  if (!all.length) return null;
   const e = r.pick(pool.length ? pool : all);
   st.recentEvents = [...recent, e.id].slice(-6);
-  return { id: e.id, text: e.text(st), options: e.options.map((o) => o.label) };
+  return { id: e.id, text: e.text(st), options: e.options.map((o) => (typeof o.label === 'function' ? o.label(st) : o.label)) };
 }
 
 export function resolveEvent(st, optionIdx) {
@@ -737,7 +897,7 @@ export function resolveEvent(st, optionIdx) {
   ensureState(st);
   const out = track(st, 'event', () => e.options[optionIdx].apply(st, r));
   saveRng(st, r);
-  log(st, `${st.pendingEvent.text} → ${e.options[optionIdx].label}. ${out}`);
+  log(st, `${st.pendingEvent.text} → ${st.pendingEvent.options[optionIdx]}. ${out}`);
   st.lastReport?.lines.push(out);
   st.pendingEvent = null;
   toMatchday(st);
@@ -749,7 +909,7 @@ function toMatchday(st) {
   const fx = fixtureOfWeek(st);
   if (!fx || fx.bye) { st.matchday = { bye: true }; st.phase = 'matchday'; return; }
   const sel = selectionForecast(st);
-  st.matchday = { ...fx, selection: sel.status, rival: sel.rival };
+  st.matchday = { ...fx, selection: sel.status, rival: sel.rival, reason: sel.reason };
   st.phase = 'matchday';
 }
 
@@ -810,7 +970,7 @@ export function applyMatchResult(st, res) {
       relationsAfterMatch(p, res, rating, outcome);
       // le match fait progresser : l'expérience compte
       const r = rngOf(st);
-      progress(st, 'tactique', 0.2 * (res.minutes / 90), r);
+      matchGrowth(st, res, md.opponentId, r);
       saveRng(st, r);
     });
     rep.lines.push(`${outcome[0].toUpperCase()}${outcome.slice(1)} ${gMine}-${gOpp} contre ${oppName}. ${res.minutes} min, note ${rating.toFixed(1)}${res.goals ? `, ${res.goals} but(s)` : ''}.`);
@@ -1106,7 +1266,7 @@ function buildOffers(st, pos, n) {
     } else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) {
       offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true, contract: terms(club, 'Réserve') });
     }
-    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0);
+    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0);
     const cands = CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
     for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
     if (!offers.length) {

@@ -433,13 +433,22 @@ function profileCard(st) {
   </section>`;
 }
 
+// pastille seulement si la variation est visible (pas de « ±0 »)
+function chipNZ(label, v, opts = {}) {
+  const digits = opts.digits ?? 0;
+  return Math.abs(v * 100) < Math.pow(10, -digits) / 2 ? '' : chip(label, v, opts);
+}
+// Compte rendu de la semaine : replié sur téléphone en paysage (une ligne), déplié sinon
 function reportBlock(rep) {
   if (!rep || !rep.lines.length) return '';
   const d = rep.delta;
-  const chips = d ? `<div class="chips">${chip('Niveau', d.ca, { digits: 1 })}${chip('Fraîcheur', d.fresh)}${chip('Moral', d.morale)}${chip('Confiance', d.trust)}${Math.abs(d.discipline) > 0.004 ? chip('Discipline', d.discipline) : ''}${Math.abs(d.school) > 0.004 ? chip('Scolarité', d.school) : ''}${Math.abs(d.team ?? 0) > 0.004 ? chip('Vestiaire', d.team) : ''}${Math.abs(d.fans ?? 0) > 0.004 ? chip('Supporters', d.fans) : ''}</div>` : '';
+  const chips = d ? `<div class="chips">${chipNZ('Niveau', d.ca, { digits: 1 })}${chipNZ('Fraîcheur', d.fresh)}${chipNZ('Moral', d.morale)}${chipNZ('Confiance', d.trust)}${chipNZ('Discipline', d.discipline)}${chipNZ('Scolarité', d.school)}${chipNZ('Vestiaire', d.team ?? 0)}${chipNZ('Supporters', d.fans ?? 0)}</div>` : '';
   const m = rep.match;
-  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}${Math.abs(m.team ?? 0) > 0.006 ? chip('Vestiaire', m.team) : ''}${Math.abs(m.fans ?? 0) > 0.006 ? chip('Supporters', m.fans) : ''}</div>` : '';
-  return `<div class="report"><strong>Semaine ${rep.week != null ? rep.week + 1 : ''} : ce qui s'est passé</strong><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${chips}${mchips}</div>`;
+  const mInner = m ? `${chipNZ('Niveau', m.ca, { digits: 1 })}${chipNZ('Fraîcheur', m.fresh)}${chipNZ('Moral', m.morale)}${chipNZ('Confiance', m.trust)}${chipNZ('Vestiaire', m.team ?? 0)}${chipNZ('Supporters', m.fans ?? 0)}` : '';
+  const mchips = mInner ? `<div class="chips"><span class="muted">Effet du match :</span>${mInner}</div>` : '';
+  const compact = window.matchMedia?.('(max-height: 520px)').matches;
+  const lvl = d ? d.ca + (m?.ca ?? 0) : m?.ca ?? 0;
+  return `<details class="report" ${compact ? '' : 'open'}><summary><strong>Semaine ${rep.week != null ? rep.week + 1 : ''} : ce qui s'est passé</strong>${Math.abs(lvl) >= 0.0005 ? `<span class="rep-lvl ${lvl >= 0 ? 'up' : 'down'}">niveau ${fmtLvl(lvl)}</span>` : ''}<span class="rep-more muted">détails</span></summary><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${chips}${mchips}</details>`;
 }
 
 // Aperçu des effets attendus du programme choisi (sans aléa)
@@ -467,7 +476,7 @@ function previewBlock(st) {
 
 function rivalLine(st, rival) {
   const cc = clubColors(st.clubId);
-  return `<p class="rival">${avatar({ face: rival.real ? null : faceIndexFor(`${st.clubId}:${rival.name}`, st.stage === 'U17' || st.stage === 'U19'), name: rival.name, color: cc.primary, text: cc.text }, 30)}<span>Concurrent direct au poste : <b>${esc(rival.name)}</b> · niveau ${C.pct(rival.ca)}</span></p>`;
+  return `<p class="rival">${avatar({ face: rival.real ? null : faceIndexFor(`${st.clubId}:${rival.name}`, st.stage === 'U17' || st.stage === 'U19'), name: rival.name, color: cc.primary, text: cc.text }, 30)}<span>${rival.signing ? 'Renfort recruté à ton poste' : 'Concurrent direct au poste'} : <b>${esc(rival.name)}</b> · niveau ${C.pct(rival.ca)}</span></p>`;
 }
 
 function weekCard(st) {
@@ -499,7 +508,7 @@ function weekCard(st) {
         <span class="vs">${md.home ? 'Domicile' : 'Extérieur'}</span>
         <span class="fx ${md.home ? '' : 'me'}">${crest(clubById(md.home ? md.opponentId : myId), 54)}<b>${esc(md.home ? opp : meName)}</b></span>
       </div>
-      <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}</p>${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? rivalLine(st, md.rival) : ''}
+      <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}${md.reason && C.SELECTION_REASON[md.reason] ? ` <span class="muted">${esc(C.SELECTION_REASON[md.reason])}</span>` : ''}</p>${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? rivalLine(st, md.rival) : ''}
       <div class="options">
         ${inSquad ? `<button class="primary cta" id="w-watch">${icon('play', 20)}<span>${canPlay ? 'Jouer le match' : 'Suivre le match'}<small>${canPlay ? 'Tu fais les choix de ton joueur aux moments clés' : 'Le gardien est piloté par l\'IA'}</small></span></button><button id="w-sim">${icon('skip', 18)} Simuler le match</button>`
           : `<button class="primary cta" id="w-sim">${icon('skip', 20)}<span>Voir le résultat</span></button><button id="w-watch">${icon('stadium', 18)} Regarder depuis la tribune</button>`}
@@ -517,7 +526,7 @@ function weekCard(st) {
     ${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
     ${extrasForWeek(st).map((x) => `<p class="extra-note ${x.kind}">${icon(x.kind === 'nat' ? 'star' : 'trophy', 18)}<span>${x.kind === 'nat' ? `<b>Convoqué !</b> ${esc(x.label)} cette semaine` : `En semaine : <b>${esc(x.label)}</b>`}</span></p>`).join('')}
-    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span></p>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
+    ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span>${sel.reason && C.SELECTION_REASON[sel.reason] ? ` <span class="muted small">${esc(C.SELECTION_REASON[sel.reason])}</span>` : ''}</p>${sel.rival && (sel.status !== 'titulaire' || sel.rival.signing) && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
     <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''}"><span class="ci">${icon(FOCUS_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>

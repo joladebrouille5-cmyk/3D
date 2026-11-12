@@ -40,8 +40,11 @@ export function extractResult(m, userTeam) {
   }
   const mine = m.score[userTeam], theirs = m.score[1 - userTeam];
   const stats = u ? { ...u.stats, saves: u.role === 'GK' ? m.teams[userTeam].stats.saves : 0 } : null;
+  // décisions prises pendant le match (joué, pas simulé) : réussites et chances annoncées
+  const uc = m.userChoices ?? [];
+  const choices = uc.length ? { made: uc.length, ok: uc.filter((d) => d.ok).length, expected: uc.reduce((a, d) => a + (d.p ?? 0.5), 0) } : null;
   return {
-    score: [...m.score], minutes, started, goals: u?.stats.goals ?? 0, assists: u?.stats.assists ?? 0, style: m.userStyle ?? null,
+    score: [...m.score], minutes, started, goals: u?.stats.goals ?? 0, assists: u?.stats.assists ?? 0, style: m.userStyle ?? null, choices,
     rating: u && minutes ? matchRating(stats, Math.sign(mine - theirs), minutes, u.role, theirs) : null,
     fingerprint: m.fingerprint(),
   };

@@ -986,3 +986,20 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
   .ch-pct { min-width: 54px; } .ch-pct b { font-size: 1.25em; } .ch-pct small { font-size: 0.6em; }
   .sum-dec li { font-size: 0.8em; padding: 2px 6px; }
 }
+
+/* ------------------------------------------------------------ compte rendu repliable, affiche compacte */
+details.report > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+details.report > summary::-webkit-details-marker { display: none; }
+details.report .rep-lvl { font: 800 1em var(--f-display); }
+details.report .rep-lvl.up { color: var(--ok); } details.report .rep-lvl.down { color: var(--bad); }
+details.report .rep-more { margin-left: auto; font-size: 0.8em; }
+details.report[open] .rep-more { display: none; }
+details.report:not([open]) { padding: 6px 12px; margin-bottom: 8px; }
+@media (max-height: 520px) {
+  .fixture-box { padding: 6px 8px; margin: 2px 0 6px; gap: 6px; }
+  .fixture-box .fx { flex-direction: row; gap: 8px; justify-content: center; }
+  .fixture-box .fx .crest-wrap svg, .fixture-box .fx .crest-wrap img { width: 30px; height: 30px; }
+  .fixture-box .fx b { font-size: 1em; }
+  .week h2 { margin-bottom: 4px; }
+  .week .options { margin-top: 4px; }
+}

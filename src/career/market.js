@@ -54,7 +54,7 @@ export function winterOffers(st, ca, r) {
   const club = clubById(st.clubId);
   const lv = clubLevel(club);
   const out = [];
-  if (share < 0.35) {
+  if (share < 0.35 || p.wantsLoan === st.season) {
     // peu de temps de jeu : prêt dans un club où il jouera
     const cands = CLUBS.filter((c) => c.id !== club.id && c.senior && clubLevel(c) >= Math.min(5, lv + 1) && clubLevel(c) <= lv + 2 && ca >= SENIOR_CA[clubLevel(c)] - 0.02);
     for (const c of shuffle(cands, r).slice(0, 2)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Prêt jusqu\'à la fin de saison', loan: true });
