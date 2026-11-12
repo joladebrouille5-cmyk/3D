@@ -285,3 +285,22 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
   ≈ 23 passes en profondeur par match, ≈ 40 % arrivent à un attaquant ; certains appels partent trop tôt
   (hors-jeu). Sur le terrain, une flèche montre un appel, un « ! » un partenaire qui demande le ballon.
 
+## Vue 3D
+
+Les ralentis des temps forts et la suite de l'action après un choix s'affichent en 3D (WebGL, Three.js
+0.160 embarqué dans `assets/vendor/`, licence MIT : rien n'est téléchargé). Les moments de choix restent en 2D,
+plus lisibles pour les flèches et les cibles numérotées. Le bouton « stade » de la barre du match coupe la 3D.
+
+- Stade de nuit : quatre tribunes garnies aux couleurs des deux équipes, toit, mâts d'éclairage et halos,
+  panneaux et bandeaux lumineux défilants, flashs d'appareils photo (plus nombreux sur un but).
+- Pelouse tondue en bandes, lignes nettes, buts avec filets, drapeaux de corner.
+- Joueurs articulés (bassin, buste, bras, avant-bras, cuisses, tibias, pieds) animés selon leur vitesse réelle :
+  foulée, bras opposés, frappe, gardien en position, célébration ; peau, cheveux, chaussures et taille variés ;
+  numéro dans le dos ; quatre ombres croisées par joueur.
+- Caméra principale en tribune qui pivote et zoome comme une réalisation télé ; plan serré pour les ralentis.
+- Rendu par lots (une vingtaine d'appels de dessin pour 22 joueurs) pour tenir sur téléphone.
+
+Limite assumée : ce n'est pas du photoréalisme (type jeu console). Il faudrait des modèles scannés et des
+animations capturées sur de vrais joueurs, des dizaines de mégaoctets de données et un moteur dédié.
+La recette `npm run ui-check-3d` vérifie la bascule 2D/3D et l'absence d'erreur.
+

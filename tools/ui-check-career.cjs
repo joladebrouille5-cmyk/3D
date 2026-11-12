@@ -23,7 +23,7 @@ const SHOTS = process.argv[3] || null;
     }
   };
   await page.goto(URL);
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem('generation-football.view3d', 'off'); });
   await page.reload();
   await page.waitForSelector('#h-new');
   assert.equal(await page.isDisabled('#h-load'), true, 'aucune sauvegarde au départ');

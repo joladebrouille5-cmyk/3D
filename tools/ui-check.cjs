@@ -11,6 +11,8 @@ const URL = process.argv[2] || 'http://localhost:8000/index.html';
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  // la vue 3D a sa propre recette (ui-check-3d) : ici, rendu 2D seulement pour aller vite
+  await page.addInitScript(() => { try { localStorage.setItem('generation-football.view3d', 'off'); } catch { /* */ } });
   await page.goto(URL);
   await page.waitForSelector('#h-quick'); // accueil : match amical
   await page.click('#h-quick');

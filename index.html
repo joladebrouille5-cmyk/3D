@@ -32,6 +32,7 @@
         <button id="btn-replay" title="Revoir la dernière action (F8)"><span class="ico">⟲</span><span class="lbl"> Replay</span></button>
         <button id="btn-live" title="Revenir au direct (F9)" hidden>Direct</button>
         <button id="btn-quick" title="Simuler la fin du match sans rendu"><span class="ico">⏭</span><span class="lbl"> Résultat rapide</span></button>
+        <button id="btn-view" title="Vue 3D"></button>
         <button id="btn-sound" title="Son (M)"></button>
         <button id="btn-help" title="Aide (F1)">Aide</button>
       </div>
@@ -48,6 +49,7 @@
 
     <main id="center">
       <canvas id="pitch" aria-label="Terrain 2D vu du dessus"></canvas>
+      <canvas id="pitch3d" hidden aria-label="Vue 3D du match"></canvas>
       <div id="choices" hidden role="dialog" aria-label="Choix du joueur"></div>
       <div id="pad-hint" hidden></div>
       <div id="goal-banner" hidden></div>

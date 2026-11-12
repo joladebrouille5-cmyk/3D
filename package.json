@@ -13,6 +13,7 @@
     "catalog": "node tools/build-catalog.mjs",
     "ui-check-career": "node tools/ui-check-career.cjs",
     "ui-check-pace": "node tools/ui-check-pace.cjs",
-    "ui-check-tf": "node tools/ui-check-tf.cjs"
+    "ui-check-tf": "node tools/ui-check-tf.cjs",
+    "ui-check-3d": "node tools/ui-check-3d.cjs"
   }
 }

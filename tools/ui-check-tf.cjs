@@ -15,7 +15,7 @@ const SHOTS = process.argv[3] || null;
   await page.clock.install();
   await page.goto(URL);
   await page.evaluate(async () => {
-    localStorage.clear();
+    localStorage.clear(); localStorage.setItem('generation-football.view3d', 'off');
     const C = await import('./src/career/career.js'); const S = await import('./src/career/save.js');
     const st = C.createCareer({ firstName: 'Léo', lastName: 'Tempsforts', role: 'ST', clubId: 'rc-lens', seed: 'tf' });
     st.player.trust = 1; for (const k in st.player.attrs) if (k !== 'gk') st.player.attrs[k] += 0.15;

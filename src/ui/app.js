@@ -154,11 +154,13 @@ function draw() {
     const firstHalf = t < (m.events.find((e) => e.type === 'mi_temps')?.t ?? Infinity);
     teams.forEach((tt, i) => { tt.dir = (i === 0 ? 1 : -1) * (firstHalf ? 1 : -1); });
     document.getElementById('pitch').classList.remove('ff');
-    if (S.replay.hl) {
-      S.renderer.mirror = !!S.career && teams[S.career.followTeam].dir < 0;
-      S.renderer.follow(lerp(1), lerp(2), 2.3, 0.1);
-    } else S.renderer.follow(52.5, 34, 1);
-    S.renderer.draw({ teams, players, ball: { x: lerp(1), y: lerp(2), z: lerp(3) }, ownerId: A[4] >= 0 ? A[4] : null, selectedId: S.selectedId });
+    if (S.replay.hl) S.renderer.mirror = !!S.career && teams[S.career.followTeam].dir < 0;
+    const rb = { x: lerp(1), y: lerp(2), z: lerp(3) };
+    // ralenti : en 3D (plan serré de réalisateur) si la vue 3D est disponible
+    if (present3d(true, teams, players, rb, A[4] >= 0 ? A[4] : null, S.replay.hl ? [rb.x, rb.y, 2.3, 0.1] : [rb.x, rb.y, 1.5, 0.08])) return;
+    if (S.replay.hl) S.renderer.follow(rb.x, rb.y, 2.3, 0.1);
+    else S.renderer.follow(52.5, 34, 1);
+    S.renderer.draw({ teams, players, ball: rb, ownerId: A[4] >= 0 ? A[4] : null, selectedId: S.selectedId });
     const sec = Math.max(0, t);
     const rt = $('#replay-time'); if (rt) rt.textContent = `· ${fmtTime(sec).split(' ')[0]}`;
     return;
@@ -176,6 +178,9 @@ function draw() {
   let aim = null;
   const ff = S.pace.mode === 'tf' && !S.choice && S.hl.follow <= m.t - 0.01 && !S.paused;
   document.getElementById('pitch').classList.toggle('ff', ff && m.phase !== 'fulltime');
+  // suite de l'action après un choix : en 3D, caméra de télévision sur l'action
+  const follow3d = S.pace.mode === 'tf' && !S.choice && m.t < S.hl.follow && m.phase === 'play';
+  if (present3d(follow3d, teams, players, ball, m.ball.owner, u && u.onPitch ? [u.x * 0.45 + ball.x * 0.55, u.y * 0.45 + ball.y * 0.55, Math.max(1.7, S.ctl.zoom), 0.1] : [ball.x, ball.y, 1.7, 0.1])) return;
   if (ff) S.renderer.follow(52.5, 34, 1);
   else if (u && u.onPitch && S.career) {
     // choix ouvert : la caméra cadre ton joueur et le ballon dans la partie non couverte par le panneau
@@ -184,6 +189,35 @@ function draw() {
     if (S.choice && S.choice.targets) aim = S.choice.targets;
   } else S.renderer.follow(52.5, 34, 1);
   S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim, t: m.t, followTeam: S.career ? S.career.followTeam : null });
+}
+
+// ------------------------------------------------------------------ vue 3D
+// Chargée à la demande (Three.js embarqué, ≈ 670 Ko) : ralentis des temps forts et suite de l'action.
+// Les moments de choix restent en 2D (flèches et cibles numérotées). Repli silencieux sans WebGL.
+const VIEW_KEY = 'generation-football.view3d';
+export function view3dOn() { try { return localStorage.getItem(VIEW_KEY) !== 'off'; } catch { return true; } }
+function setView3d(on) { try { localStorage.setItem(VIEW_KEY, on ? 'on' : 'off'); } catch { /* stockage indisponible */ } }
+let r3dLoading = null;
+function ensure3d() {
+  if (S.r3d || S.r3dFail || r3dLoading) return;
+  r3dLoading = import('./render3d.js').then(({ Pitch3D }) => {
+    try { S.r3d = new Pitch3D($('#pitch3d')); } catch { S.r3dFail = true; }
+  }).catch(() => { S.r3dFail = true; });
+}
+function present3d(want, teams, players, ball, ownerId, cam) {
+  const c3 = $('#pitch3d');
+  const on = want && view3dOn() && !S.r3dFail;
+  if (on) ensure3d();
+  if (!on || !S.r3d) {
+    if (S.in3d) { S.in3d = false; c3.hidden = true; }
+    return false;
+  }
+  if (!S.in3d) { S.in3d = true; c3.hidden = false; S.r3d.resize(); S.r3d.reset(); }
+  const r = S.r3d;
+  r.mirror = S.renderer.mirror;
+  r.follow(cam[0], cam[1], cam[2], cam[3]);
+  r.draw({ teams, players, ball, ownerId });
+  return true;
 }
 
 // ------------------------------------------------------------------ pilotage direct
@@ -563,6 +597,7 @@ function goalBanner(ev) {
     <span class="gb-score">${esc(m.teams[0].short)} <b>${m.score[0]}</b><i>–</i><b>${m.score[1]}</b> ${esc(m.teams[1].short)}</span></span>`;
   el.style.setProperty('--team', t.colors.primary); el.style.setProperty('--team2', t.colors.secondary);
   S.renderer.celebrate(t.colors);
+  S.r3d?.celebrate(t.colors);
   el.hidden = false; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
   S.goalUntil = performance.now() + 3000;
   clearTimeout(S.goalTimer); S.goalTimer = setTimeout(() => { el.hidden = true; }, 3000);
@@ -1232,8 +1267,11 @@ function bind() {
   const soundIco = () => setIco('#btn-sound', sound.enabled ? 'sound' : 'mute');
   soundIco();
   $('#btn-sound').addEventListener('click', (e) => { e.currentTarget.blur(); sound.toggle(); soundIco(); });
+  const viewIco = () => { setIco('#btn-view', 'stadium'); $('#btn-view').classList.toggle('off', !view3dOn()); $('#btn-view').title = view3dOn() ? 'Vue 3D activée (ralentis et suite des actions)' : 'Vue 3D désactivée'; };
+  viewIco();
+  $('#btn-view').addEventListener('click', (e) => { e.currentTarget.blur(); setView3d(!view3dOn()); viewIco(); });
   window.addEventListener('keydown', (e) => { if ((e.key === 'm' || e.key === 'M') && !e.target.closest?.('input, select, textarea') && S.m) { sound.toggle(); soundIco(); } });
-  window.addEventListener('resize', () => { S.renderer.resize(); if (S.choice) S.choice.inset = panelInset($('#choices')); });
+  window.addEventListener('resize', () => { S.renderer.resize(); S.r3d?.resize(); if (S.choice) S.choice.inset = panelInset($('#choices')); });
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);
   $('#btn-ctl').addEventListener('click', (e) => { e.currentTarget.blur(); setManual(!S.ctl.manual); });
