@@ -29,10 +29,14 @@ function luminance(hex) {
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 }
 
+// Couleurs des équipes hors catalogue (clubs européens, sélections) : enregistrées au chargement
+const EXTRA_COLORS = {};
+export function registerColors(id, c) { EXTRA_COLORS[id] = c; }
+
 // Couleurs d'un club (réelles si connues, sinon déterministes)
 export function clubColors(id) {
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  const known = CLUB_COLORS[base] ?? TEST_TEAM_COLORS[base];
+  const known = CLUB_COLORS[base] ?? TEST_TEAM_COLORS[base] ?? EXTRA_COLORS[base];
   const h = hash(base);
   const [p, s] = known ? [known.p, known.s] : PAIRS[h % PAIRS.length];
   const pat = known?.pat ?? PATTERNS[(h >>> 4) % PATTERNS.length];

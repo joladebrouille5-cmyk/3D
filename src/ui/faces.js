@@ -19,7 +19,7 @@ export const faceIndexFor = (key, youth = false) => {
   const h = hash(String(key));
   return youth ? YOUNG[h % YOUNG.length] : h % FACES.length;
 };
-export const isYouthTeamId = (id) => /-(U17|U19)$/.test(String(id));
+export const isYouthTeamId = (id) => /-(U17|U19)$/.test(String(id)) || /^nat-[a-z-]+-U1[6-9]-/.test(String(id));
 
 // Pastille portrait (ou initiales pour un joueur réel / sans visage)
 export function avatar({ face = null, name = '', color = '#1d2a47', text = '#fff' } = {}, size = 32, cls = '') {

@@ -8,6 +8,7 @@ import { startMatch, showQuickMatchSetup, setHomeHandler } from './app.js';
 import { crestSVG, clubColors } from './crest.js';
 import { icon } from './icons.js';
 import { avatar, faceUrl, faceIndexFor, faceSample } from './faces.js';
+import { extrasForWeek } from '../career/competitions.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
 const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
@@ -351,16 +352,20 @@ function weekCard(st) {
   if (st.phase === 'matchday') {
     const md = st.matchday;
     if (md.bye) return `<section class="card week">${report}<h2>Semaine ${st.week + 1}/${n}</h2><p>Pas de match cette semaine.</p><button class="primary cta" id="w-bye">Continuer</button></section>`;
-    const opp = st.league.teams.find((t) => t.id === md.opponentId)?.name;
+    const ex = md.extra;
+    const opp = ex ? C.extraTeamName(st, md.opponentId) : st.league.teams.find((t) => t.id === md.opponentId)?.name;
+    const myId = ex?.kind === 'nat' ? ex.teamId : st.clubId;
+    const meName = ex ? C.extraTeamName(st, myId) : myName;
     const inSquad = md.selection === 'titulaire' || md.selection === 'remplaçant';
     const selTxt = { titulaire: 'Le coach t\'aligne d\'entrée.', remplaçant: 'Tu commences sur le banc : le coach peut te faire entrer.', 'non retenu': 'Tu n\'es pas retenu dans le groupe cette semaine.', 'blessé': 'Tu es blessé et ne peux pas jouer.' }[md.selection];
     const canPlay = inSquad && p.role !== 'GK';
     return `<section class="card week">${report}
-      <h2>${icon('whistle', 20)} Jour de match · journée ${st.week + 1}/${n}</h2>
-      <div class="fixture-box">
-        <span class="fx ${md.home ? 'me' : ''}">${crest(clubById(md.home ? st.clubId : md.opponentId), 54)}<b>${esc(md.home ? myName : opp)}</b></span>
+      <h2>${icon(ex ? (ex.kind === 'nat' ? 'star' : 'trophy') : 'whistle', 20)} ${ex ? esc(ex.label) : `Jour de match · journée ${st.week + 1}/${n}`}</h2>
+      ${ex ? `<p class="comp-tag ${ex.kind}">${ex.kind === 'nat' ? 'Sélection nationale · effectifs fictifs' : 'Match de coupe à élimination directe'}</p>` : ''}
+      <div class="fixture-box ${ex ? 'extra' : ''}">
+        <span class="fx ${md.home ? 'me' : ''}">${crest(clubById(md.home ? myId : md.opponentId), 54)}<b>${esc(md.home ? meName : opp)}</b></span>
         <span class="vs">${md.home ? 'Domicile' : 'Extérieur'}</span>
-        <span class="fx ${md.home ? '' : 'me'}">${crest(clubById(md.home ? md.opponentId : st.clubId), 54)}<b>${esc(md.home ? opp : myName)}</b></span>
+        <span class="fx ${md.home ? '' : 'me'}">${crest(clubById(md.home ? md.opponentId : myId), 54)}<b>${esc(md.home ? opp : meName)}</b></span>
       </div>
       <p><span class="sel sel-${md.selection.replace(/\s/g, '-')}">${esc(md.selection)}</span> ${esc(selTxt)}</p>${md.rival && md.selection !== 'titulaire' && md.selection !== 'blessé' ? rivalLine(st, md.rival) : ''}
       <div class="options">
@@ -375,6 +380,7 @@ function weekCard(st) {
   const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
   return `<section class="card week">${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
+    ${extrasForWeek(st).map((x) => `<p class="extra-note ${x.kind}">${icon(x.kind === 'nat' ? 'star' : 'trophy', 18)}<span>${x.kind === 'nat' ? `<b>Convoqué !</b> ${esc(x.label)} cette semaine` : `En semaine : <b>${esc(x.label)}</b>`}</span></p>`).join('')}
     ${opp ? `<p class="next">Prochain match : ${fx.home ? 'contre' : 'chez'} <strong>${esc(opp)}</strong> · <span class="sel sel-${sel.status.replace(/\s/g, '-')}">${esc(sel.status)}</span></p>${sel.rival && sel.status !== 'titulaire' && sel.status !== 'blessé' ? rivalLine(st, sel.rival) : ''}` : '<p class="muted">Pas de match cette semaine.</p>'}
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
@@ -389,7 +395,7 @@ function weekCard(st) {
 }
 
 function leagueCard(st) {
-  const tabs = { classement: 'Classement', resultats: 'Résultats', journal: 'Journal', carriere: 'Carrière' };
+  const tabs = { classement: 'Classement', resultats: 'Résultats', coupes: 'Coupes', journal: 'Journal', carriere: 'Carrière' };
   let body = '';
   if (G.tab === 'classement') {
     const t = C.standings(st);
@@ -400,6 +406,16 @@ function leagueCard(st) {
     const mine = st.league.results.filter((r) => r.h === st.clubId || r.a === st.clubId);
     const name = (id) => st.league.teams.find((t) => t.id === id)?.name ?? id;
     body = mine.length ? `<ul class="plain">${mine.map((r) => { const w = (r.h === st.clubId ? r.gh - r.ga : r.ga - r.gh); return `<li><span class="res ${w > 0 ? 'w' : w < 0 ? 'l' : 'd'}">${w > 0 ? 'V' : w < 0 ? 'D' : 'N'}</span> J${r.week + 1} · ${esc(name(r.h))} <strong>${r.gh}-${r.ga}</strong> ${esc(name(r.a))}</li>`; }).join('')}</ul>` : '<p class="muted">Aucun match joué.</p>';
+  } else if (G.tab === 'coupes') {
+    const cups = st.cups ?? [];
+    const intl = st.player.intl ?? { caps: {}, goals: 0 };
+    const caps = Object.entries(intl.caps);
+    body = (cups.length ? cups.map((c) => {
+      const status = c.champion ? '<span class="cup-st win">Vainqueur</span>' : c.alive ? `<span class="cup-st on">En lice${c.rounds[c.idx] ? ` · ${esc(c.rounds[c.idx].label)} en semaine ${c.rounds[c.idx].week + 1}` : ''}</span>` : '<span class="cup-st out">Éliminé</span>';
+      return `<div class="cup"><div class="cup-head">${icon('trophy', 18)}<strong>${esc(c.name)}</strong>${status}${c.points ? `<span class="muted small">${c.points} pts</span>` : ''}</div>
+        <ul class="cup-log">${c.log.map((l) => `<li><span class="res ${l.won === true ? 'w' : l.won === false ? 'l' : 'd'}">${l.won === true ? 'V' : l.won === false ? 'D' : 'N'}</span><span class="cl-round">${esc(l.label)}</span>${crest(clubById(l.opp), 18)}<span class="cl-opp">${esc(clubById(l.opp)?.name ?? l.opp)}</span><b>${l.gf}-${l.ga}${l.pens ? ` <small>(t.a.b. ${l.pens[0]}-${l.pens[1]})</small>` : ''}</b></li>`).join('') || '<li class="muted">Premier tour à venir.</li>'}</ul></div>`;
+    }).join('') : '<p class="muted">Pas de coupe cette saison à ce niveau.</p>')
+      + `<div class="cup"><div class="cup-head">${icon('star', 18)}<strong>Équipes de France</strong></div>${caps.length ? `<p>${caps.map(([k, v]) => `${k === 'A' ? 'France A' : k} : <b>${v}</b> sélection${v > 1 ? 's' : ''}`).join(' · ')} · ${intl.goals} but(s)</p>` : '<p class="muted">Pas encore de convocation. Les trêves internationales tombent vers les semaines ' + [0.2, 0.44, 0.7, 0.9].map((f) => Math.round(f * C.seasonLength(st)) + 1).join(', ') + '.</p>'}</div>`;
   } else if (G.tab === 'journal') {
     body = `<ul class="plain">${st.journal.slice(0, 60).map((j) => `<li><span class="muted">${j.season} · S${j.week + 1}</span> ${esc(j.text)}</li>`).join('')}</ul>`;
   } else {
@@ -458,7 +474,7 @@ function monthReviewHtml(rv, st, closable) {
           <b class="${a.d > 5e-4 ? 'up' : a.d < -5e-4 ? 'down' : ''}">${a.d >= 0 ? '+' : '−'}${Math.abs(a.d * 100).toFixed(1)}</b></li>`).join('')}</ul>
         <h3>${icon('target', 18)} Ton état</h3>
         <ul class="attr-delta">${Object.entries(rv.gauges).filter(([k]) => k !== 'school' || st.stage === 'U17' || st.stage === 'U19').map(([k, v]) => `<li><span>${esc(C.GAUGE_LABELS[k])}</span><span class="num">${C.pct(v[0])} → ${C.pct(v[1])}</span><span class="dbar"></span><b class="${v[1] - v[0] > 0.004 ? 'up' : v[1] - v[0] < -0.004 ? 'down' : ''}">${v[1] - v[0] >= 0 ? '+' : '−'}${Math.abs((v[1] - v[0]) * 100).toFixed(0)}</b></li>`).join('')}</ul>
-        ${m.list.length ? `<h3>${icon('calendar', 18)} Tes matchs</h3><ul class="plain">${m.list.map((x) => `<li><span class="res ${x.outcome === 'victoire' ? 'w' : x.outcome === 'défaite' ? 'l' : 'd'}">${x.outcome[0].toUpperCase()}</span> ${x.gf}-${x.ga} ${x.home ? 'contre' : 'chez'} ${esc(x.opp)} · ${x.minutes ? `${x.minutes} min, note ${x.rating.toFixed(1)}${x.goals ? `, ${x.goals} but(s)` : ''}` : esc(x.selection)}</li>`).join('')}</ul>` : ''}
+        ${m.list.length ? `<h3>${icon('calendar', 18)} Tes matchs</h3><ul class="plain">${m.list.map((x) => `<li><span class="res ${x.outcome === 'victoire' ? 'w' : x.outcome === 'défaite' ? 'l' : 'd'}">${x.outcome[0].toUpperCase()}</span> ${x.comp ? `<span class="muted">${esc(x.comp)} ·</span> ` : ''}${x.gf}-${x.ga} ${x.home ? 'contre' : 'chez'} ${esc(x.opp)} · ${x.minutes ? `${x.minutes} min, note ${x.rating.toFixed(1)}${x.goals ? `, ${x.goals} but(s)` : ''}` : esc(x.selection)}</li>`).join('')}</ul>` : ''}
       </div>
     </div>
 
@@ -570,7 +586,7 @@ function watchWeekMatch() {
     career: {
       followTeam: setup.userTeam,
       face: p.face ?? null,
-      competition: `${st.league.name} · journée ${st.week + 1}`,
+      competition: st.matchday.extra ? st.matchday.extra.label : `${st.league.name} · journée ${st.week + 1}`,
       label: setup.inSquad ? `Joueur : ${p.firstName} ${p.lastName} (n° ${m.players.find((x) => x.isUser)?.num}) — ${st.matchday.selection}` : `Dans les tribunes : ${p.firstName} ${p.lastName} (${st.matchday.selection})`,
       onFinish: (match) => {
         C.applyMatchResult(st, extractResult(match, setup.userTeam));

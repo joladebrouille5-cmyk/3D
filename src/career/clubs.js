@@ -13,7 +13,10 @@ import { kitColors } from '../ui/crest.js';
 
 export const CLUBS = CATALOG.clubs;
 const BY_ID = new Map(CLUBS.map((c) => [c.id, c]));
-export const clubById = (id) => BY_ID.get(id);
+// équipes hors catalogue (clubs européens, sélections nationales) : effectifs fictifs, force fixée
+const EXTRA = new Map();
+export function registerClub(c) { if (!BY_ID.has(c.id)) EXTRA.set(c.id, { synthetic: true, ...c }); return EXTRA.get(c.id) ?? BY_ID.get(c.id); }
+export const clubById = (id) => BY_ID.get(id) ?? EXTRA.get(id);
 
 export const LEVEL_NAMES = { 1: 'Ligue 1', 2: 'Ligue 2', 3: 'Ligue 3', 4: 'National 1', 5: 'National 2', 6: 'Club formateur amateur' };
 
@@ -65,6 +68,7 @@ export const academyStars = (c) => Math.round(((academyQuality(c) - 0.4) / 0.57)
 export const SENIOR_CA = { 1: 0.63, 2: 0.585, 3: 0.55, 4: 0.52, 5: 0.49, 6: 0.46 };
 export function youthCA(q, stage) { return (stage === 'U19' ? 0.37 : 0.3) + 0.22 * q; }
 export function teamCA(club, stage) {
+  if (club.strength != null) return club.strength;
   if (stage === 'U17' || stage === 'U19') return youthCA(academyQuality(club), stage);
   if (stage === 'Réserve') return SENIOR_CA[club.reserve?.level ?? 5] - 0.01;
   return SENIOR_CA[clubLevel(club)] + (club.senior ? CLUB_PRESTIGE[club.id] ?? 0 : 0);
@@ -112,6 +116,7 @@ export function leagueFor(club, stage) {
 
 // Nom affiché d'une équipe dans une compétition
 export function teamName(club, stage, league) {
+  if (club.synthetic) return club.name;
   if (league?.reserveOf && club.id === league.reserveOf) return club.reserve?.name ?? `${club.name} 2`;
   if (stage === 'U17') return `${club.u17?.name ?? club.name} U17`;
   if (stage === 'U19') return `${club.u19?.name ?? club.name} U19`;
@@ -128,9 +133,9 @@ export function teamStrength(club, stage, league) {
 const SLOTS_433 = FORMATIONS['4-3-3'].map((s) => s.role); // GK FB CB CB FB DM CM CM W ST W
 const BENCH = ['GK', 'CB', 'FB', 'DM', 'CM', 'W', 'ST'];
 
-function fakeName(rng, used) {
-  let n;
-  do n = `${rng.pick(FIRST)} ${rng.pick(LAST_A)}${rng.pick(LAST_B)}`; while (used.has(n));
+function fakeName(rng, used, pool = null) {
+  let n, guard = 0;
+  do n = pool ? `${rng.pick(pool.first)} ${rng.pick(pool.last)}` : `${rng.pick(FIRST)} ${rng.pick(LAST_A)}${rng.pick(LAST_B)}`; while (used.has(n) && guard++ < 50);
   used.add(n);
   return n;
 }
@@ -181,7 +186,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
       for (const a of alt) { i = pool.findIndex((p) => p.role === a); if (i >= 0) break; }
     }
     if (i >= 0) { const p = pool.splice(i, 1)[0]; return { ...p, role }; }
-    return { name: fakeName(rng, used), role, num: null, real: false };
+    return { name: fakeName(rng, used, club.names ?? null), role, num: null, real: false };
   };
   const mk = (p, slotIdx) => {
     const v = rng.gauss(0, 0.025);
@@ -215,7 +220,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
   const name = teamName(club, stage, league);
   return {
     def: {
-      id: `${club.id}-${stage}`, clubId: club.id, name, short: shortName(club.name, club.id), formation: '4-3-3', colors: colorsFor(club.id),
+      id: `${club.id}-${stage}`, clubId: club.id, name, short: club.short ?? shortName(club.name, club.id), formation: '4-3-3', colors: colorsFor(club.id),
       tactics: { pressing: 'moyen', bloc: 'moyen', style: 'équilibré' }, mods: {}, level: 0,
       identity: realList ? 'Noms publiés par le club ; notes estimées par le jeu.' : 'Effectif fictif généré par le jeu.',
     },

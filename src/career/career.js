@@ -12,6 +12,7 @@ import {
   clubById, academyQuality, leagueFor, teamName, teamStrength, buildTeamSquad, rivalFor,
   roleCA, genAttrs, youthCA, SENIOR_CA, clubLevel, teamCA, CLUBS, ROLE_WEIGHTS, STAGE_LABEL,
 } from './clubs.js';
+import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup } from './competitions.js';
 
 export const SAVE_VERSION = 1;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -56,11 +57,11 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
     player: {
       firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face,
       attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6,
-      injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [],
+      injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
     },
     clubId, stage: 'U17', season: 2026, week: 0,
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
-    seasonStats: null, history: [], journal: [], offers: null, retired: false,
+    seasonStats: null, history: [], journal: [], offers: null, retired: false, cups: [], trophies: [],
     rng: rng.snapshot(), eventCooldown: 2,
   };
   log(st, `Arrivée au centre de formation de ${club.name}. Le staff estime ton niveau actuel à ${pct(currentCA(st))}.`);
@@ -115,9 +116,108 @@ export function startSeason(st) {
   st.week = 0;
   st.seasonStats = { caStart: currentCA(st), apps: 0, starts: 0, minutes: 0, goals: 0, ratings: [], notSelected: 0, injuredWeeks: 0 };
   st.monthReview = null;
+  st.cups = buildCups(st, st.league.rounds.length);
+  st.weekExtras = null;
+  st.callup = null;
   initMonth(st);
   st.phase = 'week';
-  log(st, `Saison ${st.season}-${st.season + 1} : ${STAGE_LABEL[st.stage]} de ${club.name}, ${lg.name}.`);
+  log(st, `Saison ${st.season}-${st.season + 1} : ${STAGE_LABEL[st.stage]} de ${club.name}, ${lg.name}.${st.cups.length ? ` Coupes : ${st.cups.map((c) => c.name).join(', ')}.` : ''}`);
+  weekStart(st);
+}
+
+// Début de semaine : trêve internationale éventuelle (convocation annoncée à l'avance)
+function weekStart(st) {
+  const r = rngOf(st);
+  st.callup = maybeCallup(st, r, currentCA(st));
+  saveRng(st, r);
+  if (st.callup) log(st, `Convocation : ${st.callup.label}.`);
+}
+
+// Après un match : rencontre supplémentaire de la semaine (coupe, sélection) ou fin de semaine
+function nextOrFinish(st) {
+  st.weekExtras ??= extrasForWeek(st);
+  const ex = st.weekExtras.shift();
+  if (ex) { toExtraMatchday(st, ex); return; }
+  st.weekExtras = null;
+  finishWeek(st);
+}
+
+function toExtraMatchday(st, ex) {
+  const r = rngOf(st);
+  if (ex.kind === 'cup') {
+    const cup = st.cups.find((c) => c.id === ex.cupId);
+    const opp = drawOpponent(st, cup, r);
+    const sel = selectionForecast(st);
+    let selection = sel.status;
+    // en coupe, le coach fait tourner lors des premiers tours
+    if (cup.idx <= 1 && !cup.rounds[cup.idx].league) {
+      if (selection === 'non retenu') selection = 'remplaçant';
+      else if (selection === 'remplaçant' && r.chance(0.5)) selection = 'titulaire';
+    }
+    st.matchday = { extra: { ...ex, stage: cup.id === 'gambardella' ? 'U19' : 'Pro' }, home: r.chance(0.5), opponentId: opp, selection, rival: sel.rival };
+  } else {
+    const c = st.callup;
+    st.matchday = { extra: { ...ex, stage: 'Pro', teamId: c.teamId, cat: c.cat }, home: c.home, opponentId: c.oppId, selection: c.starter ? 'titulaire' : 'remplaçant', rival: null };
+  }
+  saveRng(st, r);
+  st.phase = 'matchday';
+}
+
+// Nom affiché d'un adversaire de coupe ou de sélection
+export function extraTeamName(st, id) {
+  const md = st.matchday;
+  const c = clubById(id);
+  if (!c) return id;
+  return md?.extra?.stage === 'U19' ? teamName(c, 'U19', null) : c.name;
+}
+
+// Résultat d'un match de coupe ou de sélection
+function applyExtraResult(st, res) {
+  const p = st.player, md = st.matchday, ex = md.extra;
+  ensureState(st);
+  const rep = st.lastReport ?? { lines: [] };
+  const [gMine, gOpp] = md.home ? [res.score[0], res.score[1]] : [res.score[1], res.score[0]];
+  const outcome = gMine > gOpp ? 'victoire' : gMine === gOpp ? 'nul' : 'défaite';
+  const oppName = extraTeamName(st, md.opponentId);
+  const s = st.seasonStats;
+  const before = snap(p), caBefore = currentCA(st);
+  if (res.minutes > 0) {
+    const rating = res.rating;
+    track(st, 'match', () => {
+      p.morale += (rating - 6.3) * 0.03 + (outcome === 'victoire' ? 0.03 : outcome === 'défaite' ? -0.02 : 0);
+      p.fresh -= 0.16 * (res.minutes / 90);
+      if (ex.kind === 'nat') { p.pa += 0.002; p.morale += 0.03; } else p.trust += (rating - 6.3) * 0.02;
+      const r = rngOf(st);
+      progress(st, 'tactique', 0.2 * (res.minutes / 90), r);
+      saveRng(st, r);
+    });
+    if (ex.kind === 'cup') {
+      s.apps++; if (res.started) s.starts++;
+      s.minutes += res.minutes; s.goals += res.goals; s.ratings.push(rating);
+      s.cupGoals = (s.cupGoals ?? 0) + res.goals;
+    } else {
+      p.intl.caps[ex.cat] = (p.intl.caps[ex.cat] ?? 0) + 1;
+      p.intl.goals += res.goals;
+      p.intl.best = ex.cat;
+    }
+    const line = `${ex.label} : ${outcome} ${gMine}-${gOpp} contre ${oppName}. ${res.minutes} min, note ${rating.toFixed(1)}${res.goals ? `, ${res.goals} but(s)` : ''}.`;
+    rep.lines.push(line);
+    log(st, line);
+  } else {
+    rep.lines.push(`${ex.label} : ${outcome} ${gMine}-${gOpp} contre ${oppName} (${md.selection === 'blessé' ? 'blessé' : md.selection === 'remplaçant' ? 'resté sur le banc' : 'non retenu'}).`);
+  }
+  if (ex.kind === 'cup') {
+    const r = rngOf(st);
+    const t = resolveCupRound(st, ex.cupId, md.opponentId, md.home, gMine, gOpp, r);
+    saveRng(st, r);
+    rep.lines.push(t);
+    log(st, t);
+  }
+  st.month.matches.push({ week: st.week, opp: oppName, home: md.home, gf: gMine, ga: gOpp, outcome, selection: md.selection, minutes: res.minutes || 0, started: !!res.started, goals: res.goals || 0, rating: res.minutes > 0 ? res.rating : null, comp: ex.label });
+  rep.match = { ca: currentCA(st) - caBefore };
+  for (const k of GAUGES) rep.match[k] = p[k] - before[k];
+  st.lastReport = rep;
+  nextOrFinish(st);
 }
 
 export function seasonLength(st) { return st.league.rounds.length; }
@@ -191,6 +291,9 @@ function caFromAttrDeltas(role, d) {
 // Sauvegardes plus anciennes : complète les champs ajoutés depuis
 export function ensureState(st) {
   if (!st.month) initMonth(st);
+  st.cups ??= [];
+  st.trophies ??= [];
+  st.player.intl ??= { caps: {}, goals: 0, best: null };
   st.lastMonthReview ??= null;
   st.monthReview ??= null;
   return st;
@@ -556,8 +659,18 @@ function toMatchday(st) {
 // Prépare les deux effectifs du moteur pour le match de la semaine
 export function matchSetup(st) {
   const md = st.matchday;
-  const club = clubById(st.clubId), opp = clubById(md.opponentId);
   const inSquad = md.selection === 'titulaire' || md.selection === 'remplaçant';
+  if (md.extra) {
+    // coupe ou sélection : effectifs de l'étape de la compétition (sélections : effectifs fictifs)
+    const ex = md.extra;
+    const mine = buildTeamSquad(clubById(ex.kind === 'nat' ? ex.teamId : st.clubId), ex.stage, st.season, null, inSquad ? st.player : null, md.selection);
+    const theirs = buildTeamSquad(clubById(md.opponentId), ex.stage, st.season, null);
+    const home = md.home ? mine : theirs, away = md.home ? theirs : mine;
+    let subPlan = null;
+    if (md.selection === 'remplaçant') { const r = new Rng(`sub:${st.seed}:${st.season}:${st.week}:${ex.kind}`); if (r.chance(0.75)) subPlan = { minute: r.int(55, 75) }; }
+    return { home, away, userTeam: md.home ? 0 : 1, seed: `${st.seed}-${st.season}-${st.week}-${ex.kind}${ex.cupId ?? ''}`, subPlan, inSquad, homeName: home.def.name, awayName: away.def.name };
+  }
+  const club = clubById(st.clubId), opp = clubById(md.opponentId);
   const mine = buildTeamSquad(club, st.stage, st.season, st.league, inSquad ? st.player : null, md.selection);
   const theirs = buildTeamSquad(opp, st.stage, st.season, st.league);
   // l'adversaire d'une réserve est une équipe première réelle
@@ -576,7 +689,8 @@ export function matchSetup(st) {
 export function applyMatchResult(st, res) {
   const p = st.player;
   const md = st.matchday;
-  if (md?.bye) { finishWeek(st); return; }
+  if (md?.bye) { nextOrFinish(st); return; }
+  if (md?.extra) { applyExtraResult(st, res); return; }
   ensureState(st);
   const rep = st.lastReport ?? { lines: [] };
   const [gMine, gOpp] = md.home ? [res.score[0], res.score[1]] : [res.score[1], res.score[0]];
@@ -614,7 +728,7 @@ export function applyMatchResult(st, res) {
   rep.match = { ca: currentCA(st) - caBefore };
   for (const k of GAUGES) rep.match[k] = p[k] - before[k];
   st.lastReport = rep;
-  finishWeek(st);
+  nextOrFinish(st);
 }
 
 // Score d'un match où le joueur n'entre pas : modèle agrégé (même que les autres rencontres)
@@ -678,12 +792,14 @@ export function finishWeek(st) {
     return;
   }
   st.phase = 'week';
+  weekStart(st);
 }
 
 export function closeMonthReview(st) {
   if (st.phase !== 'month_review') return;
   st.monthReview = null;
   st.phase = 'week';
+  weekStart(st);
 }
 
 // ------------------------------------------------------------------ bilan mensuel
@@ -770,7 +886,10 @@ function endSeason(st) {
   const pos = table.findIndex((t) => t.id === st.clubId) + 1;
   const avg = s.ratings.length ? s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length : null;
   const caEnd = currentCA(st);
-  st.history.push({ season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
+  st.trophies ??= [];
+  if (pos === 1) st.trophies.push({ season: st.season, name: `Champion · ${st.league.name}`, kind: 'league', club: clubById(st.clubId).name });
+  const cupRuns = (st.cups ?? []).map((c) => ({ name: c.name, reached: c.champion ? 'Vainqueur' : c.log.length ? c.log.at(-1).label : '—' }));
+  st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
   p.age++;
   const r = rngOf(st);
   p.staffBias = r.gauss(0, 0.02); // nouvelle évaluation du staff
@@ -872,6 +991,7 @@ export function matchRating(stats, outcome, minutes, role, conceded = null) {
 // Match de l'équipe sans le joueur (non retenu, blessé) : résultat par le modèle agrégé
 export function resultWithoutUser(st) {
   const md = st.matchday;
-  const h = md.home ? st.clubId : md.opponentId, a = md.home ? md.opponentId : st.clubId;
+  const mine = md.extra?.kind === 'nat' ? md.extra.teamId : st.clubId;
+  const h = md.home ? mine : md.opponentId, a = md.home ? md.opponentId : mine;
   return { score: quickScore(st, h, a), minutes: 0, goals: 0, started: false, rating: null };
 }

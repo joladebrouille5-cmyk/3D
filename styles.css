@@ -827,3 +827,23 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
   .sum-head .crest-svg, .sum-head .crest-img { width: 36px; height: 36px; }
   .sum-me { margin: 8px 0 4px; padding: 8px 10px; }
 }
+
+/* coupes et sélections */
+.comp-tag { margin: -4px 0 8px; font-size: 0.8em; color: var(--muted); }
+.comp-tag.nat { color: #9cc3ff; }
+.fixture-box.extra { background: radial-gradient(80% 120% at 50% 0%, rgba(255, 214, 90, 0.16), transparent 70%), rgba(255, 255, 255, 0.03); border-color: rgba(255, 214, 90, 0.25); }
+.extra-note { display: flex; gap: 8px; align-items: center; margin: 4px 0 8px; padding: 7px 10px; border-radius: var(--r-sm); background: rgba(255, 214, 90, 0.07); border: 1px solid rgba(255, 214, 90, 0.2); font-size: 0.9em; }
+.extra-note .ico-svg { color: var(--flood); }
+.extra-note.nat { background: rgba(80, 130, 255, 0.1); border-color: rgba(120, 160, 255, 0.35); }
+.extra-note.nat .ico-svg { color: #9cc3ff; }
+.cup { margin: 8px 0 12px; }
+.cup-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.cup-head .ico-svg { color: var(--flood); }
+.cup-st { font-size: 0.76em; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.cup-st.win { background: var(--flood); color: var(--ink); border-color: var(--flood); }
+.cup-st.on { color: var(--ok); border-color: rgba(78, 224, 138, 0.45); }
+.cup-st.out { color: var(--bad); border-color: rgba(255, 103, 103, 0.45); }
+.cup-log { list-style: none; margin: 0; padding: 0; }
+.cup-log li { display: grid; grid-template-columns: 24px 1fr 20px 1.4fr auto; gap: 7px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 0.86em; }
+.cup-log .cl-round { color: var(--muted); }
+.cup-log b { font: 800 1.1em var(--f-display); color: var(--chalk); }
