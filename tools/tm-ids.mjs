@@ -11,6 +11,7 @@ import { CATALOG } from '../src/data/catalog.js';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(root, 'tools/tm-ids.json');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let HALT = false;
 const prev = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : {};
 
 const norm = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/&amp;/g, '&').replace(/&#039;|’/g, "'");
@@ -24,11 +25,12 @@ async function search(q) {
       // curl : passe par le proxy de l'environnement comme un navigateur ordinaire
       let html = '';
       try { html = execFileSync('curl', ['-s', '--max-time', '20', '-A', 'Mozilla/5.0', '-H', 'Accept-Language: fr', `https://www.transfermarkt.fr/schnellsuche/ergebnis/schnellsuche?query=${encodeURIComponent(q)}`], { encoding: 'utf8', maxBuffer: 1 << 24 }); } catch { html = ''; }
-      if (!html || html.length < 1000 || html.includes('<title>Human Verification')) {
-        // limitation (page de vérification) : longue pause avant de réessayer
-        console.log('  … limitation Transfermarkt, pause');
-        await sleep(90000 * (i + 1)); continue;
+      if (html.includes('<title>Human Verification')) {
+        // vérification anti-robot : on respecte le blocage, on s'arrête (la progression est conservée)
+        console.log('Vérification anti-robot de Transfermarkt : arrêt. Relancer plus tard.');
+        HALT = true; return [];
       }
+      if (!html || html.length < 1000) { await sleep(5000 * (i + 1)); continue; }
       const start = html.indexOf('Résultats de recherche: clubs');
       if (start < 0) return [];
       const end = html.indexOf('Résultats de recherche', start + 10);
@@ -67,10 +69,12 @@ const out = { ...prev };
 const miss = [];
 for (const club of CATALOG.clubs) {
   if (out[club.id]) continue;
+  if (HALT) break;
   let hit = null;
   for (const q of [club.name, toks(club.name).join(' ')]) {
     const rows = await search(q);
-    await sleep(4000);
+    await sleep(6000);
+    if (HALT) break;
     hit = pick(club, rows);
     if (hit) break;
   }

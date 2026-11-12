@@ -208,7 +208,7 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
     if (taken.has(u.num)) { u.num = 30; while (taken.has(u.num)) u.num++; }
     if (selection === 'titulaire') {
       // remplace le concurrent direct à son poste ; ce dernier passe sur le banc
-      const i = starters.findIndex((p) => p.role === user.role);
+      const i = slotIndexFor(starters, user.role);
       const rival = starters[i];
       starters[i] = { ...u, slot: i };
       bench[bench.findIndex((p) => p.role === rival.role) >= 0 ? bench.findIndex((p) => p.role === rival.role) : bench.length - 1] = { ...rival, slot: null };
@@ -229,8 +229,16 @@ export function buildTeamSquad(club, stage, season, league, user = null, selecti
 }
 
 // Concurrent direct du joueur à son poste (titulaire de l'effectif sans lui)
+// Postes absents du 4-3-3 : le joueur dispute la place du poste le plus proche
+const NEAREST_SLOT = { AM: ['CM', 'W'], DM: ['CM'], W: ['ST'], FB: ['CB'], CB: ['FB'], CM: ['DM'], ST: ['W'], GK: [] };
+function slotIndexFor(starters, role) {
+  let i = starters.findIndex((p) => p.role === role);
+  for (const alt of NEAREST_SLOT[role] ?? []) { if (i >= 0) break; i = starters.findIndex((p) => p.role === alt); }
+  return i >= 0 ? i : starters.findIndex((p) => p.role !== 'GK');
+}
+
 export function rivalFor(club, stage, season, league, role) {
   const sq = buildTeamSquad(club, stage, season, league);
-  const r = sq.starters.find((p) => p.role === role);
+  const r = sq.starters[slotIndexFor(sq.starters, role)];
   return { name: r.name, ca: roleCA(role, r.attrs), real: r.real };
 }

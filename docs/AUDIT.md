@@ -86,3 +86,16 @@ Observations sans correction :
 - Effectifs jeunes : uniquement des coéquipiers fictifs (aucun nom de mineur réel).
 - `data/` et `docs/` : `import_autorise=false` conservé ; le catalogue est régénéré par `npm run catalog`.
 - Notes des joueurs réels : estimations du jeu dérivées du niveau du club, jamais des valeurs réelles.
+
+## 5. Suivi (12 novembre 2026)
+
+- **Poste « milieu offensif » inutilisable** : absent du 4-3-3, il faisait planter la recherche du concurrent direct
+  (le tableau de bord ne s'ouvrait pas). Le joueur dispute désormais la place du poste le plus proche ;
+  `tests/roles.test.js` couvre les huit postes.
+- **Moteur** : dégagements exclus des passes, passes au sol moins faciles à couper, receveur visé favorisé ;
+  ≈ 1 150 passes à 82 % (au lieu de 1 260 à 72 %), ≈ 9,3 corners (au lieu de 6) ; les ballons relâchés par le
+  gardien repartaient dans son but (14-19 % de buts contre son camp) : 3 % désormais. Buts, tirs et xG inchangés.
+- **Mode Court** : la recalibration allongeait les temps forts (340 s) ; budget resserré, ≈ 300 s pause comprise.
+- **Logos des clubs amateurs** : Transfermarkt oppose une vérification anti-robot aux recherches depuis
+  l'environnement de développement ; le script s'arrête sans la contourner. Procédure depuis un ordinateur
+  personnel décrite dans le README.

@@ -311,7 +311,7 @@ function reportBlock(rep) {
   const d = rep.delta;
   const chips = d ? `<div class="chips">${chip('Niveau', d.ca, { digits: 1 })}${chip('Fraîcheur', d.fresh)}${chip('Moral', d.morale)}${chip('Confiance', d.trust)}${Math.abs(d.discipline) > 0.004 ? chip('Discipline', d.discipline) : ''}${Math.abs(d.school) > 0.004 ? chip('Scolarité', d.school) : ''}${Math.abs(d.team ?? 0) > 0.004 ? chip('Vestiaire', d.team) : ''}${Math.abs(d.fans ?? 0) > 0.004 ? chip('Supporters', d.fans) : ''}</div>` : '';
   const m = rep.match;
-  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}${Math.abs(m.team ?? 0) > 0.003 ? chip('Vestiaire', m.team) : ''}${Math.abs(m.fans ?? 0) > 0.003 ? chip('Supporters', m.fans) : ''}</div>` : '';
+  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}${Math.abs(m.team ?? 0) > 0.006 ? chip('Vestiaire', m.team) : ''}${Math.abs(m.fans ?? 0) > 0.006 ? chip('Supporters', m.fans) : ''}</div>` : '';
   return `<div class="report"><strong>Semaine ${rep.week != null ? rep.week + 1 : ''} : ce qui s'est passé</strong><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${chips}${mchips}</div>`;
 }
 

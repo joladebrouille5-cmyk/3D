@@ -203,7 +203,12 @@ Jeu à usage personnel : les **vrais logos** des clubs sont utilisés quand ils 
 2. `assets/crests-l1/` — clubs passés par la Ligue 1 ;
 3. `assets/crests/` — Wikimedia Commons (`tools/fetch-crests.mjs`, workflow manuel).
 
-Couverture : Ligue 1 18/18, Ligue 2 16/18, National 14/18 (59 clubs sur 218). Les autres reçoivent un **écusson généré**
+Couverture : Ligue 1 18/18, Ligue 2 16/18, National 14/18 (59 clubs sur 218).
+
+**Compléter les logos des clubs amateurs.** Transfermarkt bloque les recherches automatiques depuis l'environnement de
+développement (vérification anti-robot ; le script s'arrête aussitôt et ne la contourne pas). Depuis ton propre ordinateur :
+`node tools/tm-ids.mjs` (une recherche toutes les 6 secondes, reprend là où il s'est arrêté), puis pousse
+`tools/tm-ids.json` : le workflow « Logos Transfermarkt » télécharge les images et les commite tout seul. Les autres reçoivent un **écusson généré**
 aux couleurs réelles du club (`src/data/club-colors.js`), couleurs aussi utilisées pour les maillots.
 
 Direction artistique « nuit de match » : terrain sous quatre projecteurs (ombres croisées, tribunes, panneaux LED, filets),

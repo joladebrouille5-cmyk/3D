@@ -188,7 +188,7 @@ function controlActive() { return S.ctl.enabled && S.ctl.manual; }
 // ------------------------------------------------------------------ match court (≈ 4 min 30)
 // Le moteur joue toujours les 90 minutes. On accélère loin de l'action et on revient à 1×
 // pendant les temps forts, avec un budget qui fait tenir la rencontre dans la durée visée.
-export const PACE = { target: 250, liveBudget: 115, totalSim: 5640 };
+export const PACE = { target: 225, liveBudget: 105, totalSim: 5640 };
 const LS_KEY = 'generation-football.matchLength';
 export function matchLength() { try { return localStorage.getItem(LS_KEY) || 'tf'; } catch { return 'tf'; } }
 export function setMatchLength(v) { try { localStorage.setItem(LS_KEY, v); } catch { /* stockage indisponible */ } if (S.pace) S.pace.mode = v; }
