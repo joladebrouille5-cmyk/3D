@@ -860,3 +860,5 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
 .win-list small { font-size: 0.78em; }
 .of-terms { display: block; margin-top: 3px; font-size: 0.82em; color: var(--chalk); }
 .of-terms b { color: var(--flood); }
+.rel-h { margin: 12px 0 2px !important; }
+.rel-h .ico-svg { color: var(--club2, var(--flood)); }

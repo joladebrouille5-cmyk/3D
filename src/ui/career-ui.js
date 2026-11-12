@@ -296,7 +296,9 @@ function profileCard(st) {
       </div>
     </div>
     ${p.injuryWeeks ? `<p class="error">${icon('injury', 16)} Blessé : encore ${p.injuryWeeks} semaine(s).</p>` : ''}
-    <div class="gauges">${gauge('Moral', p.morale, 'Influence ta progression et tes performances')}${gauge('Fraîcheur', p.fresh, 'Basse : progression ralentie et risque de blessure')}${gauge('Confiance du coach', p.trust, 'Pèse sur ta place dans le onze')}${gauge('Discipline', p.discipline, 'Basse : le coach perd confiance')}${youth ? gauge('Scolarité', p.school, 'Le centre de formation y est attentif') : ''}</div>
+    <div class="gauges">${gauge('Moral', p.morale, 'Influence ta progression et tes performances')}${gauge('Fraîcheur', p.fresh, 'Basse : progression ralentie et risque de blessure')}${gauge('Discipline', p.discipline, 'Basse : le coach perd confiance')}${youth ? gauge('Scolarité', p.school, 'Le centre de formation y est attentif') : ''}</div>
+    <h3 class="rel-h">${icon('squad', 16)} Relations</h3>
+    <div class="gauges">${gauge('Coach', p.trust, 'Pèse sur ta place dans le onze')}${gauge('Vestiaire', p.team ?? 0.5, 'Ton état d\'esprit vu par tes coéquipiers : jeu collectif, passes décisives, attitude')}${gauge('Supporters', p.fans ?? 0.15, 'Buts, prestations, fidélité : ta cote auprès du public')}</div>
     <details><summary>Attributs détaillés</summary><ul class="attrs">${w.map((k) => `<li><span>${esc(ATTR_LABELS[k])}</span><span class="bar"><i style="width:${Math.round(p.attrs[k] * 100)}%"></i></span><span class="num">${C.pct(p.attrs[k])}</span></li>`).join('')}</ul></details>
     ${st.lastMonthReview ? `<button id="hub-review" class="wide ghost">${icon('chart', 18)} Revoir le dernier bilan mensuel</button>` : ''}
   </section>`;
@@ -305,9 +307,9 @@ function profileCard(st) {
 function reportBlock(rep) {
   if (!rep || !rep.lines.length) return '';
   const d = rep.delta;
-  const chips = d ? `<div class="chips">${chip('Niveau', d.ca, { digits: 1 })}${chip('Fraîcheur', d.fresh)}${chip('Moral', d.morale)}${chip('Confiance', d.trust)}${Math.abs(d.discipline) > 0.004 ? chip('Discipline', d.discipline) : ''}${Math.abs(d.school) > 0.004 ? chip('Scolarité', d.school) : ''}</div>` : '';
+  const chips = d ? `<div class="chips">${chip('Niveau', d.ca, { digits: 1 })}${chip('Fraîcheur', d.fresh)}${chip('Moral', d.morale)}${chip('Confiance', d.trust)}${Math.abs(d.discipline) > 0.004 ? chip('Discipline', d.discipline) : ''}${Math.abs(d.school) > 0.004 ? chip('Scolarité', d.school) : ''}${Math.abs(d.team ?? 0) > 0.004 ? chip('Vestiaire', d.team) : ''}${Math.abs(d.fans ?? 0) > 0.004 ? chip('Supporters', d.fans) : ''}</div>` : '';
   const m = rep.match;
-  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}</div>` : '';
+  const mchips = m ? `<div class="chips"><span class="muted">Effet du match :</span>${chip('Niveau', m.ca, { digits: 1 })}${chip('Fraîcheur', m.fresh)}${chip('Moral', m.morale)}${chip('Confiance', m.trust)}${Math.abs(m.team ?? 0) > 0.003 ? chip('Vestiaire', m.team) : ''}${Math.abs(m.fans ?? 0) > 0.003 ? chip('Supporters', m.fans) : ''}</div>` : '';
   return `<div class="report"><strong>Semaine ${rep.week != null ? rep.week + 1 : ''} : ce qui s'est passé</strong><ul>${rep.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>${chips}${mchips}</div>`;
 }
 

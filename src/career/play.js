@@ -41,7 +41,7 @@ export function extractResult(m, userTeam) {
   const mine = m.score[userTeam], theirs = m.score[1 - userTeam];
   const stats = u ? { ...u.stats, saves: u.role === 'GK' ? m.teams[userTeam].stats.saves : 0 } : null;
   return {
-    score: [...m.score], minutes, started, goals: u?.stats.goals ?? 0,
+    score: [...m.score], minutes, started, goals: u?.stats.goals ?? 0, assists: u?.stats.assists ?? 0, style: m.userStyle ?? null,
     rating: u && minutes ? matchRating(stats, Math.sign(mine - theirs), minutes, u.role, theirs) : null,
     fingerprint: m.fingerprint(),
   };

@@ -295,6 +295,7 @@ function updateControl() {
 // partenaire porteur qui peut te trouver. Le match est figé pendant le choix (aucun bonus,
 // aucun malus de temps). Entre deux choix, l'IA joue pour toi « à l'instinct ».
 const CHOICE_GAP = { ball: 7, off: 22 };
+const TEAM_PLAY = new Set(['safe', 'onetwo', 'switch', 'cutback', 'through', 'forward', 'long', 'cross-far', 'cross-near', 'call', 'drop', 'overlap', 'space', 'box', 'track', 'cover', 'block', 'shepherd', 'decoy', 'foul', 'rebound']);
 const CHOICE_GAP_TF = { ball: 160, off: 300 }; // temps forts : seulement les situations clés
 function checkChoice() {
   const m = S.m, c = S.ctl;
@@ -373,6 +374,10 @@ function pickChoice(i) {
     else m.queueCommand({ type: 'intent', playerId: u.id, kind: c.intent, ...(c.spot ?? {}) });
     S.ctl.made++;
     S.ctl.recent = [...(S.ctl.recent ?? []), c.key].slice(-4);
+    // le vestiaire juge l'état d'esprit : jeu collectif ou exploit personnel forcé
+    const style = (m.userStyle ??= { team: 0, selfish: 0 });
+    if ((c.opt?.kind === 'shoot' && (c.opt.xg ?? 1) < 0.05) || (c.opt?.kind === 'carry' && c.cls === 'high')) style.selfish++;
+    else if (TEAM_PLAY.has(c.key)) style.team++;
     flashHint(c.label);
     // on regarde la suite de l'action (pour un coup de pied arrêté : jusqu'après la frappe)
     if (S.pace.mode === 'tf') S.hl.follow = (c.plan && m.restart ? m.restart.readyAt : m.t) + (c.plan ? 6 : 4);

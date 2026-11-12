@@ -58,7 +58,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
     version: SAVE_VERSION, seed: s, createdAt: Date.now(),
     player: {
       firstName: firstName.trim() || 'Jeune', lastName: lastName.trim() || 'Joueur', role, foot, age: 15, number: 27, face,
-      attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6,
+      attrs, pa, paStart: pa, morale: 0.62, fresh: 0.9, trust: 0.45, discipline: 0.6, school: 0.6, team: 0.5, fans: 0.12,
       injuryWeeks: 0, staffBias: rng.gauss(0, 0.02), staffPrecision: 0.08, caHistory: [], intl: { caps: {}, goals: 0, best: null },
       contract: { clubId, type: 'aspirant', until: 2027, salary: 0.3 }, money: 0, loan: null,
     },
@@ -123,7 +123,7 @@ export function startSeason(st) {
   const club = clubById(st.clubId);
   const lg = buildLeague(st);
   st.week = 0;
-  st.seasonStats = { caStart: currentCA(st), apps: 0, starts: 0, minutes: 0, goals: 0, ratings: [], notSelected: 0, injuredWeeks: 0 };
+  st.seasonStats = { caStart: currentCA(st), apps: 0, starts: 0, minutes: 0, goals: 0, assists: 0, ratings: [], notSelected: 0, injuredWeeks: 0 };
   st.monthReview = null;
   st.cups = buildCups(st, st.league.rounds.length);
   st.weekExtras = null;
@@ -173,7 +173,7 @@ function midSeasonMove(st, o) {
     p.contract = { clubId: o.clubId, type: o.contract.type, until: st.season + o.contract.years - 1, salary: o.contract.salary };
   }
   const frac = st.week / st.league.rounds.length;
-  st.clubId = o.clubId; st.stage = o.stage; p.trust = 0.45;
+  st.clubId = o.clubId; st.stage = o.stage; p.trust = 0.45; p.team = 0.45; p.fans = Math.max(0.12, p.fans * 0.4);
   buildLeague(st);
   const len = st.league.rounds.length;
   const newWeek = Math.min(len - 1, Math.max(1, Math.round(frac * len)));
@@ -244,14 +244,15 @@ function applyExtraResult(st, res) {
     track(st, 'match', () => {
       p.morale += (rating - 6.3) * 0.03 + (outcome === 'victoire' ? 0.03 : outcome === 'défaite' ? -0.02 : 0);
       p.fresh -= 0.16 * (res.minutes / 90);
-      if (ex.kind === 'nat') { p.pa += 0.002; p.morale += 0.03; } else p.trust += (rating - 6.3) * 0.02;
+      if (ex.kind === 'nat') { p.pa += 0.002; p.morale += 0.03; p.fans += 0.04; } else p.trust += (rating - 6.3) * 0.02;
+      relationsAfterMatch(p, res, rating, outcome);
       const r = rngOf(st);
       progress(st, 'tactique', 0.2 * (res.minutes / 90), r);
       saveRng(st, r);
     });
     if (ex.kind === 'cup') {
       s.apps++; if (res.started) s.starts++;
-      s.minutes += res.minutes; s.goals += res.goals; s.ratings.push(rating);
+      s.minutes += res.minutes; s.goals += res.goals; s.ratings.push(rating); s.assists = (s.assists ?? 0) + (res.assists ?? 0);
       s.cupGoals = (s.cupGoals ?? 0) + res.goals;
     } else {
       p.intl.caps[ex.cat] = (p.intl.caps[ex.cat] ?? 0) + 1;
@@ -295,7 +296,7 @@ export function selectionForecast(st) {
   if (p.injuryWeeks > 0) return { status: 'blessé', rival: null };
   const club = clubById(st.clubId);
   const rival = rivalFor(club, st.stage, st.season, st.league, p.role);
-  const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) - (p.fresh < 0.35 ? 0.02 : 0);
+  const me = currentCA(st) + 0.06 * (p.trust - 0.5) + 0.02 * (p.morale - 0.5) + 0.02 * ((p.team ?? 0.5) - 0.5) - (p.fresh < 0.35 ? 0.02 : 0);
   // en équipe première, un jeune doit nettement dépasser le titulaire en place pour lui prendre sa place
   const edge = st.stage === 'Pro' ? 0.015 : 0;
   let status = me >= rival.ca + edge ? 'titulaire' : me >= rival.ca - 0.065 ? 'remplaçant' : 'non retenu';
@@ -308,11 +309,11 @@ export function selectionForecast(st) {
 // ------------------------------------------------------------------ registre des effets
 // Chaque effet d'un choix est mesuré (avant/après) et rangé par source : c'est ce qui alimente
 // l'aperçu de la semaine et le bilan mensuel détaillé. Rien n'est estimé après coup.
-export const GAUGES = ['morale', 'fresh', 'trust', 'discipline', 'school'];
-export const GAUGE_LABELS = { morale: 'Moral', fresh: 'Fraîcheur', trust: 'Confiance du coach', discipline: 'Discipline', school: 'Scolarité' };
-export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance' };
+export const GAUGES = ['morale', 'fresh', 'trust', 'discipline', 'school', 'team', 'fans'];
+export const GAUGE_LABELS = { morale: 'Moral', fresh: 'Fraîcheur', trust: 'Confiance du coach', discipline: 'Discipline', school: 'Scolarité', team: 'Vestiaire', fans: 'Supporters' };
+export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance', relations: 'Vestiaire et supporters' };
 
-function snap(p) { return { pa: p.pa, morale: p.morale, fresh: p.fresh, trust: p.trust, discipline: p.discipline, school: p.school, attrs: { ...p.attrs } }; }
+function snap(p) { return { pa: p.pa, morale: p.morale, fresh: p.fresh, trust: p.trust, discipline: p.discipline, school: p.school, team: p.team, fans: p.fans, attrs: { ...p.attrs } }; }
 function clampAll(p) {
   // le potentiel ne descend jamais sous le niveau déjà atteint
   p.pa = clamp(p.pa, Math.max(0.35, roleCA(p.role, p.attrs) + 0.005), 0.95);
@@ -355,6 +356,8 @@ export function ensureState(st) {
   const p = st.player;
   p.money ??= 0;
   p.loan ??= null;
+  p.team ??= 0.5;
+  p.fans ??= 0.15;
   p.contract ??= { clubId: st.clubId, type: contractType(clubById(st.clubId), st.stage), until: st.season + 1, salary: salaryFor(clubById(st.clubId), st.stage, currentCA(st), p.age) };
   st.lastMonthReview ??= null;
   st.monthReview ??= null;
@@ -393,7 +396,7 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
     if (offpitch === 'video') { p.pa += 0.0008; p.discipline += 0.01; p.attrs.decisions = clamp(p.attrs.decisions + 0.0015, 0.05, 0.97); progress(st, 'tactique', 0.05, r); }
     if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.001; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
     if (offpitch === 'repos') { p.fresh += 0.15; p.morale += 0.04; }
-    if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; }
+    if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; p.team += 0.015; }
     if (youth && offpitch !== 'ecole') p.school -= 0.012; // la scolarité s'érode si on la néglige
   });
   // regard du staff : sérieux et scolarité comptent
@@ -413,7 +416,11 @@ function weekRest(st) {
   track(st, 'rest', () => {
     p.fresh += 0.17;
     p.morale += (0.6 - p.morale) * 0.08;
+    p.team += (0.5 - p.team) * 0.02;
+    if (p.fans > 0.3) p.fans -= 0.003; // la popularité s'entretient
   }, false);
+  // relations : un vestiaire uni et des supporters derrière toi entretiennent le moral
+  track(st, 'relations', () => { p.morale += 0.012 * (p.team - 0.5) + 0.008 * (p.fans - 0.3); }, false);
 }
 
 export function submitWeek(st, choices) {
@@ -575,7 +582,7 @@ const EVENTS = [
     id: 'mentor', when: (st) => st.player.age <= 19,
     text: () => 'Un cadre de l\'équipe te prend sous son aile et te conseille sur ton hygiène de vie.',
     options: [
-      { label: 'Écouter et appliquer', apply: (st) => { st.player.pa += 0.004; st.player.discipline += 0.03; st.player.trust += 0.02; return 'Sommeil, alimentation, récupération : tes habitudes changent.'; } },
+      { label: 'Écouter et appliquer', apply: (st) => { st.player.pa += 0.004; st.player.discipline += 0.03; st.player.trust += 0.02; st.player.team += 0.02; return 'Sommeil, alimentation, récupération : tes habitudes changent.'; } },
       { label: 'Faire à ta façon', apply: (st) => { st.player.morale += 0.01; return 'Tu gardes tes habitudes.'; } },
     ],
   },
@@ -584,7 +591,7 @@ const EVENTS = [
     text: () => 'Le journal local veut faire ton portrait après tes derniers matchs.',
     options: [
       { label: 'Accepter l\'interview', apply: (st, r) => {
-        st.player.morale += 0.04;
+        st.player.morale += 0.04; st.player.fans += 0.03;
         if (r.chance(0.35)) { st.player.trust -= 0.03; return 'Une phrase sortie de son contexte fait le tour du vestiaire. Le coach te recadre.'; }
         return 'Bel article : ta famille l\'a encadré.';
       } },
@@ -596,7 +603,7 @@ const EVENTS = [
     text: () => 'Une vidéo de ton geste technique circule sur les réseaux sociaux.',
     options: [
       { label: 'La partager partout', apply: (st, r) => {
-        st.player.morale += 0.05; st.player.discipline -= 0.03;
+        st.player.morale += 0.05; st.player.discipline -= 0.03; st.player.fans += 0.05; st.player.team -= 0.02;
         if (r.chance(0.3)) { st.player.trust -= 0.04; return 'Le coach n\'aime pas voir ses joueurs se mettre en avant.'; }
         return 'Des milliers de vues : ça fait du bien à la confiance.';
       } },
@@ -631,7 +638,7 @@ const EVENTS = [
     id: 'capitaine', when: (st) => st.player.trust >= 0.65,
     text: () => 'Le capitaine est suspendu : le coach t\'offre le brassard pour le prochain match.',
     options: [
-      { label: 'Accepter le brassard', apply: (st) => { st.player.trust += 0.04; st.player.morale += 0.05; st.player.discipline += 0.02; return 'Capitaine d\'un soir : un souvenir pour la vie.'; } },
+      { label: 'Accepter le brassard', apply: (st) => { st.player.trust += 0.04; st.player.morale += 0.05; st.player.discipline += 0.02; st.player.team += 0.03; st.player.fans += 0.02; return 'Capitaine d\'un soir : un souvenir pour la vie.'; } },
       { label: 'Le laisser à un ancien', apply: (st) => { st.player.trust += 0.01; st.player.morale -= 0.01; return 'Humble, tu préfères attendre ton heure.'; } },
     ],
   },
@@ -639,9 +646,9 @@ const EVENTS = [
     id: 'conflit', when: () => true,
     text: () => 'À l\'entraînement, un coéquipier te cherche après un tacle appuyé.',
     options: [
-      { label: 'Calmer le jeu', apply: (st) => { st.player.discipline += 0.03; st.player.trust += 0.02; return 'Tu tends la main. L\'incident est clos.'; } },
+      { label: 'Calmer le jeu', apply: (st) => { st.player.discipline += 0.03; st.player.trust += 0.02; st.player.team += 0.03; return 'Tu tends la main. L\'incident est clos.'; } },
       { label: 'Lui répondre', apply: (st, r) => {
-        st.player.morale += 0.02; st.player.discipline -= 0.05;
+        st.player.morale += 0.02; st.player.discipline -= 0.05; st.player.team -= 0.06;
         if (r.chance(0.5)) { st.player.trust -= 0.06; return 'Le coach vous sépare et te sanctionne.'; }
         return 'Le ton monte, puis tout le monde passe à autre chose.';
       } },
@@ -659,7 +666,7 @@ const EVENTS = [
     id: 'recruteur', when: (st) => st.player.age >= 16,
     text: () => 'Un recruteur d\'un grand club viendra voir ton prochain match.',
     options: [
-      { label: 'Jouer pour l\'équipe', apply: (st) => { st.player.trust += 0.03; st.player.discipline += 0.02; st.player.scouted = (st.player.scouted ?? 0) + 1; return 'Tu fais les efforts que personne ne voit. Lui, il les a vus.'; } },
+      { label: 'Jouer pour l\'équipe', apply: (st) => { st.player.trust += 0.03; st.player.discipline += 0.02; st.player.team += 0.02; st.player.scouted = (st.player.scouted ?? 0) + 1; return 'Tu fais les efforts que personne ne voit. Lui, il les a vus.'; } },
       { label: 'Multiplier les gestes pour te montrer', apply: (st, r) => {
         st.player.trust -= 0.03; st.player.morale += 0.03;
         if (r.chance(0.5)) { st.player.scouted = (st.player.scouted ?? 0) + 1; return 'Quelques gestes réussis : ton nom est noté.'; }
@@ -679,11 +686,31 @@ const EVENTS = [
     id: 'ami', when: (st) => st.stage === 'U17' || st.stage === 'U19',
     text: () => 'Ton meilleur ami au centre n\'est pas conservé. Il est effondré.',
     options: [
-      { label: 'Passer la soirée avec lui', apply: (st) => { st.player.morale -= 0.02; st.player.fresh -= 0.03; return 'Il ne l\'oubliera pas. Toi non plus.'; } },
+      { label: 'Passer la soirée avec lui', apply: (st) => { st.player.morale -= 0.02; st.player.fresh -= 0.03; st.player.team += 0.04; return 'Il ne l\'oubliera pas. Le vestiaire non plus.'; } },
       { label: 'Rester concentré sur toi', apply: (st) => { st.player.morale -= 0.04; st.player.fresh += 0.03; return 'Le football a aussi ce visage-là.'; } },
     ],
   },
 ];
+
+EVENTS.push(
+  {
+    id: 'isole', when: (st) => (st.player.team ?? 0.5) < 0.32,
+    text: () => 'Tu te sens mis à l\'écart dans le vestiaire : les conversations s\'arrêtent quand tu arrives.',
+    options: [
+      { label: 'Inviter l\'équipe au restaurant', apply: (st) => { const cost = Math.min(st.player.money, 1.5); st.player.money -= cost; st.player.team += 0.09; st.player.morale += 0.02; return 'Une soirée qui change l\'ambiance. Les sourires reviennent.'; } },
+      { label: 'Parler franchement au capitaine', apply: (st, r) => { if (r.chance(0.6)) { st.player.team += 0.06; return 'Le capitaine recadre les choses. On te laisse ta chance.'; } st.player.team -= 0.02; return 'La discussion tourne court.'; } },
+      { label: 'T\'isoler et travailler', apply: (st) => { st.player.team -= 0.02; st.player.fresh += 0.03; return 'Tu te concentres sur toi. Le fossé se creuse un peu.'; } },
+    ],
+  },
+  {
+    id: 'fans', when: (st) => (st.player.fans ?? 0) >= 0.55,
+    text: () => 'Des supporters t\'attendent à la sortie de l\'entraînement avec maillots et feutres.',
+    options: [
+      { label: 'Prendre le temps de signer', apply: (st) => { st.player.fans += 0.04; st.player.fresh -= 0.02; return 'Une heure d\'autographes et de selfies. Ils ne t\'oublieront pas.'; } },
+      { label: 'Filer, tu es pressé', apply: (st) => { st.player.fans -= 0.03; return 'Quelques sifflets sur ton passage.'; } },
+    ],
+  },
+);
 
 function pickEvent(st, r) {
   const recent = st.recentEvents ?? [];
@@ -764,7 +791,7 @@ export function applyMatchResult(st, res) {
   const before = snap(p), caBefore = currentCA(st);
   if (res.minutes > 0) {
     s.apps++; if (res.started) s.starts++;
-    s.minutes += res.minutes; s.goals += res.goals;
+    s.minutes += res.minutes; s.goals += res.goals; s.assists = (s.assists ?? 0) + (res.assists ?? 0);
     const rating = res.rating;
     s.ratings.push(rating);
     track(st, 'match', () => {
@@ -772,6 +799,7 @@ export function applyMatchResult(st, res) {
       p.morale += (rating - 6.3) * 0.03 + (outcome === 'victoire' ? 0.03 : outcome === 'défaite' ? -0.03 : 0);
       p.fresh -= 0.16 * (res.minutes / 90);
       if (res.minutes >= 45) p.pa += 0.0005; // le temps de jeu nourrit le potentiel
+      relationsAfterMatch(p, res, rating, outcome);
       // le match fait progresser : l'expérience compte
       const r = rngOf(st);
       progress(st, 'tactique', 0.2 * (res.minutes / 90), r);
@@ -791,6 +819,13 @@ export function applyMatchResult(st, res) {
   for (const k of GAUGES) rep.match[k] = p[k] - before[k];
   st.lastReport = rep;
   nextOrFinish(st);
+}
+
+// Le vestiaire juge l'état d'esprit (passes décisives, jeu collectif ou personnel) ; les supporters, les buts et les résultats
+function relationsAfterMatch(p, res, rating, outcome) {
+  p.fans += 0.025 * (res.goals ?? 0) + 0.012 * (rating - 6.5) + (outcome === 'victoire' ? 0.008 : outcome === 'défaite' ? -0.008 : 0);
+  p.team += 0.008 * (rating - 6.4) + 0.02 * (res.assists ?? 0);
+  if (res.style) p.team += 0.005 * (res.style.team ?? 0) - 0.012 * (res.style.selfish ?? 0);
 }
 
 // Score d'un match où le joueur n'entre pas : modèle agrégé (même que les autres rencontres)
@@ -954,7 +989,7 @@ function endSeason(st) {
   st.trophies ??= [];
   if (pos === 1) st.trophies.push({ season: st.season, name: `Champion · ${st.league.name}`, kind: 'league', club: clubById(st.clubId).name });
   const cupRuns = (st.cups ?? []).map((c) => ({ name: c.name, reached: c.champion ? 'Vainqueur' : c.log.length ? c.log.at(-1).label : '—' }));
-  st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
+  st.history.push({ cups: cupRuns, season: st.season, age: p.age, club: clubById(st.clubId).name, stage: st.stage, league: st.league.name, pos, teams: table.length, apps: s.apps, starts: s.starts, goals: s.goals, assists: s.assists ?? 0, minutes: s.minutes, rating: avg, caStart: s.caStart, caEnd });
   p.age++;
   const r = rngOf(st);
   p.staffBias = r.gauss(0, 0.02); // nouvelle évaluation du staff
@@ -1010,7 +1045,7 @@ function buildOffers(st, pos, n) {
     } else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) {
       offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true, contract: terms(club, 'Réserve') });
     }
-    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0);
+    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0);
     const cands = CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
     for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
     if (!offers.length) {
@@ -1054,9 +1089,10 @@ export function acceptOffer(st, idx) {
     if (p.agent && !o.own) { p.money -= o.contract.salary; log(st, `Commission de l'agent : ${money(o.contract.salary)}.`); }
   }
   const changed = o.clubId !== st.clubId;
+  if (!changed) p.fans = Math.min(1, p.fans + 0.04); // la fidélité au club plaît aux supporters
   st.clubId = o.clubId; st.stage = o.stage; st.season++;
   st.offers = null;
-  if (changed) { p.trust = 0.45; log(st, `Signature à ${clubById(o.clubId).name} (${o.kind}${o.contract ? `, ${CONTRACT_LABEL[o.contract.type].toLowerCase()} de ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}, ${money(o.contract.salary)}/mois` : ''}).`); }
+  if (changed) { p.trust = 0.45; p.team = 0.45; p.fans = Math.max(0.12, p.fans * 0.4); log(st, `Signature à ${clubById(o.clubId).name} (${o.kind}${o.contract ? `, ${CONTRACT_LABEL[o.contract.type].toLowerCase()} de ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}, ${money(o.contract.salary)}/mois` : ''}).`); }
   else if (o.contract) log(st, `${o.kind} : ${CONTRACT_LABEL[o.contract.type].toLowerCase()} de ${o.contract.years} an(s), ${money(o.contract.salary)}/mois.`);
   startSeason(st);
 }
@@ -1079,7 +1115,7 @@ export function matchRating(stats, outcome, minutes, role, conceded = null) {
   const n = RATING_NORM[role] ?? RATING_NORM.CM;
   const share = Math.min(1, minutes / 90);
   const passPct = stats.passes >= 5 ? stats.passesOk / stats.passes : n.pass;
-  let r = 6.6 + stats.goals * 0.9 + (passPct - n.pass) * 3
+  let r = 6.6 + stats.goals * 0.9 + (stats.assists ?? 0) * 0.5 + (passPct - n.pass) * 3
     + (stats.tackles - n.tack * share) * (n.tack ? 0.5 / n.tack : 0)
     + (stats.shots - n.shots * share) * 0.05
     + (outcome > 0 ? 0.3 : outcome < 0 ? -0.3 : 0);

@@ -83,7 +83,7 @@ export class Match {
         synthetic: !pl.real, real: !!pl.real, isUser: !!pl.isUser, slot, onPitch, used: onPitch, sentOff: false, injured: false, yellow: 0,
         x: -10, y: -10, vx: 0, vy: 0, fx: idx === 0 ? 1 : -1, fy: 0, energy: 1,
         tx: 0, ty: 0, urgency: 0.5, stunUntil: 0, nextDecision: 0, touchCooldown: 0, tackleCooldown: 0,
-        runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, tackles: 0, distance: 0 },
+        runUntil: 0, carry: null, stats: { passes: 0, passesOk: 0, shots: 0, goals: 0, assists: 0, tackles: 0, distance: 0 },
       };
       this.players.push(p);
       return p;
@@ -742,6 +742,8 @@ export class Match {
 
   #resolveTouch(p, d, reach, hands) {
     const b = this.ball;
+    // passe décisive possible : dernier partenaire à avoir servi ce joueur
+    if (b.pass && b.pass.team === p.team && b.pass.from !== p.id) p.assistFrom = { id: b.pass.from, t: this.t };
     const team = this.teams[p.team];
     const speed = Math.hypot(b.vx, b.vy, b.vz);
     const pass = b.pass, shot = b.shot;
@@ -1234,7 +1236,9 @@ export class Match {
     att.stats.goals++;
     if (scorerP && !own) scorerP.stats.goals++;
     const shot = b.shot;
-    const assist = shot ? null : null;
+    const af = scorerP?.assistFrom;
+    const assist = !own && af && this.t - af.t < 16 && this.players[af.id]?.team === att.idx ? af.id : null;
+    if (assist != null) this.players[assist].stats.assists++;
     const txt = own ? `BUT contre son camp de ${scorerP.name} ! ${att.short} ${this.score[att.idx]}` : `BUT de ${scorerP ? scorerP.name : '?'} pour ${att.short} !`;
     this.#log('but', att.idx, `${txt} (${this.teams[0].short} ${this.score[0]} – ${this.score[1]} ${this.teams[1].short})`, { player: scorerP?.id, own, xg: shot?.xg, major: true, assist });
     this.stoppage[this.period - 1] += 45;
