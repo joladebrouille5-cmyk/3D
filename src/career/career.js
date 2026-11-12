@@ -16,9 +16,10 @@ import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, W
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL, countryOf, mixByCountry } from './market.js';
 import { tierById, levelTierById } from './potential.js';
 import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
+import { countryInfo, langLevel } from './countries.js';
 export { SPECIALS, specialById, drillZone, DRILL_LABEL };
-import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy } from './spending.js';
-export { SERVICES, PURCHASES, monthlyCost, canBuy };
+import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy, ageingMul, passiveIncome, servicesFor, purchasesFor, boughtState, LEGACY } from './spending.js';
+export { SERVICES, PURCHASES, monthlyCost, canBuy, passiveIncome, servicesFor, purchasesFor, boughtState };
 export { money, CONTRACT_LABEL, divisionName };
 
 export const SAVE_VERSION = 1;
@@ -76,7 +77,7 @@ export function createCareer({ firstName, lastName, role, foot = 'droit', clubId
       potentialTier: tier ? { id: tier.id, label: tier.label } : null,
       levelTier: lvTier ? { id: lvTier.id, label: lvTier.label } : null,
     },
-    clubId, stage: 'U17', season: 2026, week: 0,
+    clubId, formativeName: club.name, stage: 'U17', season: 2026, week: 0,
     league: null, phase: 'week', pendingEvent: null, matchday: null, lastReport: null, month: null, monthReview: null, lastMonthReview: null,
     seasonStats: null, history: [], journal: [], offers: null, retired: false, cups: [], trophies: [],
     rng: rng.snapshot(), eventCooldown: 2,
@@ -185,8 +186,9 @@ export function buy(st, id) {
   const it = PURCHASES[id], p = st.player;
   ensureState(st);
   p.money -= it.cost;
-  (p.bought ??= {})[id] = it.once ? true : st.season;
+  (p.bought ??= {})[id] = it.once ? true : it.max ? (p.bought[id] ?? 0) + 1 : st.season;
   const out = track(st, 'services', () => it.apply(st));
+  if (LEGACY[id]) (st.legacy ??= []).push({ id, name: LEGACY[id](p, st), season: st.season });
   log(st, `${it.label} (${money(it.cost)}) : ${out}`);
   return out;
 }
@@ -254,7 +256,7 @@ function toExtraMatchday(st, ex) {
       if (selection === 'non retenu') selection = 'remplaçant';
       else if (selection === 'remplaçant' && r.chance(0.5)) selection = 'titulaire';
     }
-    st.matchday = { extra: { ...ex, stage: cup.id === 'gambardella' ? 'U19' : 'Pro' }, home: r.chance(0.5), opponentId: opp, selection, rival: sel.rival };
+    st.matchday = { extra: { ...ex, stage: cup.id === 'gambardella' ? 'U19' : 'Pro' }, home: r.chance(0.5), opponentId: opp, selection, rival: sel.rival, reason: sel.reason };
   } else {
     const c = st.callup;
     st.matchday = { extra: { ...ex, stage: 'Pro', teamId: c.teamId, cat: c.cat }, home: c.home, opponentId: c.oppId, selection: c.starter ? 'titulaire' : 'remplaçant', rival: null };
@@ -374,6 +376,8 @@ export function selectionForecast(st) {
   let reason = status === 'titulaire' ? (form > 0.35 ? 'forme' : null) : form < -0.35 ? 'méforme' : rival.signing ? 'recrue' : rival.form > 0.008 ? 'concurrent' : null;
   // le coach ménage un joueur à bout de forces
   if (status === 'titulaire' && p.fresh < 0.32) { status = 'remplaçant'; reason = 'fatigue'; }
+  // défi du coach relevé : il tient parole
+  if (st.chance?.earned) { status = 'titulaire'; reason = 'chance'; }
   // en formation, les éducateurs font tourner : après trois semaines sans convocation, place sur le banc
   if (status === 'non retenu' && youth && (st.seasonStats?.streakOut ?? 0) >= 3 && me >= them - 0.11) { status = 'remplaçant'; reason = 'rotation'; }
   return { status, rival: { name: rival.name, ca: rival.ca, real: rival.real, signing: !!rival.signing }, reason };
@@ -386,6 +390,7 @@ export const SELECTION_REASON = {
   concurrent: 'Ton concurrent sort d\'une très bonne semaine.',
   fatigue: 'Le coach te ménage : ta fraîcheur est trop basse.',
   rotation: 'Les éducateurs font tourner l\'effectif.',
+  chance: 'Défi relevé : le coach tient parole, tu débutes.',
 };
 
 // Renfort recruté au poste (début de saison ou mercato d'hiver), quand tu es installé
@@ -451,6 +456,7 @@ export function ensureState(st) {
   st.trophies ??= [];
   st.awards ??= [];
   st.player.intl ??= { caps: {}, goals: 0, best: null };
+  st.formativeName ??= st.history[0]?.club ?? clubById(st.clubId)?.name;
   const p = st.player;
   p.money ??= 0;
   p.loan ??= null;
@@ -503,8 +509,22 @@ function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
   });
   // à l'étranger, tant que la langue n'est pas maîtrisée, l'intégration au vestiaire est plus lente
   if (abroad(st)) {
-    const lang = p.lang?.[clubById(st.clubId).country] ?? 0;
+    const lang = langLevel(p, clubById(st.clubId).country);
     if (lang < 0.6) track(st, 'relations', () => { p.team -= 0.006 * (1 - lang); }, false);
+  }
+  // défi du coach (voie de rattrapage) : trois semaines sérieuses de suite, puis une titularisation promise
+  if (r && st.chance && !st.chance.earned) {
+    const serious = focus === st.weekly?.coachFocus && intensity !== 'légère' && offpitch !== 'sortie';
+    track(st, 'staff', () => {
+      if (serious) {
+        st.chance.done++; p.trust += 0.02; p.discipline += 0.01;
+        if (st.chance.done >= st.chance.need) { st.chance.earned = true; rep.lines.push('Défi relevé ! Le coach t\'annonce titulaire pour le prochain match.'); }
+        else rep.lines.push(`Défi du coach : ${st.chance.done}/${st.chance.need} semaines sérieuses.`);
+      } else {
+        st.chance = null; p.trust -= 0.02;
+        rep.lines.push('Défi du coach manqué : il ne t\'en reparlera pas de sitôt.');
+      }
+    });
   }
   // suivre la demande du coach : il le remarque
   if (st.weekly?.coachFocus && focus === st.weekly.coachFocus) {
@@ -617,7 +637,7 @@ function ageFactor(age) {
 // Repères : environ −1 point de niveau par saison à 30 ans, −2 à −3 à 33 ans, −4 à −5 après 35 ans.
 function ageing(p) {
   if (p.age < 30) return;
-  const rate = [0.0005, 0.0008, 0.0011, 0.0015, 0.002, 0.0026][Math.min(5, p.age - 30)];
+  const rate = [0.0005, 0.0008, 0.0011, 0.0015, 0.002, 0.0026][Math.min(5, p.age - 30)] * ageingMul(p);
   for (const k of ['pace', 'accel', 'stamina']) p.attrs[k] = clamp(p.attrs[k] - rate, 0.05, 0.97);
   p.attrs.aerial = clamp(p.attrs.aerial - rate * 0.4, 0.05, 0.97);
   if (p.role === 'GK') p.attrs.gk = clamp(p.attrs.gk - rate * 0.5, 0.05, 0.97);
@@ -911,6 +931,16 @@ EVENTS.push(
     ],
   },
   {
+    // voie de rattrapage : un joueur écarté peut regagner sa place en changeant d'attitude
+    id: 'recadrage', ctx: true, when: (st) => (st.seasonStats?.streakOut ?? 0) >= 3 && !st.chance && st.chanceSeason !== st.season && st.player.injuryWeeks === 0,
+    text: () => 'Le coach te prend à part : « Tu as des qualités, mais je ne vois pas l\'envie. Trois semaines sérieuses, et tu débutes le match suivant. »',
+    options: [
+      { label: 'Relever le défi', apply: (st) => { st.chance = { need: 3, done: 0, season: st.season }; st.chanceSeason = st.season; st.player.morale += 0.03; return 'Le marché est clair : suivre sa demande d\'entraînement, intensité normale ou intense, pas de sortie. Trois semaines de suite.'; } },
+      { label: (st) => (st.stage === 'Pro' || st.stage === 'Réserve' ? 'Demander à être prêté' : 'Demander à jouer avec la catégorie au-dessous'), apply: (st) => { st.chanceSeason = st.season; st.player.wantsLoan = st.season; st.player.trust -= 0.02; return 'Ton entourage fait passer le message. Le coach hausse les épaules.'; } },
+      { label: 'Hausser les épaules', apply: (st) => { st.chanceSeason = st.season; st.player.trust -= 0.03; st.player.discipline -= 0.01; return '« Comme tu veux. » La porte se referme un peu plus.'; } },
+    ],
+  },
+  {
     id: 'finContrat', ctx: true, when: (st) => !!st.player.contract && st.player.contract.until === st.season && st.player.contract.type !== 'aspirant' && st.week >= 8,
     text: () => 'Dernière année de contrat : le club tarde à te proposer une prolongation.',
     options: [
@@ -948,13 +978,12 @@ EVENTS.push(
 
 // Vie à l'étranger : la langue, le mal du pays, la presse locale
 const abroad = (st) => !!clubById(st.clubId)?.foreign && st.stage === 'Pro';
-const LANGUE = { Angleterre: 'l\'anglais', Espagne: 'l\'espagnol' };
 EVENTS.push(
   {
-    id: 'langue', ctx: true, when: (st) => abroad(st) && (st.player.lang?.[clubById(st.clubId).country] ?? 0) < 0.6,
-    text: (st) => `Dans le vestiaire, tout se dit en ${LANGUE[clubById(st.clubId).country]?.slice(3) ?? 'langue locale'}. Tu comprends un mot sur deux.`,
+    id: 'langue', ctx: true, when: (st) => abroad(st) && langLevel(st.player, clubById(st.clubId).country) < 0.6,
+    text: (st) => `Dans le vestiaire, tout se dit en ${countryInfo(clubById(st.clubId).country).lang}. Tu comprends un mot sur deux.`,
     options: [
-      { label: 'Prendre des cours intensifs', apply: (st) => { const c = clubById(st.clubId).country; (st.player.lang ??= {})[c] = Math.min(1, (st.player.lang[c] ?? 0) + 0.35); st.player.team += 0.05; st.player.fresh -= 0.04; return `Tu progresses vite en ${LANGUE[c]?.slice(3) ?? 'langue'}. Les blagues du vestiaire commencent à te faire rire.`; } },
+      { label: 'Prendre des cours intensifs', apply: (st) => { const c = clubById(st.clubId).country; (st.player.lang ??= {})[c] = Math.min(1, langLevel(st.player, c) + 0.35); st.player.team += 0.05; st.player.fresh -= 0.04; return `Tu progresses vite en ${countryInfo(c).lang}. Les blagues du vestiaire commencent à te faire rire.`; } },
       { label: 'Rester avec les francophones', apply: (st) => { st.player.morale += 0.03; st.player.team -= 0.03; return 'Tu te sens bien dans ta bulle, un peu à l\'écart du reste du groupe.'; } },
       { label: 'Laisser le terrain parler', apply: (st) => { st.player.trust += 0.01; st.player.team -= 0.01; return 'Le coach t\'explique les consignes par gestes. Ça passe… à peu près.'; } },
     ],
@@ -970,9 +999,9 @@ EVENTS.push(
   },
   {
     id: 'presseEtrangere', ctx: false, when: (st) => abroad(st) && (st.seasonStats?.apps ?? 0) >= 4,
-    text: (st) => `La presse ${clubById(st.clubId).country === 'Espagne' ? 'espagnole' : 'anglaise'} s'intéresse au « jeune Français » de ${clubById(st.clubId).name}.`,
+    text: (st) => `La presse ${countryInfo(clubById(st.clubId).country).press} s'intéresse au « jeune Français » de ${clubById(st.clubId).name}.`,
     options: [
-      { label: 'Répondre dans la langue du pays', apply: (st) => { const c = clubById(st.clubId).country; const lv = st.player.lang?.[c] ?? 0; st.player.fans += lv > 0.3 ? 0.06 : 0.02; return lv > 0.3 ? 'Les supporters adorent l\'effort.' : 'Quelques fautes, beaucoup de sourires : l\'effort est salué.'; } },
+      { label: 'Répondre dans la langue du pays', apply: (st) => { const c = clubById(st.clubId).country; const lv = langLevel(st.player, c); st.player.fans += lv > 0.3 ? 0.06 : 0.02; return lv > 0.3 ? 'Les supporters adorent l\'effort.' : 'Quelques fautes, beaucoup de sourires : l\'effort est salué.'; } },
       { label: 'Parler en français avec un traducteur', apply: (st) => { st.player.fans += 0.02; return 'Une interview sage, sans faux pas.'; } },
     ],
   },
@@ -1057,6 +1086,14 @@ export function applyMatchResult(st, res) {
   const oppName = nameOf(st, md.opponentId);
   if (md.selection === 'titulaire' || md.selection === 'remplaçant') s.streakOut = 0;
   const before = snap(p), caBefore = currentCA(st);
+  // la titularisation promise est jouée : à toi de la saisir
+  const promised = st.chance?.earned && md.reason === 'chance';
+  if (promised) {
+    st.chance = null;
+    const ok = res.minutes > 0 && res.rating >= 6.8;
+    track(st, 'staff', () => { p.trust += ok ? 0.08 : 0.01; p.morale += ok ? 0.04 : 0; });
+    rep.lines.push(ok ? 'Tu as saisi ta chance : le coach compte de nouveau sur toi.' : 'Ta chance est passée sans éclat. À toi de la provoquer de nouveau.');
+  }
   if (res.minutes > 0) {
     s.apps++; if (res.started) s.starts++;
     s.minutes += res.minutes; s.goals += res.goals; s.assists = (s.assists ?? 0) + (res.assists ?? 0);
@@ -1146,7 +1183,9 @@ export function finishWeek(st) {
   st.player.caHistory.push(Math.round(currentCA(st) * 1000) / 1000);
   // salaire de la semaine
   // salaire annuel réparti sur les semaines de la saison
-  if (st.player.contract) { const pay = (st.player.contract.salary * 12) / st.league.rounds.length; st.player.money += pay; st.month.earned = (st.month.earned ?? 0) + pay; }
+  // (plus les loyers de tes placements)
+  const income = (st.player.contract?.salary ?? 0) + passiveIncome(st.player);
+  if (income > 0) { const pay = (income * 12) / st.league.rounds.length; st.player.money += pay; st.month.earned = (st.month.earned ?? 0) + pay; }
   // abonnements de ton entourage : prélevés chaque semaine ; sans argent, ils s'arrêtent
   const cost = (monthlyCost(st.player) * 12) / st.league.rounds.length;
   if (cost > 0) {
@@ -1271,6 +1310,13 @@ function endSeason(st) {
   p.age++;
   const r = rngOf(st);
   p.staffBias = r.gauss(0, 0.02); // nouvelle évaluation du staff
+  // le pari de la saison sur la start-up d'un ami
+  if (p.startup?.season === st.season) {
+    const u = r.next(), back = u < 0.3 ? 3 : u < 0.6 ? 1.3 : 0;
+    p.money += p.startup.stake * back;
+    log(st, back === 3 ? `La start-up de ton ami cartonne : ta mise est triplée (${money(p.startup.stake * back)}).` : back ? `La start-up tient la route : petite plus-value (${money(p.startup.stake * back)}).` : 'La start-up de ton ami a mis la clé sous la porte : ta mise est perdue.');
+    p.startup = null;
+  }
   saveRng(st, r);
   st.offers = buildOffers(st, pos, table.length);
   st.phase = 'season_end';

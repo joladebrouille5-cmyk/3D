@@ -16,7 +16,8 @@ const SEASON_START = `${raw.season.slice(0, 4)}-07-01`;
 
 const norm = (s) => String(s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const slug = (s) => norm(s).replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const STOP = new Set(['fc', 'cf', 'afc', 'f', 'c', 'a', 'cd', 'ud', 'sd', 'rcd', 'club', 'de', 'del', 'la', 'el', 'balompie', 'futbol', 'and', 'the', 'sad', 'ca']);
+const STOP = new Set(['fc', 'cf', 'afc', 'f', 'c', 'a', 'cd', 'ud', 'sd', 'rcd', 'club', 'de', 'del', 'la', 'el', 'balompie', 'futbol', 'and', 'the', 'sad', 'ca',
+  'ac', 'as', 'ss', 'ssc', 'us', 'acf', 'bc', 'calcio', 'sc', 'sv', 'vfl', 'vfb', 'tsg', 'fsv', 'bv', 'kv', 'krc', 'kaa', 'rsc', 'kvc', 'vv', 'sk', 'fk', 'gd', 'cs', 'sl', 'royal', 'futebol', 'clube', 'do', 'da', 'voetbal']);
 const toks = (s) => norm(s).replace(/&/g, ' ').split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !STOP.has(t));
 
 // nom d'usage : libellé du tableau de la saison, sans suffixes juridiques
@@ -31,16 +32,38 @@ const CODES = {
   'real-madrid': 'RMA', barcelona: 'BAR', 'atletico-madrid': 'ATM', 'athletic-bilbao': 'ATH', 'athletic-club': 'ATH', 'real-sociedad': 'RSO', villarreal: 'VIL',
   'real-betis': 'BET', sevilla: 'SEV', valencia: 'VAL', 'celta-vigo': 'CEL', osasuna: 'OSA', getafe: 'GET', 'rayo-vallecano': 'RAY', espanyol: 'ESP',
   alaves: 'ALA', elche: 'ELC', levante: 'LEV', 'deportivo-la-coruna': 'DEP', malaga: 'MAL', 'racing-santander': 'RAC', girona: 'GIR', mallorca: 'MLL', 'las-palmas': 'LPA',
+  'real-oviedo': 'OVI', 'real-zaragoza': 'ZAR', 'sporting-gijon': 'SPG', 'real-valladolid': 'VLL',
+  'inter-milan': 'INT', 'ac-milan': 'MIL', juventus: 'JUV', napoli: 'NAP', roma: 'ROM', lazio: 'LAZ', atalanta: 'ATA', 'hellas-verona': 'VER', 'juve-stabia': 'JST', 'virtus-entella': 'ENT',
+  'bayern-munich': 'BAY', 'borussia-dortmund': 'BVB', 'bayer-leverkusen': 'B04', 'rb-leipzig': 'RBL', 'borussia-monchengladbach': 'BMG', 'eintracht-frankfurt': 'SGE', 'vfb-stuttgart': 'VFB',
+  'sc-freiburg': 'SCF', 'tsg-hoffenheim': 'TSG', 'union-berlin': 'FCU', 'werder-bremen': 'SVW', 'mainz-05': 'M05', 'fc-augsburg': 'FCA', 'hamburger-sv': 'HSV', 'schalke-04': 'S04',
+  '1-fc-koln': 'KOE', 'sv-elversberg': 'SVE', 'sc-paderborn': 'SCP', 'hertha-bsc': 'BSC', 'vfl-wolfsburg': 'WOB', 'fc-st-pauli': 'STP', 'vfl-bochum': 'BOC', '1-fc-nurnberg': 'FCN',
+  '1-fc-kaiserslautern': 'FCK', '1-fc-heidenheim': 'HDH', '1-fc-magdeburg': 'FCM', 'darmstadt-98': 'D98', 'greuther-furth': 'SGF', 'karlsruher-sc': 'KSC', 'dynamo-dresden': 'SGD',
+  'energie-cottbus': 'FCE', 'arminia-bielefeld': 'DSC', 'eintracht-braunschweig': 'EBS', 'hannover-96': 'H96', 'vfl-osnabruck': 'OSN', 'holstein-kiel': 'KSV',
+  benfica: 'SLB', porto: 'FCP', 'sporting-cp': 'SCP', braga: 'SCB', 'vitoria-de-guimaraes': 'VSC', 'academico-de-viseu': 'VIS', 'estoril-praia': 'EST', 'estrela-da-amadora': 'EAM',
+  'gil-vicente': 'GIL', 'rio-ave': 'RIO', 'casa-pia': 'CPI', 'santa-clara': 'SCL',
+  psv: 'PSV', ajax: 'AJA', feyenoord: 'FEY', az: 'AZ', 'n-e-c': 'NEC', 'ado-den-haag': 'ADO', 'go-ahead-eagles': 'GAE', 'fortuna-sittard': 'FOR', 'sparta-rotterdam': 'SPA', 'pec-zwolle': 'PEC', 'willem-ii': 'WIL',
+  'club-brugge': 'BRU', 'cercle-brugge': 'CER', 'union-sg': 'USG', anderlecht: 'AND', 'standard-liege': 'STA', 'oh-leuven': 'OHL', 'lommel-sk': 'LOM', 'la-louviere': 'RAL', 'sint-truiden': 'STV', 'zulte-waregem': 'ZWA', genk: 'KRC', gent: 'KAA',
 };
+// noms d'usage en français quand le libellé du tableau est trop court
+const NAME_FIX = { psv: 'PSV Eindhoven', az: 'AZ Alkmaar', 'n-e-c': 'NEC Nimègue', 'union-sg': 'Union Saint-Gilloise', 'oh-leuven': 'OH Louvain', 'standard-liege': 'Standard de Liège' };
 // Hiérarchie interne (écart à la force moyenne du championnat). Valeurs de jeu, indicatives.
 const PRESTIGE = {
   'manchester-city': 0.06, arsenal: 0.06, liverpool: 0.06, chelsea: 0.045, 'manchester-united': 0.035, 'tottenham-hotspur': 0.03, 'newcastle-united': 0.03,
   'aston-villa': 0.025, 'brighton-and-hove-albion': 0.015, 'nottingham-forest': 0.01, 'crystal-palace': 0.008, brentford: 0.004, 'west-ham-united': 0.005,
   'real-madrid': 0.08, barcelona: 0.08, 'atletico-madrid': 0.05, 'athletic-bilbao': 0.03, 'athletic-club': 0.03, villarreal: 0.025, 'real-sociedad': 0.025,
   'real-betis': 0.02, sevilla: 0.015, valencia: 0.01, 'celta-vigo': 0.008, girona: 0.01,
+  'inter-milan': 0.06, napoli: 0.045, juventus: 0.045, 'ac-milan': 0.045, atalanta: 0.035, roma: 0.035, como: 0.025, lazio: 0.02, bologna: 0.02, fiorentina: 0.015, torino: 0.005,
+  palermo: 0.012, 'hellas-verona': 0.012, sampdoria: 0.01, empoli: 0.01, cremonese: 0.008, pisa: 0.006,
+  'bayern-munich': 0.085, 'borussia-dortmund': 0.05, 'bayer-leverkusen': 0.045, 'rb-leipzig': 0.04, 'vfb-stuttgart': 0.03, 'eintracht-frankfurt': 0.03, 'sc-freiburg': 0.015,
+  'tsg-hoffenheim': 0.015, 'borussia-monchengladbach': 0.008, 'mainz-05': 0.008, 'werder-bremen': 0.005, 'union-berlin': 0.004,
+  'vfl-wolfsburg': 0.02, 'fc-st-pauli': 0.01, 'hertha-bsc': 0.01, 'hannover-96': 0.008, '1-fc-heidenheim': 0.008, '1-fc-kaiserslautern': 0.006, 'vfl-bochum': 0.006, 'holstein-kiel': 0.004,
+  benfica: 0.055, porto: 0.055, 'sporting-cp': 0.055, braga: 0.03, 'vitoria-de-guimaraes': 0.012, famalicao: 0.006, 'santa-clara': 0.004,
+  psv: 0.055, feyenoord: 0.05, ajax: 0.05, az: 0.03, twente: 0.02, utrecht: 0.015, 'go-ahead-eagles': 0.008, heerenveen: 0.004,
+  'club-brugge': 0.055, 'union-sg': 0.045, anderlecht: 0.035, genk: 0.03, antwerp: 0.025, gent: 0.02, 'standard-liege': 0.012, mechelen: 0.004,
 };
-const LEAGUE_BASE = { eng1: 0.675, eng2: 0.6, esp1: 0.655, esp2: 0.575 };
-const COUNTRY_CODE = { Angleterre: 'eng', Espagne: 'esp' };
+// Force de base de chaque championnat (Ligue 1 : 0,63 ; PSG ≈ 0,695). Valeurs de jeu, indicatives.
+const LEAGUE_BASE = { eng1: 0.675, eng2: 0.6, esp1: 0.655, esp2: 0.575, ita1: 0.645, ita2: 0.57, ger1: 0.65, ger2: 0.585, por1: 0.6, ned1: 0.595, bel1: 0.59 };
+const COUNTRY_CODE = { Angleterre: 'eng', Espagne: 'esp', Italie: 'ita', Allemagne: 'ger', Portugal: 'por', 'Pays-Bas': 'ned', Belgique: 'bel' };
 
 // Poste précis (Wikidata) → rôle du jeu ; sinon poste générique du tableau d'effectif
 const ROLE_BY_LABEL = [
@@ -126,9 +149,11 @@ for (const lg of raw.leagues) {
       crest = `assets/crests-foreign/${id}.png`;
     }
     const strength = Math.round((LEAGUE_BASE[lg.id] + (PRESTIGE[key] ?? (hashNum(id) - 0.5) * 0.016)) * 1000) / 1000;
-    const words = name.split(/\s+/);
-    const code = CODES[key] ?? (words.length > 1 && words[0].length <= 3 ? words[1] : words[0]).normalize('NFKD').replace(/[̀-ͯ]/g, '').slice(0, 3).toUpperCase();
-    clubs.push({ id, name, short: code, country: lg.country, league: lg.id, tier: lg.level, wiki: c.title, colors: colorsOf(c.kit), crest, strength, players });
+    // code : premier mot significatif du nom (« 1. FC Köln » → KOL, « SS Lazio » → LAZ)
+    const words = name.split(/\s+/).filter((w) => /^\p{L}/u.test(w));
+    const word = words.find((w) => w.length > 3 && !STOP.has(norm(w))) ?? words.find((w) => !STOP.has(norm(w))) ?? words[0] ?? name;
+    const code = CODES[key] ?? word.normalize('NFKD').replace(/[̀-ͯ]/g, '').slice(0, 3).toUpperCase();
+    clubs.push({ id, name: NAME_FIX[key] ?? name, short: code, country: lg.country, league: lg.id, tier: lg.level, wiki: c.title, colors: colorsOf(c.kit), crest, strength, players });
     ids.push(id);
   }
   leagues.push({ id: lg.id, name: lg.name, country: lg.country, tier: lg.level, clubs: ids });
@@ -141,3 +166,9 @@ export const FOREIGN = ${JSON.stringify({ season: raw.season, fetchedAt: raw.fet
 writeFileSync(join(root, 'src/data/foreign.js'), js);
 console.log(`${leagues.length} championnats, ${clubs.length} clubs, ${clubs.filter((c) => c.crest).length} logos, ${kept} joueurs majeurs gardés, ${minors} mineurs et ${unknown} sans date de naissance écartés.`);
 for (const c of clubs) if (c.players.length < 16) console.log(`  effectif court : ${c.name} (${c.players.length})`);
+for (const l of leagues) {
+  const cl = clubs.filter((c) => c.league === l.id);
+  const dup = cl.filter((c, i) => cl.findIndex((d) => d.short === c.short) !== i).map((c) => `${c.name} (${c.short})`);
+  if (dup.length) console.log(`  codes en double (${l.name}) : ${dup.join(', ')}`);
+  if (l.tier === 1) { const miss = cl.filter((c) => !c.crest).map((c) => c.name); if (miss.length) console.log(`  sans logo (${l.name}) : ${miss.join(', ')}`); }
+}

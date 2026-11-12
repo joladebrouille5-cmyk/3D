@@ -1,6 +1,7 @@
 // Ce qui change d'une semaine à l'autre : la demande du coach, une proposition hors du terrain
 // qui n'existe que cette semaine, et l'atelier (geste à réussir) qui module la séance.
 import { clamp } from '../engine/geom.js';
+import { langLevel } from './countries.js';
 
 // Propositions de la semaine (une seule à la fois, jamais deux fois de suite)
 export const SPECIALS = [
@@ -23,7 +24,7 @@ export const SPECIALS = [
   { id: 'soutien', icon: 'ecole', label: 'Soutien scolaire au centre', desc: 'Scolarité en nette hausse.', youth: true,
     apply: (p) => { p.school += 0.08; p.discipline += 0.01; return 'Deux heures de soutien : le contrôle de vendredi ne te fait plus peur.'; } },
   { id: 'langue', icon: 'chat', label: 'Cours de langue', desc: 'Tu comprends mieux le vestiaire et le coach.', abroad: true,
-    apply: (p, country) => { (p.lang ??= {})[country] = Math.min(1, (p.lang[country] ?? 0) + 0.15); p.team += 0.03; p.trust += 0.01; return 'Deux heures de cours : tu suis enfin les consignes du coach sans traducteur.'; } },
+    apply: (p, country) => { (p.lang ??= {})[country] = Math.min(1, langLevel(p, country) + 0.15); p.team += 0.03; p.trust += 0.01; return 'Deux heures de cours : tu suis enfin les consignes du coach sans traducteur.'; } },
   { id: 'poste', icon: 'target', label: 'Atelier avec un entraîneur de poste', desc: 'Progression des qualités de ton poste.', progress: 0.3,
     apply: () => 'Un spécialiste de ton poste corrige tes appuis et ton orientation.' },
 ];
@@ -52,7 +53,7 @@ export function pickSpecial(st, r, abroadCountry = null) {
   const youth = st.stage === 'U17' || st.stage === 'U19';
   const recent = st.recentSpecials ?? [];
   // à l'étranger, le cours de langue revient souvent tant que la langue n'est pas maîtrisée
-  if (abroadCountry && (st.player.lang?.[abroadCountry] ?? 0) < 0.8 && !recent.slice(-2).includes('langue') && r.chance(0.5)) {
+  if (abroadCountry && langLevel(st.player, abroadCountry) < 0.8 && !recent.slice(-2).includes('langue') && r.chance(0.5)) {
     st.recentSpecials = [...recent, 'langue'].slice(-4);
     return 'langue';
   }

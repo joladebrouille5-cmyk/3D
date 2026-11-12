@@ -1005,12 +1005,13 @@ details.report:not([open]) { padding: 6px 12px; margin-bottom: 8px; }
 }
 
 /* ------------------------------------------------------------ ton argent */
-.money .mo-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 6px 0 12px; }
-.money .mo-kpis > div { padding: 10px 12px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
-.money .mo-kpis span { font-size: 0.78em; color: var(--muted); font-weight: 600; }
-.money .mo-kpis b { font: 800 1.6em/1 var(--f-display); color: var(--chalk); }
-.money .mo-kpis b small { font: 500 0.5em var(--f-text); color: var(--muted); margin-left: 2px; }
-.money .mo-kpis b.up { color: var(--ok); } .money .mo-kpis b.down { color: var(--bad); }
+.mo-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 6px 0 12px; }
+.mo-kpis > div { padding: 10px 12px; border-radius: var(--r-md); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.mo-kpis span { font-size: 0.78em; color: var(--muted); font-weight: 600; }
+.mo-kpis b { font: 800 1.6em/1 var(--f-display); color: var(--chalk); }
+.mo-kpis b small { font: 500 0.5em var(--f-text); color: var(--muted); margin-left: 2px; }
+.mo-kpis b.up { color: var(--ok); } .mo-kpis b.down { color: var(--bad); }
+.retired .mo-kpis { grid-template-columns: repeat(3, 1fr); max-width: 560px; }
 .money .mo-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
 .mo-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .mo-list li { display: grid; grid-template-columns: 36px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 9px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
@@ -1021,7 +1022,7 @@ details.report:not([open]) { padding: 6px 12px; margin-bottom: 8px; }
 .mo-list .mt small { font-size: 0.76em; color: var(--muted); }
 .mo-list .mp { font: 800 1.05em var(--f-display); white-space: nowrap; }
 .mo-list .mp small { font: 500 0.7em var(--f-text); color: var(--muted); }
-@media (max-width: 700px) { .money .mo-cols { grid-template-columns: 1fr; } .money .mo-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .money .mo-cols { grid-template-columns: 1fr; } .mo-kpis { grid-template-columns: repeat(2, 1fr); } }
 @media (max-height: 520px) {
   .money .mo-kpis { gap: 6px; margin: 2px 0 8px; } .money .mo-kpis > div { padding: 5px 8px; } .money .mo-kpis b { font-size: 1.25em; }
   .mo-list li { padding: 4px 7px; gap: 7px; grid-template-columns: 30px 1fr auto auto; } .mo-list .mi { width: 30px; height: 30px; }

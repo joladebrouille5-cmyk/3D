@@ -55,3 +55,41 @@ test('achats : une fois, par saison, ou refusés faute d\'argent', () => {
   assert.ok(Math.abs(st.player.money - (100 - 2 - 20)) < 1e-9);
   assert.throws(() => C.buy(st, 'terrain'));
 });
+
+test('fin de carrière : staff privé, maison, loyers, pari et héritage donnent un sens aux grosses sommes', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'riche' });
+  // en formation, ni staff privé ni gros achats
+  assert.ok(!C.servicesFor(st).some(([id]) => id === 'staff'));
+  assert.ok(!C.purchasesFor(st).some(([id]) => id === 'immo'));
+  st.stage = 'Pro'; st.player.money = 40000;
+  assert.ok(C.servicesFor(st).some(([id]) => id === 'staff'));
+  for (const id of ['maison', 'immo', 'startup', 'fondation', 'academie', 'actionnaire']) assert.ok(C.canBuy(st, id).ok, id);
+  // quatre immeubles au plus, chacun rapporte un loyer mensuel
+  for (let i = 0; i < 4; i++) C.buy(st, 'immo');
+  assert.equal(C.canBuy(st, 'immo').ok, false);
+  assert.equal(C.passiveIncome(st.player), 48);
+  for (const id of ['fondation', 'actionnaire']) C.buy(st, id);
+  assert.deepEqual(st.legacy.map((l) => l.id), ['fondation', 'actionnaire']);
+  assert.match(st.legacy[1].name, /FC Nantes/);
+  // le déclin physique est ralenti (jamais annulé)
+  const decline = (setup) => {
+    const s2 = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'vieux' });
+    s2.player.age = 34; setup(s2.player);
+    const pace0 = s2.player.attrs.pace;
+    for (let i = 0; i < 10; i++) week(s2);
+    return pace0 - s2.player.attrs.pace;
+  };
+  const base = decline(() => {}), cared = decline((p) => { p.services = { staff: true }; p.perks = { recovery: true }; p.money = 1e6; });
+  assert.ok(cared > 0 && cared < base * 0.75, `déclin ${cared.toFixed(4)} contre ${base.toFixed(4)}`);
+});
+
+test('le pari sur la start-up se règle en fin de saison', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'ST', clubId: 'fc-nantes', seed: 'pari' });
+  st.stage = 'Pro'; st.player.money = 2000;
+  C.buy(st, 'startup');
+  assert.equal(C.canBuy(st, 'startup').ok, false, 'une fois par saison');
+  let g = 0;
+  while (st.phase !== 'season_end' && g++ < 400) week(st);
+  assert.equal(st.player.startup, null);
+  assert.ok(st.journal.some((j) => /start-up/.test(j.text ?? j)), 'verdict dans le journal');
+});

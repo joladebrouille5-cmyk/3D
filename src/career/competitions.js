@@ -6,6 +6,7 @@
 //   championnat de 26 ou de 34 journées.
 
 import { registerClub, clubById, CLUBS, clubLevel, academyQuality, SENIOR_CA, FOREIGN_CLUBS, divisionCA } from './clubs.js';
+import { FOREIGN_CUPS, EURO_SPOTS, countryInfo } from './countries.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
 import { registerColors } from '../ui/crest.js';
 
@@ -47,22 +48,23 @@ const EURO = [
   ['celtic', 'Celtic Glasgow', 'en', 0.635, '#018749', '#ffffff', 'hoops'], ['dinamo-zagreb', 'Dinamo Zagreb', 'hr', 0.62, '#0a3d91', '#ffffff', 'plain'],
   ['fc-copenhague', 'FC Copenhague', 'nordic', 0.625, '#ffffff', '#0d1f63', 'plain'], ['bodo-glimt', 'Bodø/Glimt', 'nordic', 0.62, '#ffdd00', '#000000', 'plain'],
 ];
+const LANG_COUNTRY = { en: 'Angleterre', es: 'Espagne', it: 'Italie', de: 'Allemagne', pt: 'Portugal', nl: 'Pays-Bas', tr: 'Turquie', hr: 'Croatie' };
+const EURO_NATION = { 'club-bruges': 'Belgique', celtic: 'Écosse', 'fc-copenhague': 'Danemark', 'bodo-glimt': 'Norvège' };
 const FICTIONAL_EURO = EURO.map(([id, name, lang, strength, p, s, pat]) => {
   const cid = `eu-${id}`;
   registerColors(cid, { p, s, pat });
   // échelle commune avec la Ligue 1 (PSG ≈ 0,695) : les cadors européens restent devant, sans écraser
-  return registerClub({ id: cid, name, strength: 0.69 + (strength - 0.69) * 0.55, names: NAMES[lang], senior: { level: 1, competition: 'Europe', group: '—', players: [] }, country: lang });
+  return registerClub({ id: cid, name, strength: 0.69 + (strength - 0.69) * 0.55, names: NAMES[lang], senior: { level: 1, competition: 'Europe', group: '—', players: [] }, country: lang, nation: EURO_NATION[id] ?? LANG_COUNTRY[lang] ?? lang });
 });
-// Les pays dont les vrais effectifs sont au catalogue (Angleterre, Espagne) remplacent leurs clubs fictifs :
-// en coupe d'Europe, on affronte le vrai Real Madrid ou le vrai Manchester City, avec leurs joueurs.
+// Les pays dont les vrais effectifs sont au catalogue remplacent leurs clubs fictifs :
+// en coupe d'Europe, on affronte le vrai Real Madrid ou le vrai Bayern, avec leurs joueurs.
 const REAL_COUNTRIES = new Set(FOREIGN_CLUBS.map((c) => c.country));
-const LANG_COUNTRY = { en: 'Angleterre', es: 'Espagne' };
 const topOf = (country, n) => FOREIGN_CLUBS.filter((c) => c.country === country && c.tier === 1).sort((a, b) => b.strength - a.strength).slice(0, n);
 export const EURO_CLUBS = [
-  ...FICTIONAL_EURO.filter((c) => !(REAL_COUNTRIES.has(LANG_COUNTRY[c.country]) && c.id !== 'eu-celtic')),
-  ...topOf('Angleterre', 6), ...topOf('Espagne', 5),
+  ...FICTIONAL_EURO.filter((c) => !REAL_COUNTRIES.has(c.nation)),
+  ...Object.entries(EURO_SPOTS).flatMap(([country, n]) => topOf(country, n)),
 ];
-const countryOfClub = (c) => (c?.foreign ? c.country : c?.synthetic ? LANG_COUNTRY[c.country] ?? c.country : 'France');
+const countryOfClub = (c) => (c?.foreign ? c.country : c?.synthetic ? c.nation ?? c.country : 'France');
 
 // ------------------------------------------------------------------ sélections nationales (effectifs fictifs)
 // [id, nom, langue, écart de niveau, couleur 1, couleur 2]
@@ -110,8 +112,7 @@ export const WINTER_WINDOW = 0.5;
 const CUP_FORMATS = {
   gambardella: { name: 'Coupe Gambardella', short: 'Gambardella', rounds: ['32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.36, 0.48, 0.6, 0.74, 0.88] },
   cdf: { name: 'Coupe de France', short: 'Coupe de France', rounds: ['7e tour', '8e tour', '32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.14, 0.22, 0.32, 0.42, 0.52, 0.62, 0.76, 0.9] },
-  fac: { name: 'FA Cup', short: 'FA Cup', rounds: ['3e tour', '4e tour', '5e tour', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.46, 0.55, 0.64, 0.73, 0.82, 0.94] },
-  cdr: { name: 'Coupe du Roi', short: 'Coupe du Roi', rounds: ['1er tour', '2e tour', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.34, 0.46, 0.55, 0.64, 0.78, 0.92] },
+  ...FOREIGN_CUPS,
   ucl: { name: 'Ligue des champions', short: 'Ligue des champions', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
   uel: { name: 'Ligue Europa', short: 'Ligue Europa', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
 };
@@ -130,7 +131,7 @@ export function buildCups(st, len) {
   if (st.stage === 'U19') cups.push(mk('gambardella'));
   if (st.stage === 'Pro' && club.senior) {
     // coupe nationale du pays du club
-    if (club.foreign) cups.push(mk(club.country === 'Espagne' ? 'cdr' : 'fac'));
+    if (club.foreign) { const cup = countryInfo(club.country).cup; if (cup) cups.push(mk(cup)); }
     else cups.push(mk('cdf', clubLevel(club) <= 2 ? 2 : 0));
     if (clubLevel(club) === 1 && !club.synthetic) {
       const prev = st.history.at(-1);
@@ -160,8 +161,8 @@ export function drawOpponent(st, cup, r) {
     const w = pool.map((c) => { const lv = clubLevel(c); return k < 0.3 ? (lv >= 4 ? 3 : lv === 3 ? 1 : 0.15) : Math.pow(7 - lv, 1 + 3 * k); });
     return pool[r.weighted(w)].id;
   }
-  if (cup.id === 'fac' || cup.id === 'cdr') {
-    const country = cup.id === 'fac' ? 'Angleterre' : 'Espagne';
+  if (FOREIGN_CUPS[cup.id]) {
+    const country = FOREIGN_CUPS[cup.id].country;
     pool = FOREIGN_CLUBS.filter((c) => c.country === country && c.id !== st.clubId && !used.has(c.id));
     const w = pool.map((c) => (k < 0.35 ? (c.tier === 2 ? 3 : 1) : Math.exp((c.strength - 0.6) * (10 + 25 * k))));
     return pool[r.weighted(w)].id;

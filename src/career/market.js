@@ -4,6 +4,7 @@
 
 import { clubById, CLUBS, clubLevel, SENIOR_CA, academyQuality, PRO_CLUBS, teamCA, divisionCA } from './clubs.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
+import { LEAGUE_SALARY } from './countries.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -13,8 +14,8 @@ export function salaryFor(club, stage, ca, age) {
   if (stage === 'U19') return age >= 17 ? 1.0 : 0.5;
   if (stage === 'Réserve') return Math.round((1.4 + 3 * Math.max(0, ca - 0.5)) * 10) / 10;
   if (club.foreign) {
-    // ordres de grandeur : Premier League ≈ 2× la Ligue 1, LaLiga un peu plus que la Ligue 1, deuxièmes divisions en dessous
-    const base = { 'eng1': 85, 'eng2': 16, 'esp1': 50, 'esp2': 8 }[club.leagueId] ?? 20;
+    // ordres de grandeur (countries.js) : Premier League ≈ 2× la Ligue 1, Bundesliga et LaLiga un peu au-dessus
+    const base = LEAGUE_SALARY[club.leagueId] ?? 20;
     const prestige = 1 + 5 * Math.max(0, club.strength - divisionCA(club));
     return Math.round(clamp(base * prestige * Math.exp(6 * (ca - divisionCA(club))), 2, 2500) * 10) / 10;
   }

@@ -80,3 +80,31 @@ test('un match joué fait progresser, davantage avec une bonne note et de bonnes
   assert.ok(great.ca > avg.ca, 'un grand match fait progresser davantage');
   assert.ok(great.dec > avg.dec, 'de bonnes décisions affinent la lecture du jeu');
 });
+
+test('voie de rattrapage : le défi du coach relevé donne une titularisation, manqué il s\'arrête', () => {
+  const st = C.createCareer({ firstName: 'A', lastName: 'B', role: 'CM', clubId: 'fc-nantes', seed: 'defi' });
+  const serious = () => ({ focus: st.weekly?.coachFocus ?? 'technique', intensity: 'normale', offpitch: 'repos' });
+  const finish = () => {
+    while (st.phase !== 'week' && st.phase !== 'season_end') {
+      if (st.phase === 'event') C.resolveEvent(st, 0);
+      else if (st.phase === 'month_review') C.closeMonthReview(st);
+      else C.applyMatchResult(st, st.matchday.bye ? {} : C.resultWithoutUser(st));
+    }
+  };
+  st.chance = { need: 3, done: 0, season: st.season }; st.chanceSeason = st.season;
+  st.player.trust = 0.1; st.player.attrs = Object.fromEntries(Object.keys(st.player.attrs).map((k) => [k, 0.2]));
+  for (let i = 0; i < 3 && !st.chance?.earned; i++) {
+    st.player.fresh = 0.8; st.player.injuryWeeks = 0;
+    C.submitWeek(st, serious());
+    if (i < 2) { assert.equal(st.chance?.done, i + 1); finish(); }
+  }
+  assert.ok(st.chance?.earned, 'défi relevé');
+  assert.equal(C.selectionForecast(st).status, 'titulaire', 'le coach tient parole malgré un niveau très bas');
+  finish();
+  assert.equal(st.chance, null, 'la titularisation promise est consommée');
+  // un défi manqué s'arrête tout de suite
+  st.chance = { need: 3, done: 1, season: st.season };
+  st.player.injuryWeeks = 0;
+  C.submitWeek(st, { focus: serious().focus, intensity: 'normale', offpitch: 'sortie' });
+  assert.equal(st.chance, null);
+});

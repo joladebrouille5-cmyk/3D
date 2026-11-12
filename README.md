@@ -261,6 +261,13 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
 - **Achats** : cours particuliers (scolarité, une fois par saison), aider ta famille (moral, une fois par saison),
   appartement près du centre (fraîcheur chaque semaine), voiture de sport (moral et supporters, mais discipline et
   vestiaire en baisse), rénovation du terrain de ton club d'enfance (supporters, vestiaire).
+- **Les grosses sommes d'un professionnel** (proposées quand elles deviennent envisageables) : staff privé à
+  domicile (40 k€/mois : moins de blessures, fraîcheur, déclin physique ralenti de 35 % après 30 ans), maison
+  avec espace de récupération (1,5 M€), immeubles de rapport (3 M€ chacun, 12 k€ de loyers par mois, pendant et
+  après la carrière, quatre au plus), pari sur la start-up d'un ami (1 M€ par saison : triplé, petite plus-value
+  ou perdu), fondation (5 M€), académie à ton nom (8 M€), entrée au capital de ton club formateur (20 M€).
+  Fondation, académie et club formateur forment ton héritage, affiché en fin de carrière avec ton patrimoine
+  et ta reconversion.
 - Les effets apparaissent dans le bilan du mois (« Ton entourage et tes achats ») ; données dans `src/career/spending.js`.
 
 ## La semaine
@@ -270,6 +277,10 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
 - **Proposition de la semaine** : une occasion hors du terrain qui ne revient pas la semaine suivante
   (ancien pro, kiné, match des pros en tribune, anniversaire d'un coéquipier, interview, analyste, yoga,
   école de foot, soutien scolaire, entraîneur de poste) ; `src/career/weekly.js`.
+- **Défi du coach** (voie de rattrapage) : après trois matchs sans être retenu, le coach peut proposer un
+  marché : trois semaines sérieuses de suite (sa demande d'entraînement, intensité normale ou intense, pas de
+  sortie) et tu débutes le match suivant. Une semaine manquée met fin au défi ; une bonne note ensuite relance
+  sa confiance.
 - **Atelier** : à la validation, un geste à réussir (arrêter le curseur dans la zone). La zone est d'autant
   plus large que l'attribut travaillé est bon, le curseur d'autant plus rapide que l'intensité est haute.
   Parfait : séance ×1,25 ; réussi : ×1,08 ; raté : ×0,9. On peut passer ou désactiver l'atelier.
@@ -304,25 +315,31 @@ Limite assumée : ce n'est pas du photoréalisme (type jeu console). Il faudrait
 animations capturées sur de vrais joueurs, des dizaines de mégaoctets de données et un moteur dédié.
 La recette `npm run ui-check-3d` vérifie la bascule 2D/3D et l'absence d'erreur.
 
-## Championnats étrangers : Angleterre et Espagne
+## Championnats étrangers : sept pays, onze championnats
 
-Premier League, Championship, LaLiga et LaLiga 2 (86 clubs, saison 2026-27), avec les vrais effectifs
-professionnels. La carrière commence toujours dans un centre de formation français ; l'étranger s'ouvre
-ensuite par les offres de fin de saison, le mercato d'hiver et les prêts.
+Angleterre (Premier League, Championship), Espagne (LaLiga, LaLiga 2), Italie (Serie A, Serie B), Allemagne
+(Bundesliga, 2. Bundesliga), et la première division du Portugal (Liga Portugal), des Pays-Bas (Eredivisie) et de
+la Belgique (Pro League) : 216 clubs, saison 2026-27, avec les vrais effectifs professionnels. La carrière commence
+toujours dans un centre de formation français ; l'étranger s'ouvre ensuite par les offres de fin de saison, le
+mercato d'hiver et les prêts.
 
 - **Effectifs** : collectés par la GitHub Action « Effectifs étrangers » (`.github/workflows/foreign-squads.yml`,
   `tools/fetch-foreign.mjs`) sur Wikipédia (clubs de la saison, effectif, couleurs du maillot) et Wikidata
   (date de naissance, poste précis), une requête par seconde. Usage personnel.
 - **Mineurs** : seuls les joueurs majeurs au 1er juillet de la saison sont gardés ; un joueur sans date de
-  naissance connue est écarté (21 mineurs et 74 joueurs sans date écartés, 2 221 gardés).
-- **Notes** : estimations du jeu à partir de la force du club, jamais des valeurs réelles.
-- **Logos** : vrais logos pour les 40 clubs de Premier League et de LaLiga, et 11 anciens pensionnaires
-  (Wolves, West Ham, Girona…) ; écussons générés aux couleurs du club pour les autres.
-- **Jeu** : championnat de 38 (Premier League, LaLiga), 46 (Championship) ou 42 journées (LaLiga 2) ;
-  FA Cup ou Coupe du Roi ; qualification européenne selon le rang du club ; salaires à l'échelle du
-  championnat ; en coupe d'Europe, les clubs anglais et espagnols sont les vrais (Real Madrid, Manchester City…).
-- **Vie à l'étranger** : la langue (cours, intégration plus lente au vestiaire tant qu'elle n'est pas maîtrisée),
-  le mal du pays, la presse locale.
+  naissance connue est écarté (56 mineurs et 715 joueurs sans date écartés, 5 271 gardés).
+- **Notes** : estimations du jeu à partir de la force du club, jamais des valeurs réelles. Les cinq grands
+  championnats sont au-dessus de la Ligue 1, le Portugal, les Pays-Bas et la Belgique en dessous (Benfica,
+  PSV ou Bruges restent derrière le PSG).
+- **Logos** : vrais logos pour toutes les premières divisions et les anciens pensionnaires (Wolves, Hellas
+  Vérone, Wolfsburg…), 152 en tout ; écussons générés aux couleurs du club pour les autres.
+- **Jeu** : championnat à la taille réelle (18 à 24 clubs) ; coupe nationale (FA Cup, Coupe du Roi, Coupe
+  d'Italie, Coupe d'Allemagne, Coupe du Portugal, Coupe des Pays-Bas, Coupe de Belgique) ; qualification
+  européenne selon le rang du club ; salaires à l'échelle du championnat (`src/career/countries.js`) ; en coupe
+  d'Europe, les clubs des sept pays sont les vrais (Real Madrid, Bayern, Inter, Benfica, PSV, Bruges…), seuls
+  Galatasaray, le Celtic, le Dinamo Zagreb, Copenhague et Bodø/Glimt restent fictifs.
+- **Vie à l'étranger** : la langue (cours, intégration plus lente au vestiaire tant qu'elle n'est pas maîtrisée ;
+  l'anglais aide aux Pays-Bas, le français suffit souvent en Belgique), le mal du pays, la presse locale.
 - **Mettre à jour** : relancer l'action (onglet Actions du dépôt), puis
   `node tools/build-foreign.mjs <dossier des logos>` qui écrit `src/data/foreign.js` et `assets/crests-foreign/`.
 

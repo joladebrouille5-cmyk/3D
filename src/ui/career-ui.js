@@ -554,6 +554,7 @@ function weekCard(st) {
     ${p.injuryWeeks ? `<p>${icon('injury', 16)} Programme imposé : soins et réathlétisation.</p>` : `
     <h3>Entraînement</h3>
     ${wk?.coachFocus ? `<p class="coach-ask">${icon('whistle', 16)}<span><b>Le coach :</b> « ${esc(C.FOCUS[wk.coachFocus]?.label ?? '')} » cette semaine. ${esc(wk.why)}</span></p>` : ''}
+    ${st.chance && !st.chance.earned ? `<p class="coach-ask challenge">${icon('target', 16)}<span><b>Défi du coach : ${st.chance.done}/${st.chance.need}.</b> Suis sa demande, intensité normale ou intense, pas de sortie.</span></p>` : ''}
     <div class="choice-grid" id="w-focus">${focusList.map(([k, v]) => `<button data-focus="${k}" class="choice ${c.focus === k ? 'active' : ''} ${wk?.coachFocus === k ? 'asked' : ''}">${wk?.coachFocus === k ? '<span class="ask-badge">Demandé</span>' : ''}<span class="ci">${icon(FOCUS_ICON[k], 24)}</span><span class="cl">${esc(v.label)}</span><span class="cs2">${v.attrs.length ? esc(v.attrs.map((a) => ATTR_LABELS[a]).join(', ')) : 'Récupération active'}</span></button>`).join('')}</div>
     <h3>Intensité</h3>
     <div class="seg wide" role="group" aria-label="Intensité">${Object.keys(C.INTENSITY).map((k) => `<button data-int="${k}" class="${c.intensity === k ? 'active' : ''}" title="${esc(INT_DESC[k])}">${esc(k)}</button>`).join('')}</div>
@@ -840,20 +841,22 @@ function renderMoney(back) {
   const p = st.player;
   const club = clubById(st.clubId);
   const len = st.league.rounds.length;
-  const income = p.contract?.salary ?? 0;
+  const rent = C.passiveIncome(p);
+  const income = (p.contract?.salary ?? 0) + rent;
   const cost = C.monthlyCost(p);
-  const services = Object.entries(C.SERVICES).map(([id, sv]) => {
+  const services = C.servicesFor(st).map(([id, sv]) => {
     const on = !!p.services?.[id];
     return `<li class="${on ? 'on' : ''}"><span class="mi">${icon(sv.icon, 22)}</span><span class="mt"><b>${esc(sv.label)}</b><small>${esc(sv.desc)}</small></span><span class="mp">${C.money(sv.monthly)}<small>/mois</small></span><button data-svc="${id}" class="${on ? 'ghost' : 'primary'} small">${on ? 'Arrêter' : 'Engager'}</button></li>`;
   }).join('');
-  const purchases = Object.entries(C.PURCHASES).filter(([, it]) => !it.when || it.when(st)).map(([id, it]) => {
+  const purchases = C.purchasesFor(st).map(([id, it]) => {
     const c = C.canBuy(st, id);
-    const done = it.once ? !!p.bought?.[id] : p.bought?.[id] === st.season;
-    return `<li class="${done ? 'done' : ''}"><span class="mi">${icon(it.icon, 22)}</span><span class="mt"><b>${esc(it.label)}</b><small>${esc(it.desc)}</small></span><span class="mp">${C.money(it.cost)}</span><button data-buy="${id}" class="small" ${c.ok ? '' : 'disabled'} title="${esc(c.ok ? '' : c.why)}">${done ? (it.once ? 'Acheté' : 'Fait') : 'Acheter'}</button></li>`;
+    const done = C.boughtState(st, id);
+    const count = it.max && p.bought?.[id] ? ` <small class="muted">(${p.bought[id]}/${it.max})</small>` : '';
+    return `<li class="${done ? 'done' : ''}"><span class="mi">${icon(it.icon, 22)}</span><span class="mt"><b>${esc(it.label)}${count}</b><small>${esc(it.desc)}</small></span><span class="mp">${C.money(it.cost)}</span><button data-buy="${id}" class="small" ${c.ok ? '' : 'disabled'} title="${esc(c.ok ? '' : c.why)}">${done ? (it.once ? 'Acheté' : it.max ? 'Complet' : 'Fait') : 'Acheter'}</button></li>`;
   }).join('');
   const el = show(`<div class="panel-screen money" style="${clubVars(club)}">
     <header class="screen-head"><button class="icon-btn" id="mo-back" aria-label="Retour">${icon('back', 20)}</button><div><h1>Ton argent</h1><p class="muted">${esc(p.firstName)} ${esc(p.lastName)} · ${esc(C.CONTRACT_LABEL[p.contract?.type] ?? 'Contrat')}</p></div></header>
-    <div class="mo-kpis"><div><span>Économies</span><b>${C.money(p.money)}</b></div><div><span>Salaire</span><b>${C.money(income)}<small>/mois</small></b></div><div><span>Entourage</span><b>${C.money(cost)}<small>/mois</small></b></div><div><span>Reste chaque mois</span><b class="${income - cost >= 0 ? 'up' : 'down'}">${C.money(income - cost)}</b></div></div>
+    <div class="mo-kpis"><div><span>Économies</span><b>${C.money(p.money)}</b></div><div><span>${rent ? 'Salaire + loyers' : 'Salaire'}</span><b>${C.money(income)}<small>/mois</small></b></div><div><span>Entourage</span><b>${C.money(cost)}<small>/mois</small></b></div><div><span>Reste chaque mois</span><b class="${income - cost >= 0 ? 'up' : 'down'}">${C.money(income - cost)}</b></div></div>
     <div class="mo-cols">
       <section class="card"><h3>${icon('squad', 16)} Ton entourage <small class="muted">prélevé chaque semaine (${len} semaines par saison)</small></h3><ul class="mo-list">${services}</ul></section>
       <section class="card"><h3>${icon('star', 16)} Achats</h3><ul class="mo-list">${purchases}</ul></section>
@@ -932,10 +935,24 @@ function renderSeasonEnd() {
 
 function renderRetired() {
   const st = G.st;
+  const p = st.player;
   const tot = st.history.reduce((a, h) => ({ apps: a.apps + h.apps, goals: a.goals + h.goals }), { apps: 0, goals: 0 });
-  const el = show(`<div class="panel-screen narrow">
+  const titles = (st.trophies ?? []).length, awards = (st.awards ?? []).length;
+  const rent = C.passiveIncome(p);
+  const legacy = st.legacy ?? [];
+  // l'après-carrière : ce que tes choix (et ton argent) ont construit
+  const after = legacy.find((l) => l.id === 'actionnaire') ? `Tu retrouves ${esc(st.formativeName ?? 'ton club formateur')}, cette fois dans le bureau des actionnaires.`
+    : legacy.find((l) => l.id === 'academie') ? 'Tu te consacres à ton académie : la prochaine génération porte ton nom.'
+    : legacy.find((l) => l.id === 'fondation') ? 'Ta fondation devient ton nouveau terrain de jeu.'
+    : p.money > 5000 ? 'Consultant télé, quelques matchs de gala : ta reconversion est tranquille.'
+    : p.money > 500 ? 'Tu passes tes diplômes d\'entraîneur pour transmettre ce que tu as appris.'
+    : 'Il va falloir trouver un travail : le football ne t\'a pas mis à l\'abri.';
+  const el = show(`<div class="panel-screen narrow retired">
     <h1>Fin de carrière</h1>
-    <p>${esc(st.player.firstName)} ${esc(st.player.lastName)} : ${st.history.length} saisons, ${tot.apps} matchs, ${tot.goals} buts.</p>
+    <p>${esc(p.firstName)} ${esc(p.lastName)} : ${st.history.length} saisons, ${tot.apps} matchs, ${tot.goals} buts${titles ? `, ${titles} titre${titles > 1 ? 's' : ''}` : ''}${awards ? `, ${awards} distinction${awards > 1 ? 's' : ''}` : ''}.</p>
+    <div class="mo-kpis"><div><span>Patrimoine</span><b>${C.money(p.money)}</b></div><div><span>Loyers</span><b>${C.money(rent)}<small>/mois</small></b></div><div><span>Héritage</span><b>${legacy.length || '—'}</b></div></div>
+    ${legacy.length ? `<div class="honours">${legacy.map((l) => `<span class="honour legacy">${icon('stadium', 18)}${esc(l.name)}</span>`).join('')}</div>` : ''}
+    <p><b>Et maintenant ?</b> ${after}</p>
     <ul class="plain">${st.history.map((h) => `<li>${h.season} · ${esc(h.club)} ${esc(h.stage)} · ${h.apps} matchs, ${h.goals} buts</li>`).join('')}</ul>
     <div class="actions"><button id="r-palm">${icon('trophy', 18)} Palmarès</button><button class="primary" id="r-home">Accueil</button></div>
   </div>`);

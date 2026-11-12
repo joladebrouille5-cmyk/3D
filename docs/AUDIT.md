@@ -171,6 +171,14 @@ Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sa
 7. **Code** : quatre fichiers au-delà de 950 lignes (`career.js`, `match.js`, `app.js`, `career-ui.js`) ; à découper
    avant d'ajouter beaucoup de contenu.
 
+### Suivi de la liste (12 novembre 2026, nuit)
+
+- Point 1 (plafond) : sept pays étrangers au catalogue (216 clubs, 5 271 joueurs adultes, 152 vrais logos) ;
+  une star du PSG reçoit des offres d'Arsenal, Liverpool, Manchester City, Barcelone.
+- Point 2 (argent) : staff privé, maison de récupération, immeubles de rapport, pari sur une start-up, fondation,
+  académie, entrée au capital du club formateur ; héritage et reconversion sur l'écran de fin de carrière.
+- Point 5 (rattrapage) : défi du coach après trois matchs sans être retenu.
+
 ### Championnats étrangers (2 plus hauts niveaux, vrais effectifs) : recommandé, par étapes
 
 - **Pourquoi** : c'est la réponse directe au point 1 (destinations pour une star, transferts et prêts à l'étranger,
