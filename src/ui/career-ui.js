@@ -596,7 +596,7 @@ function monthReviewHtml(rv, st, closable) {
       <div><span class="label">Niveau</span><span class="value">${C.pct(rv.ca[0])} → ${C.pct(rv.ca[1])}</span>${chip('', dCa, { digits: 1 })}</div>
       <div><span class="label">Potentiel estimé</span><span class="value stars">${stars(C.toStars(e1.center))}</span><span class="muted">${C.pct(e0.lo)}–${C.pct(e0.hi)} → ${C.pct(e1.lo)}–${C.pct(e1.hi)}</span>${chip('Ce mois-ci', rv.paDelta, { digits: 2, title: 'Variation réelle du potentiel ce mois-ci, en points (détail par source ci-dessous)' })}</div>
       <div><span class="label">Matchs</span><span class="value">${m.played}<small> joué${m.played > 1 ? 's' : ''}</small></span><span class="muted">${m.minutes} min · ${m.goals} but${m.goals > 1 ? 's' : ''} · note ${m.avg != null ? m.avg.toFixed(1) : '—'}</span><span class="muted">Équipe : ${m.w} V · ${m.d} N · ${m.l} D</span></div>
-      <div><span class="label">Classement</span><span class="value">${rv.pos[0] ?? '—'}<sup>e</sup> → ${rv.pos[1]}<sup>e</sup></span><span class="muted">sur ${rv.teams} équipes</span>${rv.earned ? `<span class="muted">Salaire perçu : ${C.money(rv.earned)}</span>` : ''}</div>
+      <div><span class="label">Classement</span><span class="value">${rv.pos[0] ?? '—'}<sup>e</sup> → ${rv.pos[1]}<sup>e</sup></span><span class="muted">sur ${rv.teams} équipes</span>${rv.earned ? `<span class="muted">Salaire perçu : ${C.money(rv.earned)}${rv.spent ? ` · entourage : −${C.money(rv.spent)}` : ''}</span>` : ''}</div>
     </div>
 
     <h3>D'où vient ta progression (${fmtLvl(dCa)} de niveau)</h3>
@@ -656,7 +656,7 @@ export function renderHub() {
       <div class="hub-title">${crest(club, 52)}
         <div><strong>${esc(club.name)}</strong><span class="stage-pill">${esc(STAGE_LABEL[st.stage])}</span><br><span class="muted">Saison ${st.season}-${st.season + 1} · semaine ${Math.min(st.week + 1, n)}/${n}</span></div></div>
       ${seasonStrip(st)}
-      <div class="row hub-actions"><button id="hub-palmares" title="Palmarès">${icon('trophy', 18)}<span>Palmarès</span></button><button id="hub-save">${icon('save', 18)}<span>Sauvegarder</span></button><button id="hub-home">${icon('home', 18)}<span>Accueil</span></button></div>
+      <div class="row hub-actions"><button id="hub-money" title="Ton argent">${icon('wallet', 18)}<span>${C.money(st.player.money)}</span></button><button id="hub-palmares" title="Palmarès">${icon('trophy', 18)}<span>Palmarès</span></button><button id="hub-save">${icon('save', 18)}<span>Sauvegarder</span></button><button id="hub-home">${icon('home', 18)}<span>Accueil</span></button></div>
     </header>
     <div class="hub-grid">${weekCard(st)}${profileCard(st)}${leagueCard(st)}</div>
   </div>${review ? monthReviewHtml(review, st, st.phase !== 'month_review') : ''}`);
@@ -667,6 +667,7 @@ function bindHub(el) {
   const st = G.st;
   el.querySelector('#hub-save').addEventListener('click', () => { if (persist()) flash('Partie sauvegardée.'); });
   el.querySelector('#hub-palmares').addEventListener('click', () => renderPalmares(renderHub));
+  el.querySelector('#hub-money').addEventListener('click', () => renderMoney(renderHub));
   el.querySelector('#hub-home').addEventListener('click', () => { persist(); showHome(); });
   el.querySelector('#hub-review')?.addEventListener('click', () => { G.showReview = st.lastMonthReview; renderHub(); });
   el.querySelector('#mr-close')?.addEventListener('click', () => {
@@ -753,6 +754,45 @@ function honoursBlock(h) {
 }
 
 // Palmarès : vitrine, totaux, records, sélections, saison par saison
+// ------------------------------------------------------------------ ton argent
+function renderMoney(back) {
+  const st = G.st;
+  const p = st.player;
+  const club = clubById(st.clubId);
+  const len = st.league.rounds.length;
+  const income = p.contract?.salary ?? 0;
+  const cost = C.monthlyCost(p);
+  const services = Object.entries(C.SERVICES).map(([id, sv]) => {
+    const on = !!p.services?.[id];
+    return `<li class="${on ? 'on' : ''}"><span class="mi">${icon(sv.icon, 22)}</span><span class="mt"><b>${esc(sv.label)}</b><small>${esc(sv.desc)}</small></span><span class="mp">${C.money(sv.monthly)}<small>/mois</small></span><button data-svc="${id}" class="${on ? 'ghost' : 'primary'} small">${on ? 'Arrêter' : 'Engager'}</button></li>`;
+  }).join('');
+  const purchases = Object.entries(C.PURCHASES).filter(([, it]) => !it.when || it.when(st)).map(([id, it]) => {
+    const c = C.canBuy(st, id);
+    const done = it.once ? !!p.bought?.[id] : p.bought?.[id] === st.season;
+    return `<li class="${done ? 'done' : ''}"><span class="mi">${icon(it.icon, 22)}</span><span class="mt"><b>${esc(it.label)}</b><small>${esc(it.desc)}</small></span><span class="mp">${C.money(it.cost)}</span><button data-buy="${id}" class="small" ${c.ok ? '' : 'disabled'} title="${esc(c.ok ? '' : c.why)}">${done ? (it.once ? 'Acheté' : 'Fait') : 'Acheter'}</button></li>`;
+  }).join('');
+  const el = show(`<div class="panel-screen money" style="${clubVars(club)}">
+    <header class="screen-head"><button class="icon-btn" id="mo-back" aria-label="Retour">${icon('back', 20)}</button><div><h1>Ton argent</h1><p class="muted">${esc(p.firstName)} ${esc(p.lastName)} · ${esc(C.CONTRACT_LABEL[p.contract?.type] ?? 'Contrat')}</p></div></header>
+    <div class="mo-kpis"><div><span>Économies</span><b>${C.money(p.money)}</b></div><div><span>Salaire</span><b>${C.money(income)}<small>/mois</small></b></div><div><span>Entourage</span><b>${C.money(cost)}<small>/mois</small></b></div><div><span>Reste chaque mois</span><b class="${income - cost >= 0 ? 'up' : 'down'}">${C.money(income - cost)}</b></div></div>
+    <div class="mo-cols">
+      <section class="card"><h3>${icon('squad', 16)} Ton entourage <small class="muted">prélevé chaque semaine (${len} semaines par saison)</small></h3><ul class="mo-list">${services}</ul></section>
+      <section class="card"><h3>${icon('star', 16)} Achats</h3><ul class="mo-list">${purchases}</ul></section>
+    </div>
+    <p class="muted small">Sans économies, les abonnements s'arrêtent d'eux-mêmes. Les effets apparaissent dans le bilan du mois (« Ton entourage et tes achats »).</p>
+  </div>`);
+  el.querySelector('#mo-back').addEventListener('click', back);
+  el.querySelectorAll('[data-svc]').forEach((b) => b.addEventListener('click', () => {
+    const msg = C.toggleService(st, b.dataset.svc);
+    persist();
+    if (msg) flash(msg);
+    renderMoney(back);
+  }));
+  el.querySelectorAll('[data-buy]').forEach((b) => b.addEventListener('click', () => {
+    try { const out = C.buy(st, b.dataset.buy); persist(); flash(out); } catch (e) { flash(e.message); }
+    renderMoney(back);
+  }));
+}
+
 function renderPalmares(back) {
   const st = G.st;
   const p = st.player;

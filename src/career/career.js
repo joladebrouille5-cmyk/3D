@@ -15,6 +15,8 @@ import {
 import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL } from './market.js';
 import { tierById } from './potential.js';
+import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy } from './spending.js';
+export { SERVICES, PURCHASES, monthlyCost, canBuy };
 export { money, CONTRACT_LABEL };
 
 export const SAVE_VERSION = 1;
@@ -156,6 +158,28 @@ function weekStart(st) {
   if (st.window && st.week !== st.window.week) st.window = null; // la fenêtre se referme
   saveRng(st, r);
   if (st.callup) log(st, `Convocation : ${st.callup.label}.`);
+}
+
+// Argent : abonnements (activer / arrêter) et achats
+export function toggleService(st, id) {
+  if (!SERVICES[id]) throw new Error('Service inconnu.');
+  const p = st.player;
+  p.services ??= {};
+  p.services[id] = !p.services[id];
+  if (p.services[id] && p.money < SERVICES[id].monthly) { p.services[id] = false; return 'Économies insuffisantes pour un premier mois.'; }
+  log(st, p.services[id] ? `Tu engages : ${SERVICES[id].label.toLowerCase()} (${money(SERVICES[id].monthly)}/mois).` : `Tu arrêtes : ${SERVICES[id].label.toLowerCase()}.`);
+  return null;
+}
+export function buy(st, id) {
+  const c = canBuy(st, id);
+  if (!c.ok) throw new Error(c.why);
+  const it = PURCHASES[id], p = st.player;
+  ensureState(st);
+  p.money -= it.cost;
+  (p.bought ??= {})[id] = it.once ? true : st.season;
+  const out = track(st, 'services', () => it.apply(st));
+  log(st, `${it.label} (${money(it.cost)}) : ${out}`);
+  return out;
 }
 
 // Mercato d'hiver : accepter une offre (prêt ou transfert) avant de valider la semaine
@@ -375,7 +399,7 @@ function maybeSigning(st, r) {
 // l'aperçu de la semaine et le bilan mensuel détaillé. Rien n'est estimé après coup.
 export const GAUGES = ['morale', 'fresh', 'trust', 'discipline', 'school', 'team', 'fans'];
 export const GAUGE_LABELS = { morale: 'Moral', fresh: 'Fraîcheur', trust: 'Confiance du coach', discipline: 'Discipline', school: 'Scolarité', team: 'Vestiaire', fans: 'Supporters' };
-export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance', relations: 'Vestiaire et supporters' };
+export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance', relations: 'Vestiaire et supporters', services: 'Ton entourage et tes achats' };
 
 function snap(p) { return { pa: p.pa, morale: p.morale, fresh: p.fresh, trust: p.trust, discipline: p.discipline, school: p.school, team: p.team, fans: p.fans, attrs: { ...p.attrs } }; }
 function clampAll(p) {
@@ -445,7 +469,7 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
   }
   const it = INTENSITY[intensity] ?? INTENSITY.normale;
   const freshBefore = p.fresh;
-  injuryRisk = 0.006 + it.injury + (freshBefore + it.fresh < 0.35 ? 0.03 : 0) + (offpitch === 'extra' ? 0.01 : 0);
+  injuryRisk = (0.006 + it.injury + (freshBefore + it.fresh < 0.35 ? 0.03 : 0) + (offpitch === 'extra' ? 0.01 : 0)) * serviceEffects(p).injury;
   // entraînement : thème + intensité
   const trainGrowth = it.growth * (focus === 'recuperation' ? 0.35 : 1);
   track(st, `train:${focus}`, () => {
@@ -464,6 +488,15 @@ function weekEffects(st, { focus, intensity, offpitch }, r, rep) {
     if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; p.team += 0.015; }
     if (youth && offpitch !== 'ecole') p.school -= 0.012; // la scolarité s'érode si on la néglige
   });
+  // ton entourage (abonnements payés avec tes économies)
+  const sfx = serviceEffects(p);
+  if (sfx.fresh || sfx.morale || sfx.composure || sfx.decisions || sfx.pa) {
+    track(st, 'services', () => {
+      p.fresh += sfx.fresh; p.morale += sfx.morale; p.pa += sfx.pa;
+      p.attrs.composure = clamp(p.attrs.composure + sfx.composure, 0.05, 0.97);
+      p.attrs.decisions = clamp(p.attrs.decisions + sfx.decisions, 0.05, 0.97);
+    });
+  }
   // regard du staff : sérieux et scolarité comptent
   if (p.discipline < 0.4 || (youth && p.school < 0.3)) {
     track(st, 'staff', () => {
@@ -1047,6 +1080,12 @@ export function finishWeek(st) {
   // salaire de la semaine
   // salaire annuel réparti sur les semaines de la saison
   if (st.player.contract) { const pay = (st.player.contract.salary * 12) / st.league.rounds.length; st.player.money += pay; st.month.earned = (st.month.earned ?? 0) + pay; }
+  // abonnements de ton entourage : prélevés chaque semaine ; sans argent, ils s'arrêtent
+  const cost = (monthlyCost(st.player) * 12) / st.league.rounds.length;
+  if (cost > 0) {
+    if (st.player.money >= cost) { st.player.money -= cost; st.month.spent = (st.month.spent ?? 0) + cost; }
+    else { st.player.services = {}; log(st, 'Économies épuisées : tes abonnements (préparateurs, analyste…) s\'arrêtent.'); }
+  }
   st.matchday = null;
   st.week++;
   if (st.week >= seasonLength(st)) { endSeason(st); return; }
@@ -1118,7 +1157,7 @@ function buildMonthReview(st) {
     index: mo.index, season: st.season, fromWeek: mo.startWeek + 1, toWeek: st.week,
     ca: [mo.ca0, ca1], est: [mo.est0, potentialEstimate(st)], paDelta: p.pa - mo.base.pa,
     gauges, attrs, sources, totals, matches, pos: [mo.pos0, pos1], teams: table.length,
-    weeks: mo.weeks, advice: [], earned: mo.earned ?? 0,
+    weeks: mo.weeks, advice: [], earned: mo.earned ?? 0, spent: mo.spent ?? 0,
   };
   review.advice = monthAdvice(st, review);
   return review;

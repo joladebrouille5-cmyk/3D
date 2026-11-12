@@ -249,3 +249,15 @@ adversaires (interception, tacle, gardien), la pression et la distance.
   le bilan du match liste tes décisions (réussites attendues / obtenues).
 - Calibration mesurée sur 581 choix : annoncé 51 % → réel 52 %, annoncé 88 % → réel 92 %, annoncé 30 % → réel 37 %.
 
+## Ton argent
+
+Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « Ton argent » :
+
+- **Entourage** (abonnements prélevés chaque semaine, arrêtés d'eux-mêmes sans économies) : nutritionniste
+  (fraîcheur, un peu moins de blessures), préparateur physique (nettement moins de blessures), préparateur mental
+  (moral, sang-froid), analyste vidéo (lecture du jeu, potentiel).
+- **Achats** : cours particuliers (scolarité, une fois par saison), aider ta famille (moral, une fois par saison),
+  appartement près du centre (fraîcheur chaque semaine), voiture de sport (moral et supporters, mais discipline et
+  vestiaire en baisse), rénovation du terrain de ton club d'enfance (supporters, vestiaire).
+- Les effets apparaissent dans le bilan du mois (« Ton entourage et tes achats ») ; données dans `src/career/spending.js`.
+
