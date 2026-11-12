@@ -167,6 +167,28 @@ Le mode **Match court** est le mode par défaut. Le moteur simule toujours les 9
 
 Le mode **Temps réel** (vitesses 1× à 8×) reste disponible dans le menu du match et sur l'écran du match amical. La recette `npm run ui-check-pace` vérifie la durée.
 
+### Choix en match
+
+Aux moments clés, le match se fige et tu choisis. Les options viennent du moteur et dépendent de la situation :
+- **avec le ballon** : frappe placée, en force ou piquée (gardien sorti), passe en profondeur, une-deux, renversement,
+  centre en retrait, jeu long, centres au premier ou au second poteau, repiquer dans l'axe, déborder, se dégager ;
+- **en défense** : tacle debout ou glissé, faute tactique (contre-attaque), presser, l'orienter vers l'extérieur,
+  marquer ou suivre l'appel d'un attaquant, fermer l'angle de frappe, couper une ligne de passe ;
+- **sans le ballon** : selon la zone du porteur (relance, milieu, trente derniers mètres, centre) : appel en profondeur
+  ou croisé, dédoubler, décrocher, se démarquer, attaquer le premier poteau, filer au second, rester pour le second ballon ;
+- **coups de pied arrêtés** : si ton joueur en a le profil, il tire les penalties (côté, en force, Panenka ; le gardien
+  choisit un côté), les corners et les coups francs.
+
+Les gestes proposés juste avant passent après les nouveautés ; en mode Temps forts, au plus trois choix sans ballon de
+chaque sorte par match. `tests/choices.test.js` vérifie la variété sur un match complet.
+
+### Portraits
+
+533 portraits générés (personnes fictives, planches dans `art/faces-src/`, découpées par `python3 tools/split-faces.py`),
+classés par âge apparent (`src/data/face-ages.js`). Tu choisis ton visage à la création ; les coéquipiers et adversaires
+fictifs reçoivent un visage stable (jeune en U17/U19). Les joueurs réels n'ont jamais de visage inventé : leurs initiales
+s'affichent aux couleurs du club.
+
 ### Logos et habillage
 
 Jeu à usage personnel : les **vrais logos** des clubs sont utilisés quand ils ont pu être récupérés, par ordre de priorité :

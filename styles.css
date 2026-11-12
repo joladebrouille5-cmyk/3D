@@ -640,7 +640,9 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
 .sim-screen h1 i { font-style: normal; color: var(--muted); }
 .sim-screen progress { margin: 16px 0 8px; height: 10px; }
 .season-end h1 { font-size: 2.6em; }
-.season-end > p.muted:first-child { display: flex; gap: 6px; align-items: center; color: var(--flood-2); margin: 0 0 4px; }
+.se-head { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.se-head p.muted { display: flex; gap: 6px; align-items: center; color: var(--flood-2); margin: 0 0 4px; }
+.se-head h1 { margin: 0; }
 
 /* ============================================================ RESPONSIVE */
 .compact-only { display: none; }
@@ -780,7 +782,7 @@ button.cta small { display: block; font-size: 0.74em; font-weight: 500; }
 .rival b { color: var(--chalk); }
 /* bilan, fin de saison */
 .mr-face { box-shadow: 0 0 0 3px var(--club2, var(--flood)), 0 6px 16px rgba(0, 0, 0, 0.5); }
-.se-face { display: block; margin-bottom: 8px; box-shadow: 0 0 0 4px var(--club2, var(--flood)), 0 10px 26px rgba(0, 0, 0, 0.6); }
+.se-face { display: block; box-shadow: 0 0 0 4px var(--club2, var(--flood)), 0 10px 26px rgba(0, 0, 0, 0.6); }
 /* panneau de choix */
 .ch-head { flex-wrap: nowrap; align-items: center; justify-content: flex-start; }
 .ch-ht { display: flex; flex-direction: column; min-width: 0; flex: 1; }

@@ -586,14 +586,13 @@ function renderSeasonEnd() {
   const st = G.st;
   const h = st.history[st.history.length - 1];
   const el = show(`<div class="panel-screen narrow season-end" style="${clubVars(clubById(st.clubId))}">
-    ${st.player.face != null ? avatar({ face: st.player.face }, 72, 'se-face') : ''}
-    <p class="muted">${icon('trophy', 18)} Bilan de la saison</p>
-    <h1>Fin de saison ${h.season}-${h.season + 1}</h1>
+    <header class="se-head">${st.player.face != null ? avatar({ face: st.player.face }, 72, 'se-face') : ''}
+      <div><p class="muted">${icon('trophy', 18)} Bilan de la saison</p><h1>Fin de saison ${h.season}-${h.season + 1}</h1></div></header>
     <p>${esc(h.club)} ${esc(h.stage)} · ${esc(h.league)} : <strong>${h.pos}e sur ${h.teams}</strong></p>
     <p>${h.apps} matchs (${h.starts} titularisations), ${h.goals} but(s), ${h.minutes} minutes${h.rating ? `, note moyenne ${h.rating.toFixed(1)}` : ''}.</p>
     <p>Niveau : ${C.pct(h.caStart)} → <strong>${C.pct(h.caEnd)}</strong> · Potentiel estimé : ${stars(C.toStars(C.potentialEstimate(st).center))}</p>
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
-    <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li>
+    <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">
       ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span></span>
       <button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button></li>`).join('')}</ul>
     ${st.offers.some((o) => o.own) ? '' : '<p class="note">Ton club ne te conserve pas. L\'échec ouvre d\'autres chemins : choisis où rebondir.</p>'}

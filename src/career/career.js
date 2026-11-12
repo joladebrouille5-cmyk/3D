@@ -414,11 +414,119 @@ const EVENTS = [
       { label: 'Faire à ta façon', apply: (st) => { st.player.morale += 0.01; return 'Tu gardes tes habitudes.'; } },
     ],
   },
+  {
+    id: 'interview', when: (st) => (st.seasonStats?.goals ?? 0) >= 2 || (st.seasonStats?.apps ?? 0) >= 6,
+    text: () => 'Le journal local veut faire ton portrait après tes derniers matchs.',
+    options: [
+      { label: 'Accepter l\'interview', apply: (st, r) => {
+        st.player.morale += 0.04;
+        if (r.chance(0.35)) { st.player.trust -= 0.03; return 'Une phrase sortie de son contexte fait le tour du vestiaire. Le coach te recadre.'; }
+        return 'Bel article : ta famille l\'a encadré.';
+      } },
+      { label: 'Décliner poliment', apply: (st) => { st.player.discipline += 0.02; return 'Le club apprécie ta discrétion.'; } },
+    ],
+  },
+  {
+    id: 'reseaux', when: () => true,
+    text: () => 'Une vidéo de ton geste technique circule sur les réseaux sociaux.',
+    options: [
+      { label: 'La partager partout', apply: (st, r) => {
+        st.player.morale += 0.05; st.player.discipline -= 0.03;
+        if (r.chance(0.3)) { st.player.trust -= 0.04; return 'Le coach n\'aime pas voir ses joueurs se mettre en avant.'; }
+        return 'Des milliers de vues : ça fait du bien à la confiance.';
+      } },
+      { label: 'Rester discret', apply: (st) => { st.player.discipline += 0.02; st.player.trust += 0.01; return 'Tu restes concentré sur le terrain.'; } },
+    ],
+  },
+  {
+    id: 'famille', when: (st) => st.stage === 'U17' || st.stage === 'U19',
+    text: () => 'Ta famille te manque : tes parents proposent de venir te chercher pour le week-end.',
+    options: [
+      { label: 'Rentrer à la maison', apply: (st) => { st.player.morale += 0.08; st.player.fresh += 0.08; st.player.trust -= 0.02; return 'Deux jours à la maison : tu reviens regonflé.'; } },
+      { label: 'Rester au centre', apply: (st) => { st.player.morale -= 0.03; st.player.discipline += 0.02; return 'Le week-end est long, mais tu tiens bon.'; } },
+    ],
+  },
+  {
+    id: 'selection', when: (st) => st.player.trust > 0.6 && (st.seasonStats?.apps ?? 0) >= 5 && st.player.age <= 20,
+    text: () => 'Tu es convoqué en sélection régionale pour un stage de trois jours.',
+    options: [
+      { label: 'Y aller', apply: (st) => { st.player.pa += 0.005; st.player.fresh -= 0.08; st.player.morale += 0.05; return 'Tu côtoies les meilleurs de ta génération. Tu en reviens grandi.'; } },
+      { label: 'Rester avec ton club', apply: (st) => { st.player.trust += 0.03; return 'Le coach apprécie ta fidélité.'; } },
+    ],
+  },
+  {
+    id: 'nutrition', when: () => true,
+    text: () => 'Le nutritionniste du club te propose un programme personnalisé.',
+    options: [
+      { label: 'Suivre le programme', apply: (st) => { st.player.pa += 0.003; st.player.fresh += 0.04; st.player.morale -= 0.02; return 'Moins de sucre, plus de sommeil : ton corps récupère mieux.'; } },
+      { label: 'Garder tes habitudes', apply: (st) => { st.player.morale += 0.01; return 'Tu restes fidèle aux pâtes du dimanche.'; } },
+    ],
+  },
+  {
+    id: 'capitaine', when: (st) => st.player.trust >= 0.65,
+    text: () => 'Le capitaine est suspendu : le coach t\'offre le brassard pour le prochain match.',
+    options: [
+      { label: 'Accepter le brassard', apply: (st) => { st.player.trust += 0.04; st.player.morale += 0.05; st.player.discipline += 0.02; return 'Capitaine d\'un soir : un souvenir pour la vie.'; } },
+      { label: 'Le laisser à un ancien', apply: (st) => { st.player.trust += 0.01; st.player.morale -= 0.01; return 'Humble, tu préfères attendre ton heure.'; } },
+    ],
+  },
+  {
+    id: 'conflit', when: () => true,
+    text: () => 'À l\'entraînement, un coéquipier te cherche après un tacle appuyé.',
+    options: [
+      { label: 'Calmer le jeu', apply: (st) => { st.player.discipline += 0.03; st.player.trust += 0.02; return 'Tu tends la main. L\'incident est clos.'; } },
+      { label: 'Lui répondre', apply: (st, r) => {
+        st.player.morale += 0.02; st.player.discipline -= 0.05;
+        if (r.chance(0.5)) { st.player.trust -= 0.06; return 'Le coach vous sépare et te sanctionne.'; }
+        return 'Le ton monte, puis tout le monde passe à autre chose.';
+      } },
+    ],
+  },
+  {
+    id: 'retard', when: () => true,
+    text: () => 'Ton bus est en retard : tu vas arriver après le début de la séance.',
+    options: [
+      { label: 'Prévenir le coach tout de suite', apply: (st) => { st.player.discipline += 0.01; st.player.trust -= 0.01; return 'Il te remercie d\'avoir prévenu.'; } },
+      { label: 'Courir pour arriver à temps', apply: (st) => { st.player.fresh -= 0.06; st.player.trust += 0.02; return 'Tu arrives essoufflé mais à l\'heure.'; } },
+    ],
+  },
+  {
+    id: 'recruteur', when: (st) => st.player.age >= 16,
+    text: () => 'Un recruteur d\'un grand club viendra voir ton prochain match.',
+    options: [
+      { label: 'Jouer pour l\'équipe', apply: (st) => { st.player.trust += 0.03; st.player.discipline += 0.02; st.player.scouted = (st.player.scouted ?? 0) + 1; return 'Tu fais les efforts que personne ne voit. Lui, il les a vus.'; } },
+      { label: 'Multiplier les gestes pour te montrer', apply: (st, r) => {
+        st.player.trust -= 0.03; st.player.morale += 0.03;
+        if (r.chance(0.5)) { st.player.scouted = (st.player.scouted ?? 0) + 1; return 'Quelques gestes réussis : ton nom est noté.'; }
+        return 'Trop d\'individualisme : le recruteur repart sans conviction.';
+      } },
+    ],
+  },
+  {
+    id: 'sponsor', when: (st) => st.player.age >= 17,
+    text: () => 'Une marque locale te propose de porter ses crampons contre un petit contrat.',
+    options: [
+      { label: 'Accepter', apply: (st) => { st.player.morale += 0.04; st.player.discipline -= 0.01; return 'Ton premier contrat de sponsoring !'; } },
+      { label: 'Refuser pour rester concentré', apply: (st) => { st.player.discipline += 0.02; return 'Chaque chose en son temps.'; } },
+    ],
+  },
+  {
+    id: 'ami', when: (st) => st.stage === 'U17' || st.stage === 'U19',
+    text: () => 'Ton meilleur ami au centre n\'est pas conservé. Il est effondré.',
+    options: [
+      { label: 'Passer la soirée avec lui', apply: (st) => { st.player.morale -= 0.02; st.player.fresh -= 0.03; return 'Il ne l\'oubliera pas. Toi non plus.'; } },
+      { label: 'Rester concentré sur toi', apply: (st) => { st.player.morale -= 0.04; st.player.fresh += 0.03; return 'Le football a aussi ce visage-là.'; } },
+    ],
+  },
 ];
 
 function pickEvent(st, r) {
-  const pool = EVENTS.filter((e) => e.when(st));
-  const e = r.pick(pool);
+  const recent = st.recentEvents ?? [];
+  const all = EVENTS.filter((e) => e.when(st));
+  // pas deux fois le même événement à peu d'intervalle
+  const pool = all.filter((e) => !recent.includes(e.id));
+  const e = r.pick(pool.length ? pool : all);
+  st.recentEvents = [...recent, e.id].slice(-6);
   return { id: e.id, text: e.text(st), options: e.options.map((o) => o.label) };
 }
 
@@ -685,8 +793,18 @@ function buildOffers(st, pos, n) {
     // reste en formation : U17 jusqu'à 16 ans, puis U19
     const next = p.age >= 17 ? 'U19' : 'U17';
     const expected = youthCA(academyQuality(club), next) - 0.06 - (next === 'U19' && st.stage === 'U17' ? 0.03 : 0);
-    if (ca >= expected || p.trust > 0.7) offers.push({ clubId: club.id, stage: next, kind: 'Prolongation en formation', own: true });
-    else {
+    if (ca >= expected || p.trust > 0.7) {
+      offers.push({ clubId: club.id, stage: next, kind: 'Prolongation en formation', own: true });
+      // une belle saison attire les recruteurs de centres plus réputés
+      const ss = st.seasonStats;
+      const avg = ss.ratings.length ? ss.ratings.reduce((x, y) => x + y, 0) / ss.ratings.length : 0;
+      const shine = (avg >= 7.0 && ss.apps >= 12) || ss.goals >= 8 || ca >= expected + 0.05 || ((p.scouted ?? 0) > 0 && avg >= 6.7);
+      if (shine) {
+        const q = academyQuality(club);
+        const better = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) > q + 0.03 && ca >= youthCA(academyQuality(c), next) - 0.05);
+        for (const c of shuffle(better, r).slice(0, avg >= 7.3 || ss.goals >= 12 ? 2 : 1)) offers.push({ clubId: c.id, stage: next, kind: 'Repéré par un centre plus réputé' });
+      }
+    } else {
       // libéré : d'autres centres de formation, moins exigeants
       const q = academyQuality(club);
       const cands = CLUBS.filter((c) => c.id !== club.id && academyQuality(c) < q - 0.02 && ca >= youthCA(academyQuality(c), next) - 0.07);
@@ -696,7 +814,7 @@ function buildOffers(st, pos, n) {
     // contrats seniors
     if (ca >= proThreshold(club) && club.senior) offers.push({ clubId: club.id, stage: 'Pro', kind: st.stage === 'Pro' ? 'Prolongation' : 'Premier contrat professionnel', own: true });
     else if (club.reserve && ca >= SENIOR_CA[club.reserve.level] - 0.08) offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true });
-    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0);
+    const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0);
     const cands = CLUBS.filter((c) => c.id !== club.id && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
     for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: 'Offre de contrat' });
     if (!offers.length) {
@@ -705,6 +823,7 @@ function buildOffers(st, pos, n) {
     }
   }
   saveRng(st, r);
+  p.scouted = 0; // l'intérêt des recruteurs vaut pour la saison écoulée
   if (p.age >= 35) offers.push({ retire: true, kind: 'Mettre un terme à ta carrière' });
   return offers;
 }
