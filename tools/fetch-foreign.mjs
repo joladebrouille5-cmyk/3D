@@ -18,6 +18,13 @@ export const LEAGUES = [
   { id: 'eng2', country: 'Angleterre', name: 'Championship', level: 2, article: `${SEASON} EFL Championship`, expect: 24 },
   { id: 'esp1', country: 'Espagne', name: 'LaLiga', level: 1, article: `${SEASON} La Liga`, expect: 20 },
   { id: 'esp2', country: 'Espagne', name: 'LaLiga 2', level: 2, article: `${SEASON} Segunda División`, expect: 22 },
+  { id: 'ita1', country: 'Italie', name: 'Serie A', level: 1, article: `${SEASON} Serie A`, expect: 20 },
+  { id: 'ita2', country: 'Italie', name: 'Serie B', level: 2, article: `${SEASON} Serie B`, expect: 20 },
+  { id: 'ger1', country: 'Allemagne', name: 'Bundesliga', level: 1, article: `${SEASON} Bundesliga`, expect: 18 },
+  { id: 'ger2', country: 'Allemagne', name: '2. Bundesliga', level: 2, article: `${SEASON} 2. Bundesliga`, expect: 18 },
+  { id: 'por1', country: 'Portugal', name: 'Liga Portugal', level: 1, article: `${SEASON} Primeira Liga`, expect: 18 },
+  { id: 'ned1', country: 'Pays-Bas', name: 'Eredivisie', level: 1, article: `${SEASON} Eredivisie`, expect: 18 },
+  { id: 'bel1', country: 'Belgique', name: 'Pro League', level: 1, article: `${SEASON} Belgian Pro League`, expect: 16 },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
