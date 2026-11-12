@@ -25,7 +25,9 @@ export function goalOf(c, type = null) {
   if (i === 'foul') return { kind: 'foul', label: 'action stoppée', max: 4 };
   if (i === 'cover' || i === 'track' || i === 'block' || i === 'shepherd' || (i === 'hold' && type === 'defend')) return { kind: 'stop', label: 'action stoppée', max: 5 };
   if (i === 'hold') return { kind: 'teamkeep', label: 'possession gardée', max: 5 };
-  return { kind: 'receive', label: 'ballon reçu', max: 5 };
+  if (i === 'call' || i === 'drop') return { kind: 'receive', label: 'ballon reçu', max: 5 };
+  // appels et placements : leur but est de recevoir, ou de créer l'occasion en attirant un défenseur
+  return { kind: 'chance', label: 'ballon reçu ou tir', max: 6 };
 }
 
 // Applique le choix dans la copie, comme pickChoice le fait dans le vrai match
@@ -106,6 +108,12 @@ export function createJudge(f, uid, c, goal) {
           if (ownerTeam === opp) return res(false);
           if (dead) return res(restartFor === team);
           if (el > goal.max) return res(ownerTeam === team || b.lastTeam === team);
+          break;
+        case 'chance':
+          if (b.owner === uid || evs((e) => e.type === 'tir' && e.team === team)) return res(true);
+          if (ownerTeam === opp) return res(false);
+          if (dead) return res(restartFor === team && (f.restart.type === 'corner' || f.restart.type === 'freekick' || f.restart.type === 'penalty'));
+          if (el > goal.max) return res(false);
           break;
         case 'receive':
           if (b.owner === uid) return res(true);

@@ -349,12 +349,12 @@ function checkChoice() {
   c.byType ??= { ball: 0, defend: 0, support: 0 };
   const offOk = (k) => !tf || c.byType[k] < 3;
   if (justGot && m.t - c.lastBallChoice >= G.ball && !u.gkHolding && (!tf || relU > 0.5)) {
-    ch = ballChoices(m, u, c.recent); c.lastBallChoice = m.t;
+    ch = ballChoices(m, u, recentKeys()); c.lastBallChoice = m.t;
   } else if (owner && owner.id !== u.id && m.t - c.lastOffChoice >= G.off) {
     const d = Math.hypot(owner.x - u.x, owner.y - u.y);
-    if (owner.team !== u.team && d < 9 && !owner.gkHolding && offOk('defend') && (!tf || m.relX(team, owner.x) < 0.35)) { ch = defendChoices(m, u, owner, c.recent); c.lastOffChoice = m.t; }
+    if (owner.team !== u.team && d < 9 && !owner.gkHolding && offOk('defend') && (!tf || m.relX(team, owner.x) < 0.35)) { ch = defendChoices(m, u, owner, recentKeys()); c.lastOffChoice = m.t; }
     else if (owner.team === u.team && d < 28 && d > 6 && offOk('support')) {
-      if (relU > m.relX(team, owner.x) - 0.04 && relU > (tf ? 0.66 : 0.45)) { ch = supportChoices(m, u, owner, c.recent); c.lastOffChoice = m.t; }
+      if (relU > m.relX(team, owner.x) - 0.04 && relU > (tf ? 0.66 : 0.45)) { ch = supportChoices(m, u, owner, recentKeys()); c.lastOffChoice = m.t; }
     }
   }
   if (!ch || !ch.list.length) return false;
@@ -363,8 +363,12 @@ function checkChoice() {
   return true;
 }
 
+// gestes déjà choisis ou proposés récemment : les choix suivants varient
+function recentKeys() { return [...(S.ctl.recent ?? []), ...(S.ctl.offered ?? [])]; }
+
 function openChoice(ch, u) {
   const m = S.m;
+  S.ctl.offered = [...(S.ctl.offered ?? []), ...ch.list.map((c) => `o:${c.key}`), ...ch.list.filter((c) => c.opt?.to != null).map((c) => `to:${c.opt.to}`)].slice(-14);
   S.choice = { ...ch, targets: ch.type === 'ball' || ch.type === 'support' ? choiceTargets(m, u, ch) : null, opened: performance.now() };
   const box = $('#choices');
   const vs = ch.vs != null ? m.players[ch.vs] : null;
@@ -391,7 +395,7 @@ function openChoice(ch, u) {
 
 // niveau de confiance d'un pourcentage (un but n'a pas la même échelle qu'une passe)
 function pctTier(p, kind) {
-  const [hi, mid] = kind === 'goal' ? [0.25, 0.1] : kind === 'receive' ? [0.45, 0.2] : [0.65, 0.4];
+  const [hi, mid] = kind === 'goal' ? [0.25, 0.1] : kind === 'receive' || kind === 'chance' ? [0.4, 0.18] : [0.65, 0.4];
   return p >= hi ? 'hi' : p >= mid ? 'mid' : 'lo';
 }
 function showPcts(box, pred, done) {
@@ -411,6 +415,7 @@ const OUTCOME = {
   goal: ['But !', 'Pas de but'], pass: ['Passe réussie', 'Passe perdue'], cross: ['Centre pour un partenaire', 'Centre perdu'],
   keep: ['Ballon gardé', 'Ballon perdu'], win: ['Ballon récupéré', 'Pas de récupération'], foul: ['Action stoppée', 'Faute manquée'],
   stop: ['Action stoppée', 'L\'adversaire avance'], teamkeep: ['Possession gardée', 'Possession perdue'], receive: ['Ballon reçu', 'Ballon pas reçu'],
+  chance: ['Occasion créée', 'Pas d\'occasion'],
 };
 function checkJudge() {
   const J = S.judge;

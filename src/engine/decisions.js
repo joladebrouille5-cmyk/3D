@@ -112,7 +112,8 @@ export function holderOptions(m, p, restartType = null) {
     risk = clamp(risk, 0.02, 0.97);
     let gain = threat(m, team, q.x, q.y) + RETAIN;
     if (isGK) gain -= 0.012;
-    if (m.t < (q.callUntil ?? 0)) gain += 0.03; // un partenaire demande le ballon : signal, pas ordre
+    // un partenaire demande le ballon : signal, pas ordre (ton joueur, qui annonce clairement son appel, est mieux entendu)
+    if (m.t < (q.callUntil ?? 0)) gain += q.isUser ? 0.045 : 0.03;
     if (p.returnTo === q.id && m.t < (p.returnUntil ?? 0)) gain += 0.06; // une-deux : rendre le ballon
     if (qRel > rel) gain += 0.006 * tv.direct * ((qRel - rel) * 4);
     else gain += 0.005 * (1 - tv.direct);
@@ -124,7 +125,8 @@ export function holderOptions(m, p, restartType = null) {
     // passe dans la course (attaquants, ailiers, latéraux qui montent)
     if (!restartType || restartType === 'freekick') {
       const running = m.t < (q.runUntil ?? 0) || (m.t < (q.callUntil ?? 0));
-      const fwd = ['ST', 'W', 'AM'].includes(q.role) || (q.role === 'FB' && running);
+      const userRun = q.isUser && m.t < (q.userRun ?? 0); // ton appel en profondeur, quel que soit ton poste
+      const fwd = ['ST', 'W', 'AM'].includes(q.role) || (q.role === 'FB' && running) || userRun;
       if (fwd && running && qRel >= rel - 0.02 && qRel > 0.5) {
         const lead = 7 + 5 * tv.direct;
         const tx = clamp(q.x + team.dir * lead, 2, PITCH.length - 2);
@@ -143,7 +145,7 @@ export function holderOptions(m, p, restartType = null) {
           const oppRels = m.onPitch(1 - p.team).map((o) => m.relX(team, o.x)).sort((a, c) => c - a);
           const offLine = Math.max(oppRels[1] ?? 0, rel, 0.5);
           if (qRel > offLine) riskT += 0.25 * p.attrs.decisions;
-          const gainT = threat(m, team, tx, ty) + RETAIN + 0.012 * tv.direct;
+          const gainT = threat(m, team, tx, ty) + RETAIN + 0.012 * tv.direct + (userRun ? 0.02 : 0);
           const uT = (1 - riskT * riskW) * gainT - riskT * riskW * lossCostAt(tx, ty) * 0.8 - here;
           opts.push({ kind: 'pass', to: q.id, tx, ty, lofted: loftedT, through: true, u: uT, risk: clamp(riskT, 0, 1), forward: trel - rel });
         }

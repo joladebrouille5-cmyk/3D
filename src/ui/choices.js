@@ -18,13 +18,26 @@ const DEF_ORDER = ['duel', 'foul', 'press', 'block', 'track', 'cover', 'hold'];
 
 // Garde jusqu'à 4 options variées : la meilleure de chaque famille d'abord, puis le reste ;
 // les gestes proposés juste avant passent après les nouveautés (`recent` : clés récentes).
-function pick(cands, recent = [], order = CAT_ORDER, max = 4) {
+// `recent` : clés des gestes choisis récemment ; préfixe « o: » pour ceux seulement proposés,
+// « to: » pour les partenaires visés. Deux options ne visent jamais le même partenaire.
+// petite variation déterministe selon l'instant : deux situations proches ne proposent pas toujours les mêmes gestes
+function jitter(key, seed) {
+  let h = 2166136261;
+  const str = `${key}:${seed}`;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) / 4294967296) * 0.005;
+}
+function pick(cands, recent = [], order = CAT_ORDER, max = 4, seed = 0) {
   const seen = new Set(recent);
-  const scored = cands.map((c) => ({ ...c, s: c.score - (seen.has(c.key) ? 0.012 : 0) })).sort((a, b) => b.s - a.s);
+  const tgt = (c) => (c.opt?.to != null ? `to:${c.opt.to}` : null);
+  const pen = (c) => (seen.has(c.key) ? 0.012 : seen.has(`o:${c.key}`) ? 0.005 : 0) + (tgt(c) && seen.has(tgt(c)) ? 0.006 : 0);
+  const scored = cands.map((c) => ({ ...c, s: c.score - pen(c) + jitter(c.key, seed) })).sort((a, b) => b.s - a.s);
   const out = [];
-  const cats = new Set();
-  for (const c of scored) if (!cats.has(c.cat) && out.length < max) { out.push(c); cats.add(c.cat); }
-  for (const c of scored) if (!out.includes(c) && out.length < max) out.push(c);
+  const cats = new Set(), tos = new Set();
+  const free = (c) => !tgt(c) || !tos.has(tgt(c));
+  const take = (c) => { out.push(c); cats.add(c.cat); if (tgt(c)) tos.add(tgt(c)); };
+  for (const c of scored) if (!cats.has(c.cat) && out.length < max && free(c)) take(c);
+  for (const c of scored) if (!out.includes(c) && out.length < max && free(c)) take(c);
   for (const c of out) c.hint = (c.hint ?? '').replace(/\s*·\s*$/, '').replace(/^\s*·\s*/, '');
   return out.sort((a, b) => order.indexOf(a.cat) - order.indexOf(b.cat));
 }
@@ -95,9 +108,9 @@ export function ballChoices(m, u, recent = []) {
   }
   // centre : tendu au premier poteau ou au second
   const cross = opts.find((o) => o.kind === 'cross');
-  if (cross) {
+  if (cross && cross.attackers >= 1) {
     const side = u.y < 34 ? -1 : 1;
-    add({ key: 'cross-far', cat: 'cross', opt: { ...cross, tx: gx - dir * 8, ty: 34 - side * 5.5 }, icon: 'cross', label: 'Centrer au second poteau', hint: `${cross.attackers} partenaire(s) dans la surface · ${riskLabel(cross.risk)}`, cls: riskClass(cross.risk), score: cross.u });
+    add({ key: 'cross-far', cat: 'cross', opt: { ...cross, tx: gx - dir * 8, ty: 34 - side * 5.5 }, icon: 'cross', label: 'Centrer au second poteau', hint: `${cross.attackers} partenaire${cross.attackers > 1 ? 's' : ''} dans la surface`, cls: riskClass(cross.risk), score: cross.u });
     add({ key: 'cross-near', cat: 'cross', opt: { ...cross, tx: gx - dir * 5.5, ty: 34 + side * 3 }, icon: 'through', label: 'Centre tendu au premier poteau', hint: 'rapide, à couper devant le défenseur', cls: riskClass(cross.risk + 0.05), score: cross.u - 0.004 });
   }
   // conduites : repiquer, déborder, accélérer, se retourner
@@ -112,11 +125,11 @@ export function ballChoices(m, u, recent = []) {
   if (away && pr > 0.35) add({ key: 'turn', cat: 'carry', opt: away, icon: 'turn', label: 'Se retourner pour se dégager', hint: `sortir de la pression · ${riskLabel(away.risk)}`, cls: riskClass(away.risk), score: away.u });
   // sécurité
   const safe = passes.filter((o) => !o.through).sort((a, b) => a.risk - b.risk || b.u - a.u)[0];
-  if (safe) add({ key: 'safe', cat: 'safe', opt: safe, icon: 'safe', label: safe.forward < -0.05 ? `Remiser en retrait à ${short(P(safe))}` : `Passe sûre à ${short(P(safe))}`, hint: riskLabel(safe.risk), cls: riskClass(safe.risk), score: safe.u - 0.001 });
+  if (safe) add({ key: 'safe', cat: 'safe', opt: safe, icon: 'safe', label: safe.forward < -0.05 ? `Remiser en retrait à ${short(P(safe))}` : safe.risk < 0.12 ? `Passe sûre à ${short(P(safe))}` : `Jouer simple avec ${short(P(safe))}`, hint: safe.forward < -0.05 ? 'repartir de derrière' : 'garder le ballon dans l\'équipe', cls: riskClass(safe.risk), score: safe.u - 0.001 });
   if (lead > 0 && late && rel > 0.8 && wide) add({ key: 'time', cat: 'hold', opt: { kind: 'hold', wait: 2.5 }, icon: 'shield', label: 'Garder le ballon au poteau de corner', hint: 'faire passer les minutes', cls: 'low', score: 0.02 });
   else if (pr > 0.5) add({ key: 'hold', cat: 'hold', opt: { kind: 'hold' }, icon: 'shield', label: 'Protéger le ballon', hint: 'attendre le soutien d\'un partenaire', cls: 'mid', score: -0.004 });
 
-  const list = pick(cands, recent);
+  const list = pick(cands, recent, CAT_ORDER, 4, Math.floor(m.t));
   if (list.length < 2) list.push({ key: 'hold', cat: 'hold', opt: { kind: 'hold' }, icon: 'shield', label: 'Temporiser, protéger le ballon', hint: 'garder la possession', cls: 'low' });
 
   // titre de la situation
@@ -159,9 +172,10 @@ export function defendChoices(m, u, h, recent = []) {
     add({ key: 'track', cat: 'track', intent: 'track', icon: 'run', label: running ? `Suivre l'appel de ${first(runner)}` : `Marquer ${short(runner)}`, hint: running ? 'ne pas le lâcher dans ton dos' : 'le priver de ballon', cls: 'low', score: 0.025 + (running ? 0.004 : 0) });
   }
   add({ key: 'cover', cat: 'cover', intent: 'cover', icon: 'cut', label: 'Couper la ligne de passe', hint: 'anticiper la passe suivante', cls: 'low', score: 0.022 });
+  if (hGoal >= 30 && d < 10) add({ key: 'jockey', cat: 'press', intent: 'block', icon: 'shield', label: 'Temporiser face à lui', hint: 'reculer sans plonger, attendre le soutien', cls: 'low', score: 0.023 });
   add({ key: 'hold', cat: 'cover', intent: 'hold', icon: 'pin', label: 'Garder ta position', hint: 'protéger la structure de l\'équipe', cls: 'low', score: 0.018 });
   const title = counter ? 'Contre-attaque adverse !' : hGoal < 25 ? 'Danger devant ton but' : `${short(h)} arrive sur toi`;
-  return { title, sub: situation(m, u), list: pick(cands, recent, DEF_ORDER), type: 'defend', vs: h.id };
+  return { title, sub: situation(m, u), list: pick(cands, recent, DEF_ORDER, 4, Math.floor(m.t)), type: 'defend', vs: h.id };
 }
 
 // ------------------------------------------------------------------ sans ballon, en attaque
@@ -209,10 +223,21 @@ export function supportChoices(m, u, h, recent = []) {
       if (dmin > fd && m.relX(team, x) > hRel - 0.05) { fd = dmin; free = { x, y }; }
     }
     if (free && fd > 5) add({ key: 'space', cat: 'special', intent: 'spot', spot: free, icon: 'target', label: 'Se démarquer dans l\'espace libre', hint: `aucun adversaire à moins de ${Math.round(fd)} m`, cls: 'low', score: 0.027 + Math.min(0.006, fd / 2000) });
+    // l'intervalle entre le central et le latéral adverses, de ton côté
+    const side = u.y < 34 ? -1 : 1;
+    const backs = m.onPitch(1 - u.team).filter((o) => o.role !== 'GK').sort((a, b) => m.relX(team, b.x) - m.relX(team, a.x)).slice(0, 4)
+      .filter((o) => Math.sign(o.y - 34) === side || Math.abs(o.y - 34) < 6);
+    if (backs.length >= 2) {
+      const [a, b] = backs.sort((p, q) => Math.abs(p.y - 34) - Math.abs(q.y - 34));
+      const gap = { x: (a.x + b.x) / 2 + dir * 3, y: (a.y + b.y) / 2 };
+      if (Math.abs(a.y - b.y) > 7 && m.relX(team, gap.x) < 0.94) add({ key: 'channel', cat: 'forward', intent: 'spot', spot: gap, icon: 'through', label: 'Attaquer l\'intervalle', hint: 'entre le central et le latéral adverses', cls: 'mid', score: 0.029 });
+    }
+    // côté opposé : s'écarter pour un renversement
+    if (Math.abs(h.y - 34) > 8 && Math.sign(u.y - 34) !== Math.sign(h.y - 34)) add({ key: 'weak', cat: 'safe', intent: 'spot', spot: { x: u.x + dir * 3, y: h.y < 34 ? 60 : 8 }, icon: 'swap', label: 'Se proposer côté opposé', hint: 'grand espace pour un renversement', cls: 'low', score: 0.026 });
     add({ key: 'hold', cat: 'safe', intent: 'hold', icon: 'pin', label: 'Rester en soutien', hint: 'équilibre et couverture', cls: 'low', score: 0.018 });
   }
   const zone = crossing ? `${first(h)} va centrer` : hRel < 0.4 ? `${first(h)} relance de l'arrière` : hRel > 0.66 ? `${first(h)} entre dans les 30 derniers mètres` : `${first(h)} conduit au milieu`;
-  return { title: zone, sub: situation(m, u), list: pick(cands, recent, ['forward', 'special', 'safe', 'hold']), type: 'support', vs: null };
+  return { title: zone, sub: situation(m, u), list: pick(cands, recent, ['forward', 'special', 'safe', 'hold'], 4, Math.floor(m.t)), type: 'support', vs: null };
 }
 
 // ------------------------------------------------------------------ coups de pied arrêtés
