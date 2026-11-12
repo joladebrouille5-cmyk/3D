@@ -8,6 +8,7 @@ import { TEAM_DEFS } from '../engine/teams.js';
 import { PitchRenderer } from './render.js';
 import { crestSVG } from './crest.js';
 import { icon } from './icons.js';
+import { sound } from './sound.js';
 import { avatar, matchFace } from './faces.js';
 import { ballChoices, defendChoices, supportChoices, restartChoices, choiceTargets } from './choices.js';
 import { matchRating } from '../career/career.js';
@@ -67,6 +68,7 @@ export function startMatch(cfg) {
   }
   closeModal();
   S.uiDirty = true;
+  sound.start();
   refreshUI(true);
 }
 
@@ -97,6 +99,10 @@ function frame(now) {
     if (S.replay) {
       if (S.replay.playing) {
         S.replay.cursor += dt * 5 * (S.replay.hl ? 1.3 : 1); // 5 images par seconde réelle = 1×
+        // sons du temps fort calés sur l'image de l'action
+        const R = S.replay;
+        if (R.hl && R.fx === 0 && R.cursor >= R.evFrame - 4) { R.fx = 1; sound.kick(1); }
+        if (R.hl && R.fx === 1 && R.cursor >= R.evFrame) { R.fx = 2; if (R.goal) sound.goal(); else sound.ooh(); }
         if (S.replay.cursor >= S.replay.end) { S.replay.cursor = S.replay.end; S.replay.playing = false; S.replay.doneAt = now; }
       } else if (S.replay.hl && now - (S.replay.doneAt ?? now) > 500) endHighlight();
     } else if (S.pace.mode === 'tf' && !S.paused && !S.modalOpen && !S.quick && !S.choice && startHighlight()) {
@@ -120,6 +126,12 @@ function frame(now) {
       if (n) S.uiDirty = true;
     }
     draw();
+    if (now - (S.lastCrowd ?? 0) > 500) {
+      S.lastCrowd = now;
+      const b = m.ball, near = Math.min(b.x, 105 - b.x);
+      const ff = S.pace.mode === 'tf' && !S.replay && m.t >= S.hl.follow;
+      sound.intensity(m.phase === 'fulltime' ? 0.5 : ff ? 0.35 : S.replay?.hl ? 1.7 : 0.9 + Math.max(0, (25 - near) / 25) * 0.9);
+    }
     if (S.uiDirty && now - S.lastUi > 200) { refreshUI(); S.lastUi = now; S.uiDirty = false; }
   }
   requestAnimationFrame(frame);
@@ -224,7 +236,7 @@ function startHighlight() {
   h.played = true;
   S.hl.shown++;
   const start = Math.max(0, h.frame - 30), end = Math.min(m.frames.length - 1, h.frame + 8);
-  S.replay = { start, end, cursor: start, playing: true, hl: true, label: h.label, goal: h.goal };
+  S.replay = { start, end, cursor: start, playing: true, hl: true, label: h.label, goal: h.goal, evFrame: h.frame, fx: 0 };
   const t = m.teams[h.team];
   $('#replay-banner').innerHTML = `${icon(h.goal ? 'ball' : 'replay', 16)}<em>${h.goal ? 'But' : 'Temps fort'}</em><span>${esc(h.label)}</span>`;
   $('#replay-banner').style.setProperty('--team', t?.colors.primary ?? '#f5c542');
@@ -357,6 +369,7 @@ function openChoice(ch, u) {
     <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}${c.opt?.to != null ? `<span class="ch-mate">${face(m.players[c.opt.to], 22)}</span>` : ''}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
     <div class="ch-foot"><button id="ch-auto" class="ch-skip">${icon('auto', 16)} Laisser l'instinct décider</button></div>`;
   box.hidden = false;
+  sound.chime();
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
   box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
   refreshUI(true); // l'horloge et le score affichés correspondent à l'instant du choix
@@ -414,6 +427,7 @@ function handleNewEvents() {
   for (; S.seenEvents < m.events.length; S.seenEvents++) {
     const ev = m.events[S.seenEvents];
     addFeed(ev);
+    eventSound(ev);
     if (ev.type === 'but' && !S.quick && S.pace.mode !== 'tf') goalBanner(ev);
     if (S.pace.mode === 'tf' && !S.quick && isKeyEvent(ev)) queueHighlight(ev);
     if (ev.pause && (ev.type !== 'blessure' || ev.team === userTeamIdx())) {
@@ -423,6 +437,21 @@ function handleNewEvents() {
     if (ev.type === 'fin') { stop = true; setTimeout(showSummary, 400); }
   }
   return stop;
+}
+
+// Sons des événements : sifflets toujours ; frappes, « ooh » et clameurs seulement quand on regarde l'action
+function eventSound(ev) {
+  if (S.quick) return;
+  const live = S.pace.mode === 'reel' ? S.speed <= 4 : S.pace.mode === 'court' ? S.pace.isLive : S.m.t < S.hl.follow + 1;
+  if (ev.type === 'coup_envoi') sound.whistle('long');
+  else if (ev.type === 'mi_temps') sound.whistle('half');
+  else if (ev.type === 'fin') sound.whistle('end');
+  if (!live) return;
+  if (ev.type === 'faute' || ev.type === 'hors_jeu') sound.whistle('short');
+  else if (ev.type === 'penalty') sound.whistle('long');
+  else if (ev.type === 'tir') { sound.kick(ev.xg > 0.2 ? 1 : 0.7); S.lastShotXg = ev.xg ?? 0; }
+  else if ((ev.type === 'arret' || ev.type === 'tir_rate') && (S.lastShotXg ?? 0) >= 0.15) { sound.ooh(); S.lastShotXg = 0; }
+  else if (ev.type === 'but' && S.pace.mode !== 'tf') sound.goal();
 }
 
 function goalBanner(ev) {
@@ -1089,6 +1118,10 @@ function bind() {
   const setIco = (id, name, lbl) => { const b = $(id); if (b) b.innerHTML = `<span class="ico">${icon(name, 18)}</span>${lbl ? `<span class="lbl">${lbl}</span>` : ''}`; };
   setIco('#btn-left', 'squad'); setIco('#btn-right', 'board'); setIco('#btn-replay', 'replay', 'Replay');
   setIco('#btn-quick', 'skip', 'Résultat rapide'); setIco('#btn-help', 'help', 'Aide'); setIco('#btn-live', 'live', 'Direct');
+  const soundIco = () => setIco('#btn-sound', sound.enabled ? 'sound' : 'mute');
+  soundIco();
+  $('#btn-sound').addEventListener('click', (e) => { e.currentTarget.blur(); sound.toggle(); soundIco(); });
+  window.addEventListener('keydown', (e) => { if ((e.key === 'm' || e.key === 'M') && !e.target.closest?.('input, select, textarea') && S.m) { sound.toggle(); soundIco(); } });
   window.addEventListener('resize', () => S.renderer.resize());
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);

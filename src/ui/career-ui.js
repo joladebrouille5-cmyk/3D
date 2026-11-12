@@ -10,6 +10,7 @@ import { icon } from './icons.js';
 import { avatar, faceUrl, faceIndexFor, faceSample } from './faces.js';
 import { extrasForWeek } from '../career/competitions.js';
 import { startHomeScene, stopHomeScene } from './home-scene.js';
+import { sound } from './sound.js';
 const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,6 +43,7 @@ const fmtLvl = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
 
 function show(html) {
   stopHomeScene();
+  sound.stop(); // l'ambiance du stade s'arrête en quittant le match
   const el = root();
   el.hidden = false;
   el.innerHTML = html;
