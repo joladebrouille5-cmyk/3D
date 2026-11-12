@@ -408,7 +408,7 @@ function maybeSigning(st, r) {
 // l'aperçu de la semaine et le bilan mensuel détaillé. Rien n'est estimé après coup.
 export const GAUGES = ['morale', 'fresh', 'trust', 'discipline', 'school', 'team', 'fans'];
 export const GAUGE_LABELS = { morale: 'Moral', fresh: 'Fraîcheur', trust: 'Confiance du coach', discipline: 'Discipline', school: 'Scolarité', team: 'Vestiaire', fans: 'Supporters' };
-export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance', relations: 'Vestiaire et supporters', services: 'Ton entourage et tes achats' };
+export const SOURCE_LABELS = { rest: 'Récupération de la semaine', match: 'Matchs', event: 'Événements de vie', injury: 'Blessures', staff: 'Regard du staff', nature: 'Aléa de croissance', relations: 'Vestiaire et supporters', services: 'Ton entourage et tes achats', age: 'L\'âge' };
 
 function snap(p) { return { pa: p.pa, morale: p.morale, fresh: p.fresh, trust: p.trust, discipline: p.discipline, school: p.school, team: p.team, fans: p.fans, attrs: { ...p.attrs } }; }
 function clampAll(p) {
@@ -468,6 +468,7 @@ function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
   const p = st.player;
   const youth = st.stage === 'U17' || st.stage === 'U19';
   let injuryRisk = 0;
+  if (p.age >= 30) track(st, 'age', () => ageing(p));
   if (p.injuryWeeks > 0) {
     track(st, 'injury', () => {
       if (r) { p.injuryWeeks--; st.seasonStats.injuredWeeks++; }
@@ -606,7 +607,19 @@ function ageFactor(age) {
   return 0;
 }
 
-// Progression hebdomadaire : vers le potentiel, jamais au-delà ; déclin après 29 ans
+// Vieillissement, une fois par semaine à partir de 30 ans : le physique décline (vitesse, accélération,
+// endurance, jeu aérien), l'expérience entretient encore un peu la lecture du jeu jusqu'à 33 ans.
+// Repères : environ −1 point de niveau par saison à 30 ans, −2 à −3 à 33 ans, −4 à −5 après 35 ans.
+function ageing(p) {
+  if (p.age < 30) return;
+  const rate = [0.0005, 0.0008, 0.0011, 0.0015, 0.002, 0.0026][Math.min(5, p.age - 30)];
+  for (const k of ['pace', 'accel', 'stamina']) p.attrs[k] = clamp(p.attrs[k] - rate, 0.05, 0.97);
+  p.attrs.aerial = clamp(p.attrs.aerial - rate * 0.4, 0.05, 0.97);
+  if (p.role === 'GK') p.attrs.gk = clamp(p.attrs.gk - rate * 0.5, 0.05, 0.97);
+  if (p.age <= 33) for (const k of ['decisions', 'positioning', 'composure']) p.attrs[k] = clamp(p.attrs[k] + 0.0002, 0.05, 0.97);
+}
+
+// Progression hebdomadaire : vers le potentiel, jamais au-delà (le déclin de l'âge est à part : ageing)
 function progress(st, focus, growthMul, r) {
   const p = st.player;
   const club = clubById(st.clubId);
@@ -616,7 +629,6 @@ function progress(st, focus, growthMul, r) {
   // le temps de jeu compte surtout via les matchs eux-mêmes (matchGrowth) ; ici, l'élan d'un joueur qui joue
   const play = st.seasonStats.minutes > 0 && st.seasonStats.apps > st.week * 0.5 ? 1.04 : st.seasonStats.notSelected > st.week * 0.6 ? 0.9 : 1;
   let d = 0.0025 * ageFactor(p.age) * coach * growthMul * (0.6 + 0.8 * p.morale) * (p.fresh < 0.4 ? 0.6 : 1) * play * gap;
-  if (p.age >= 30) d -= 0.0008 * (p.age - 29);
   if (gap < 0) d = Math.min(d, 0.0015 * gap);
   if (r) d *= 1 + r.gauss(0, 0.15);
   // répartition sur les attributs : le thème travaillé progresse davantage
@@ -1325,7 +1337,13 @@ function buildOffers(st, pos, n) {
     }
     const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0);
     const cands = CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
-    for (const c of shuffle(cands, r).slice(0, extra)) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
+    // un joueur au-dessus du niveau de la Ligue 1 : les plus grands clubs du pays se le disputent
+    const top = ca > SENIOR_CA[1] + 0.06
+      ? CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && clubLevel(c) === 1 && teamCA(c, 'Pro') >= teamCA(club, 'Pro') - 0.005)
+        .sort((a, b) => teamCA(b, 'Pro') - teamCA(a, 'Pro')).slice(0, 4)
+      : [];
+    const picked = [...top, ...shuffle(cands.filter((c) => !top.includes(c)), r)].slice(0, extra);
+    for (const c of picked) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
     if (!offers.length) {
       const amateur = CLUBS.filter((c) => c.senior && clubLevel(c) === 5);
       const c = r.pick(amateur);
@@ -1334,7 +1352,9 @@ function buildOffers(st, pos, n) {
   }
   saveRng(st, r);
   p.scouted = 0; // l'intérêt des recruteurs vaut pour la saison écoulée
-  if (p.age >= 35) offers.push({ retire: true, kind: 'Mettre un terme à ta carrière' });
+  // fin de carrière : proposée à partir de 33 ans (ou plus tôt si le niveau ne suit plus), imposée à 39 ans
+  if (p.age >= 39) return [{ retire: true, kind: 'Fin de carrière : ton corps a dit stop' }];
+  if (p.age >= 33 || (p.age >= 30 && ca < SENIOR_CA[5])) offers.push({ retire: true, kind: 'Mettre un terme à ta carrière' });
   return offers;
 }
 

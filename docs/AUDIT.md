@@ -110,3 +110,80 @@ Observations sans correction :
 - **Moteur** : avantage du terrain (aucun auparavant : 27 victoires à l'extérieur contre 17 à domicile sur 60 matchs),
   moins de frappes lointaines (24,5 tirs, 9,6 cadrés au lieu de 29 et 12), gardiens un peu moins infaillibles.
 
+## 7. Audit complet (12 novembre 2026, soir)
+
+Outils : `npm run calibrate` (120 matchs), `node tools/audit-career.mjs 4 <club> <profil> [niveau] [potentiel]`
+(matchs du joueur par le moteur), carrière longue jusqu'à la retraite, tour des écrans sur téléphone en paysage
+(Pixel 7), recettes `ui-check`, `ui-check-career`, `ui-check-tf`, `ui-check-3d`, 65 tests unitaires.
+
+### Moteur (120 matchs)
+
+| Par match | Mesure | Référence |
+|---|---|---|
+| Buts | 2,61 | 2,7-2,9 |
+| Tirs / cadrés | 24,7 / 9,9 | 24-26 / 8-9 |
+| Passes / réussite | 1 163 / 83 % | 950-1 100 / 82-85 % |
+| Passes en profondeur | ≈ 23, dont ≈ 40 % arrivent | — |
+| Fautes / jaunes / rouges | 24,3 / 3,9 / **0,06** | 22-24 / 4 / 0,12-0,18 |
+| Corners | **7,6** | 9-10 |
+| Hors-jeu | **1,6** | 3-4 |
+| Domicile / nul / extérieur | 49 % / 27 % / 24 % | 44 % / 26 % / 30 % |
+
+Pourcentages des choix (605 choix réels) : annoncé ≈ réel à ±5-7 points par tranche.
+
+### Carrière (4 saisons, milieu central)
+
+| Club · profil · roues | Niveau | Potentiel | Matchs par saison |
+|---|---|---|---|
+| Nantes · sérieux | 43 → 66 | 63 → 75 | 5, 24, 27, 32 |
+| Nantes · dilettante | 43 → 54 | 63 → 54 | 4, 14, 15, 1 |
+| Nantes · forcené (7 blessures) | 43 → 53 | 63 → 54 | 2, 18, 13, 7 |
+| Nantes · sérieux · Précoce + Phénomène | 57 → 86 | 90 → 95 | 26, 20, 26, 21 |
+| Nantes · sérieux · En retard + Modeste | 44 → 59 | 56 → 64 | 5, 15, 27, 27 |
+| PSG · sérieux | 50 → 77 | 73 → 87 | 23, 26, 28, 43 |
+
+Les profils et les roues pèsent nettement ; 7 à 9 événements par saison ; sauvegarde 33-50 Ko (90 Ko en 18 saisons).
+
+### Corrigé pendant l'audit
+
+1. **Déclin après 30 ans démultiplié** : il était appliqué à chaque calcul de progression ; depuis que les matchs
+   font progresser, il tombait à chaque match. Un joueur passait de 92 à 10 entre 29 et 36 ans. Le vieillissement
+   est désormais hebdomadaire et surtout physique (vitesse, accélération, endurance, jeu aérien) : 92 → 90 entre
+   29 et 32 ans, accélération ensuite.
+2. **Plus aucune offre pour une star** : les clubs candidats devaient avoir un niveau proche du joueur ; au-delà
+   du niveau de la Ligue 1, personne. Les plus grands clubs français se positionnent désormais.
+3. **Pas de vraie retraite** : proposée à 35 ans seulement, jamais imposée (un joueur jouait encore à 37 ans avec
+   un niveau de 10). Proposée dès 33 ans (30 si le niveau ne suit plus), imposée à 39.
+4. **Téléphone** : sur la création, le choix du club et le bilan du mois, le bouton principal reste accessible
+   (collé en bas) au lieu d'être sous le pli. Aucun débordement horizontal ni erreur sur les 12 écrans visités.
+
+### À traiter (par priorité)
+
+1. **Plafond du monde du jeu** : une fois au PSG, aucune offre pendant six saisons (aucun club au-dessus).
+   C'est la limite structurelle principale : voir la recommandation sur les championnats étrangers.
+2. **L'argent perd son sens en fin de carrière** : 20 à 40 M€ d'économies, achat le plus cher 250 k€.
+3. **Une star domine peu en match** : à 86 de niveau en Ligue 2, note moyenne 7,2 et 3 buts en 21 matchs
+   (milieu central) ; l'écart de niveau se voit trop peu dans le moteur.
+4. **Moteur** : corners (7,6), hors-jeu (1,6) et cartons rouges (0,06) en dessous des références.
+5. **Profils négligents** presque jamais titulaires (1 match en équipe première) : cohérent, mais sans voie de
+   rattrapage.
+6. **Vue 3D** : fluidité non mesurée sur un vrai téléphone (≈ 6 images/s ici en rendu logiciel, sans carte graphique).
+7. **Code** : quatre fichiers au-delà de 950 lignes (`career.js`, `match.js`, `app.js`, `career-ui.js`) ; à découper
+   avant d'ajouter beaucoup de contenu.
+
+### Championnats étrangers (2 plus hauts niveaux, vrais effectifs) : recommandé, par étapes
+
+- **Pourquoi** : c'est la réponse directe au point 1 (destinations pour une star, transferts et prêts à l'étranger,
+  coupes d'Europe contre de vrais clubs au lieu des 30 clubs fictifs actuels).
+- **Périmètre conseillé** : Angleterre, Espagne, Italie, Allemagne (deux divisions chacune : 162 clubs) et la
+  première division du Portugal, des Pays-Bas et de la Belgique (tremplins classiques des jeunes Français :
+  52 clubs). Environ 214 clubs et 5 300 joueurs, trois fois le catalogue actuel (218 clubs, 1 912 joueurs réels).
+  Pas « plein » de championnats au départ : chaque pays ajouté se paie en données à tenir à jour.
+- **Règles respectées** : la carrière commence toujours dans un centre français, donc aucun mineur étranger
+  réel ; à l'étranger, seuls les effectifs professionnels (adultes) sont réels ; notes estimées par le jeu.
+- **Logos** : vrais logos disponibles pour les premières divisions (dépôt public, 25 pays) ; écussons générés aux
+  couleurs du club pour les deuxièmes divisions.
+- **Données** : Wikipédia limite fortement les requêtes depuis l'environnement de développement (429) et
+  Transfermarkt bloque les robots. Deux voies : une GitHub Action qui récupère les effectifs poliment (comme pour
+  les logos), ou un CSV fourni au même format que `data/joueurs-v1.csv`.
+
