@@ -304,3 +304,25 @@ Limite assumée : ce n'est pas du photoréalisme (type jeu console). Il faudrait
 animations capturées sur de vrais joueurs, des dizaines de mégaoctets de données et un moteur dédié.
 La recette `npm run ui-check-3d` vérifie la bascule 2D/3D et l'absence d'erreur.
 
+## Championnats étrangers : Angleterre et Espagne
+
+Premier League, Championship, LaLiga et LaLiga 2 (86 clubs, saison 2026-27), avec les vrais effectifs
+professionnels. La carrière commence toujours dans un centre de formation français ; l'étranger s'ouvre
+ensuite par les offres de fin de saison, le mercato d'hiver et les prêts.
+
+- **Effectifs** : collectés par la GitHub Action « Effectifs étrangers » (`.github/workflows/foreign-squads.yml`,
+  `tools/fetch-foreign.mjs`) sur Wikipédia (clubs de la saison, effectif, couleurs du maillot) et Wikidata
+  (date de naissance, poste précis), une requête par seconde. Usage personnel.
+- **Mineurs** : seuls les joueurs majeurs au 1er juillet de la saison sont gardés ; un joueur sans date de
+  naissance connue est écarté (21 mineurs et 74 joueurs sans date écartés, 2 221 gardés).
+- **Notes** : estimations du jeu à partir de la force du club, jamais des valeurs réelles.
+- **Logos** : vrais logos pour les 40 clubs de Premier League et de LaLiga, et 11 anciens pensionnaires
+  (Wolves, West Ham, Girona…) ; écussons générés aux couleurs du club pour les autres.
+- **Jeu** : championnat de 38 (Premier League, LaLiga), 46 (Championship) ou 42 journées (LaLiga 2) ;
+  FA Cup ou Coupe du Roi ; qualification européenne selon le rang du club ; salaires à l'échelle du
+  championnat ; en coupe d'Europe, les clubs anglais et espagnols sont les vrais (Real Madrid, Manchester City…).
+- **Vie à l'étranger** : la langue (cours, intégration plus lente au vestiaire tant qu'elle n'est pas maîtrisée),
+  le mal du pays, la presse locale.
+- **Mettre à jour** : relancer l'action (onglet Actions du dépôt), puis
+  `node tools/build-foreign.mjs <dossier des logos>` qui écrit `src/data/foreign.js` et `assets/crests-foreign/`.
+

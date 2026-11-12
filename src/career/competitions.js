@@ -5,7 +5,7 @@
 // - Les tours sont placés à des fractions de la saison : la même logique vaut pour un
 //   championnat de 26 ou de 34 journées.
 
-import { registerClub, clubById, CLUBS, clubLevel, academyQuality, SENIOR_CA } from './clubs.js';
+import { registerClub, clubById, CLUBS, clubLevel, academyQuality, SENIOR_CA, FOREIGN_CLUBS, divisionCA } from './clubs.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
 import { registerColors } from '../ui/crest.js';
 
@@ -47,12 +47,22 @@ const EURO = [
   ['celtic', 'Celtic Glasgow', 'en', 0.635, '#018749', '#ffffff', 'hoops'], ['dinamo-zagreb', 'Dinamo Zagreb', 'hr', 0.62, '#0a3d91', '#ffffff', 'plain'],
   ['fc-copenhague', 'FC Copenhague', 'nordic', 0.625, '#ffffff', '#0d1f63', 'plain'], ['bodo-glimt', 'Bodø/Glimt', 'nordic', 0.62, '#ffdd00', '#000000', 'plain'],
 ];
-export const EURO_CLUBS = EURO.map(([id, name, lang, strength, p, s, pat]) => {
+const FICTIONAL_EURO = EURO.map(([id, name, lang, strength, p, s, pat]) => {
   const cid = `eu-${id}`;
   registerColors(cid, { p, s, pat });
   // échelle commune avec la Ligue 1 (PSG ≈ 0,695) : les cadors européens restent devant, sans écraser
   return registerClub({ id: cid, name, strength: 0.69 + (strength - 0.69) * 0.55, names: NAMES[lang], senior: { level: 1, competition: 'Europe', group: '—', players: [] }, country: lang });
 });
+// Les pays dont les vrais effectifs sont au catalogue (Angleterre, Espagne) remplacent leurs clubs fictifs :
+// en coupe d'Europe, on affronte le vrai Real Madrid ou le vrai Manchester City, avec leurs joueurs.
+const REAL_COUNTRIES = new Set(FOREIGN_CLUBS.map((c) => c.country));
+const LANG_COUNTRY = { en: 'Angleterre', es: 'Espagne' };
+const topOf = (country, n) => FOREIGN_CLUBS.filter((c) => c.country === country && c.tier === 1).sort((a, b) => b.strength - a.strength).slice(0, n);
+export const EURO_CLUBS = [
+  ...FICTIONAL_EURO.filter((c) => !(REAL_COUNTRIES.has(LANG_COUNTRY[c.country]) && c.id !== 'eu-celtic')),
+  ...topOf('Angleterre', 6), ...topOf('Espagne', 5),
+];
+const countryOfClub = (c) => (c?.foreign ? c.country : c?.synthetic ? LANG_COUNTRY[c.country] ?? c.country : 'France');
 
 // ------------------------------------------------------------------ sélections nationales (effectifs fictifs)
 // [id, nom, langue, écart de niveau, couleur 1, couleur 2]
@@ -100,6 +110,8 @@ export const WINTER_WINDOW = 0.5;
 const CUP_FORMATS = {
   gambardella: { name: 'Coupe Gambardella', short: 'Gambardella', rounds: ['32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.36, 0.48, 0.6, 0.74, 0.88] },
   cdf: { name: 'Coupe de France', short: 'Coupe de France', rounds: ['7e tour', '8e tour', '32es de finale', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.14, 0.22, 0.32, 0.42, 0.52, 0.62, 0.76, 0.9] },
+  fac: { name: 'FA Cup', short: 'FA Cup', rounds: ['3e tour', '4e tour', '5e tour', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.46, 0.55, 0.64, 0.73, 0.82, 0.94] },
+  cdr: { name: 'Coupe du Roi', short: 'Coupe du Roi', rounds: ['1er tour', '2e tour', '16es de finale', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], at: [0.24, 0.34, 0.46, 0.55, 0.64, 0.78, 0.92] },
   ucl: { name: 'Ligue des champions', short: 'Ligue des champions', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
   uel: { name: 'Ligue Europa', short: 'Ligue Europa', league: 6, at: [0.08, 0.15, 0.22, 0.29, 0.36, 0.43], ko: ['Barrage', '8es de finale', 'Quarts de finale', 'Demi-finale', 'Finale'], koAt: [0.53, 0.6, 0.69, 0.8, 0.95] },
 };
@@ -117,11 +129,13 @@ export function buildCups(st, len) {
   };
   if (st.stage === 'U19') cups.push(mk('gambardella'));
   if (st.stage === 'Pro' && club.senior) {
-    cups.push(mk('cdf', clubLevel(club) <= 2 ? 2 : 0));
+    // coupe nationale du pays du club
+    if (club.foreign) cups.push(mk(club.country === 'Espagne' ? 'cdr' : 'fac'));
+    else cups.push(mk('cdf', clubLevel(club) <= 2 ? 2 : 0));
     if (clubLevel(club) === 1 && !club.synthetic) {
       const prev = st.history.at(-1);
       const sameClub = prev && prev.club === club.name && prev.stage === 'Pro';
-      const prestige = CLUB_PRESTIGE[club.id] ?? 0;
+      const prestige = club.foreign ? club.strength - divisionCA(club) : CLUB_PRESTIGE[club.id] ?? 0;
       const euro = sameClub ? (prev.pos <= 3 ? 'ucl' : prev.pos <= 6 ? 'uel' : null) : prestige >= 0.03 ? 'ucl' : prestige >= 0.012 ? 'uel' : null;
       if (euro) cups.push(mk(euro));
     }
@@ -146,17 +160,26 @@ export function drawOpponent(st, cup, r) {
     const w = pool.map((c) => { const lv = clubLevel(c); return k < 0.3 ? (lv >= 4 ? 3 : lv === 3 ? 1 : 0.15) : Math.pow(7 - lv, 1 + 3 * k); });
     return pool[r.weighted(w)].id;
   }
+  if (cup.id === 'fac' || cup.id === 'cdr') {
+    const country = cup.id === 'fac' ? 'Angleterre' : 'Espagne';
+    pool = FOREIGN_CLUBS.filter((c) => c.country === country && c.id !== st.clubId && !used.has(c.id));
+    const w = pool.map((c) => (k < 0.35 ? (c.tier === 2 ? 3 : 1) : Math.exp((c.strength - 0.6) * (10 + 25 * k))));
+    return pool[r.weighted(w)].id;
+  }
   // coupes d'Europe : chapeaux en phase de ligue (2 forts, 2 moyens, 2 plus faibles), puis adversaires plus forts
-  const ranked = [...EURO_CLUBS].sort((a, b) => b.strength - a.strength);
+  // (jamais son propre club ni un club du même pays)
+  const mine = countryOfClub(clubById(st.clubId));
+  const eligible = EURO_CLUBS.filter((c) => c.id !== st.clubId && countryOfClub(c) !== mine);
+  const ranked = [...eligible].sort((a, b) => b.strength - a.strength);
   const third = Math.ceil(ranked.length / 3);
   const top = cup.id === 'ucl';
   const tiers = top ? [ranked.slice(0, third), ranked.slice(third, 2 * third), ranked.slice(2 * third)] : [ranked.slice(third, 2 * third), ranked.slice(2 * third), ranked.slice(2 * third)];
   if (cup.rounds[cup.idx]?.league) {
     pool = tiers[Math.min(2, Math.floor(cup.idx / 2))].filter((c) => !used.has(c.id));
-    if (!pool.length) pool = EURO_CLUBS.filter((c) => !used.has(c.id));
+    if (!pool.length) pool = eligible.filter((c) => !used.has(c.id));
     return pool[r.int(0, pool.length - 1)].id;
   }
-  pool = EURO_CLUBS.filter((c) => !used.has(c.id));
+  pool = eligible.filter((c) => !used.has(c.id));
   const w = pool.map((c) => Math.exp((c.strength - 0.69) * (top ? 30 + 50 * k : 10 + 30 * k)));
   return pool[r.weighted(w)].id;
 }

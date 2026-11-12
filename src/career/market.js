@@ -2,7 +2,7 @@
 // Montants en milliers d'euros (k€) par mois : ordres de grandeur du football français, sans prétention
 // d'exactitude. L'agent négocie les offres (une tentative par offre) et prend une commission.
 
-import { clubById, CLUBS, clubLevel, SENIOR_CA, academyQuality } from './clubs.js';
+import { clubById, CLUBS, clubLevel, SENIOR_CA, academyQuality, PRO_CLUBS, teamCA, divisionCA } from './clubs.js';
 import { CLUB_PRESTIGE } from '../data/club-prestige.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -12,6 +12,12 @@ export function salaryFor(club, stage, ca, age) {
   if (stage === 'U17') return 0.3;
   if (stage === 'U19') return age >= 17 ? 1.0 : 0.5;
   if (stage === 'Réserve') return Math.round((1.4 + 3 * Math.max(0, ca - 0.5)) * 10) / 10;
+  if (club.foreign) {
+    // ordres de grandeur : Premier League ≈ 2× la Ligue 1, LaLiga un peu plus que la Ligue 1, deuxièmes divisions en dessous
+    const base = { 'eng1': 85, 'eng2': 16, 'esp1': 50, 'esp2': 8 }[club.leagueId] ?? 20;
+    const prestige = 1 + 5 * Math.max(0, club.strength - divisionCA(club));
+    return Math.round(clamp(base * prestige * Math.exp(6 * (ca - divisionCA(club))), 2, 2500) * 10) / 10;
+  }
   const lv = clubLevel(club);
   const base = { 1: 42, 2: 13, 3: 5, 4: 2.8, 5: 1.6, 6: 1 }[lv];
   const prestige = 1 + 5 * Math.max(0, CLUB_PRESTIGE[club.id] ?? 0);
@@ -19,9 +25,22 @@ export function salaryFor(club, stage, ca, age) {
   return Math.round(clamp(s, 0.8, 900) * 10) / 10;
 }
 
+// Pays d'un club et tirage mêlant clubs du pays et de l'étranger (deux pour un)
+export const countryOf = (c) => (c?.foreign ? c.country : 'France');
+export function mixByCountry(list, here, r, n) {
+  const local = shuffle(list.filter((c) => countryOf(c) === here), r), away = shuffle(list.filter((c) => countryOf(c) !== here), r);
+  const out = [];
+  while (out.length < n && (local.length || away.length)) {
+    if (local.length && (out.length % 3 !== 2 || !away.length)) out.push(local.shift());
+    else if (away.length) out.push(away.shift());
+  }
+  return out;
+}
+
 export function contractType(club, stage) {
   if (stage === 'U17' || stage === 'U19') return 'aspirant';
   if (stage === 'Réserve') return 'stagiaire';
+  if (club.foreign) return 'professionnel';
   return clubLevel(club) >= 5 ? 'fédéral' : 'professionnel';
 }
 
@@ -52,17 +71,17 @@ export function winterOffers(st, ca, r) {
   const share = s.apps / weeks;
   const avg = s.ratings.length ? s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length : 0;
   const club = clubById(st.clubId);
-  const lv = clubLevel(club);
+  const here = countryOf(club), power = teamCA(club, 'Pro');
   const out = [];
   if (share < 0.35 || p.wantsLoan === st.season) {
-    // peu de temps de jeu : prêt dans un club où il jouera
-    const cands = CLUBS.filter((c) => c.id !== club.id && c.senior && clubLevel(c) >= Math.min(5, lv + 1) && clubLevel(c) <= lv + 2 && ca >= SENIOR_CA[clubLevel(c)] - 0.02);
-    for (const c of shuffle(cands, r).slice(0, 2)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Prêt jusqu\'à la fin de saison', loan: true });
+    // peu de temps de jeu : prêt dans un club un peu plus modeste où il jouera (en France ou à l'étranger)
+    const cands = PRO_CLUBS().filter((c) => c.id !== club.id && teamCA(c, 'Pro') < power - 0.015 && teamCA(c, 'Pro') >= power - 0.12 && ca >= divisionCA(c) - 0.02);
+    for (const c of mixByCountry(cands, here, r, 2)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Prêt jusqu\'à la fin de saison', loan: true });
   }
   if (avg >= 7.1 && share >= 0.5) {
-    // il brille : un club d'un cran au-dessus tente sa chance
-    const cands = CLUBS.filter((c) => c.id !== club.id && c.senior && (clubLevel(c) < lv || (clubLevel(c) === lv && (CLUB_PRESTIGE[c.id] ?? 0) > (CLUB_PRESTIGE[club.id] ?? 0) + 0.01)) && ca >= SENIOR_CA[clubLevel(c)] - 0.05);
-    for (const c of shuffle(cands, r).slice(0, r.chance(0.5) ? 2 : 1)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Transfert', contract: contractTerms(c, 'Pro', ca, p.age) });
+    // il brille : un club plus huppé tente sa chance
+    const cands = PRO_CLUBS().filter((c) => c.id !== club.id && teamCA(c, 'Pro') > power + 0.01 && ca >= divisionCA(c) - 0.05);
+    for (const c of mixByCountry(cands, here, r, r.chance(0.5) ? 2 : 1)) out.push({ clubId: c.id, stage: 'Pro', kind: 'Transfert', contract: contractTerms(c, 'Pro', ca, p.age) });
   }
   return out;
 }
@@ -75,9 +94,9 @@ export function seasonLoanOffers(st, ca, r) {
   const s = st.seasonStats;
   if (p.loan || p.age > 22 || !(st.stage === 'Pro' || st.stage === 'Réserve')) return [];
   if (s.apps >= st.league.rounds.length * 0.35) return [];
-  const lv = clubLevel(clubById(st.clubId));
-  const cands = CLUBS.filter((c) => c.id !== st.clubId && c.senior && clubLevel(c) > lv && clubLevel(c) <= lv + 2 && ca >= SENIOR_CA[clubLevel(c)] - 0.03);
-  return shuffle(cands, r).slice(0, 2).map((c) => ({ clubId: c.id, stage: 'Pro', kind: 'Prêt d\'un an', loan: true }));
+  const club = clubById(st.clubId), power = teamCA(club, 'Pro');
+  const cands = PRO_CLUBS().filter((c) => c.id !== st.clubId && teamCA(c, 'Pro') < power - 0.02 && teamCA(c, 'Pro') >= power - 0.13 && ca >= divisionCA(c) - 0.03);
+  return mixByCountry(cands, countryOf(club), r, 2).map((c) => ({ clubId: c.id, stage: 'Pro', kind: 'Prêt d\'un an', loan: true }));
 }
 
 // Négociation par l'agent : une tentative par offre
@@ -85,7 +104,7 @@ export function negotiate(offer, ca, r) {
   if (offer.negotiated || !offer.contract) return { ok: false, text: 'Rien à négocier.' };
   offer.negotiated = true;
   const club = clubById(offer.clubId);
-  const margin = ca - (SENIOR_CA[clubLevel(club)] ?? 0.5);
+  const margin = ca - divisionCA(club);
   const pOk = clamp(0.55 + margin * 3, 0.25, 0.85);
   if (r.chance(pOk)) {
     offer.contract = { ...offer.contract, salary: Math.round(offer.contract.salary * (1.12 + r.range(0, 0.15)) * 10) / 10, years: Math.min(5, offer.contract.years + (r.chance(0.3) ? 1 : 0)) };

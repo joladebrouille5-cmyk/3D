@@ -7,6 +7,7 @@
 
 import { CLUB_PRESTIGE, ACADEMY_BONUS } from '../data/club-prestige.js';
 import { CATALOG } from '../data/catalog.js';
+import { FOREIGN } from '../data/foreign.js';
 import { ATTRS, ROLE_TEMPLATES, FIRST, LAST_A, LAST_B, FORMATIONS } from '../engine/teams.js';
 import { Rng } from '../engine/rng.js';
 import { kitColors } from '../ui/crest.js';
@@ -17,6 +18,27 @@ const BY_ID = new Map(CLUBS.map((c) => [c.id, c]));
 const EXTRA = new Map();
 export function registerClub(c) { if (!BY_ID.has(c.id)) EXTRA.set(c.id, { synthetic: true, ...c }); return EXTRA.get(c.id) ?? BY_ID.get(c.id); }
 export const clubById = (id) => BY_ID.get(id) ?? EXTRA.get(id);
+
+// ------------------------------------------------------------------ clubs étrangers
+// Effectifs professionnels réels (adultes uniquement, src/data/foreign.js) ; pas de centre de formation :
+// la carrière commence toujours en France. Force fixée par le jeu (club.strength).
+export const FOREIGN_LEAGUES = FOREIGN.leagues;
+export const FOREIGN_CLUBS = FOREIGN.clubs.map((c) => {
+  const lg = FOREIGN.leagues.find((l) => l.id === c.league);
+  return {
+    id: c.id, name: c.name, short: c.short, foreign: true, country: c.country, leagueId: c.league, tier: c.tier, strength: c.strength,
+    senior: { level: c.tier, competition: lg?.name ?? c.league, group: 'Unique', players: c.players, status: 'wikipedia' },
+    reserve: null, u17: null, u19: null,
+  };
+});
+for (const c of FOREIGN_CLUBS) BY_ID.set(c.id, c);
+// force moyenne de chaque championnat étranger
+const FOREIGN_AVG = Object.fromEntries(FOREIGN.leagues.map((l) => {
+  const xs = FOREIGN_CLUBS.filter((c) => c.leagueId === l.id).map((c) => c.strength);
+  return [l.id, xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0.6];
+}));
+// Tous les clubs professionnels (France + étranger), pour les offres et les prêts
+export const PRO_CLUBS = () => [...CLUBS.filter((c) => c.senior), ...FOREIGN_CLUBS];
 
 export const LEVEL_NAMES = { 1: 'Ligue 1', 2: 'Ligue 2', 3: 'Ligue 3', 4: 'National 1', 5: 'National 2', 6: 'Club formateur amateur' };
 
@@ -66,6 +88,13 @@ export const academyStars = (c) => Math.round(((academyQuality(c) - 0.4) / 0.57)
 
 // Note moyenne attendue d'une équipe selon l'étape
 export const SENIOR_CA = { 1: 0.63, 2: 0.585, 3: 0.55, 4: 0.52, 5: 0.49, 6: 0.46 };
+// Niveau moyen de la division d'un club (France : par niveau ; étranger : moyenne réelle du championnat)
+export function divisionCA(c) { return c?.foreign ? FOREIGN_AVG[c.leagueId] : SENIOR_CA[clubLevel(c)] ?? 0.5; }
+// Nom de la division d'un club, pour l'affichage
+export function divisionName(c) {
+  if (c?.foreign) return `${c.senior.competition} · ${c.country}`;
+  return LEVEL_NAMES[clubLevel(c)];
+}
 export function youthCA(q, stage) { return (stage === 'U19' ? 0.37 : 0.3) + 0.22 * q; }
 export function teamCA(club, stage) {
   if (club.strength != null) return club.strength;
@@ -94,6 +123,10 @@ export function leagueFor(club, stage) {
   let lg = null;
   if (stage === 'U17') lg = pick('u17', (t) => `Championnat National U17 · groupe ${t.group}`);
   if (stage === 'U19') lg = pick('u19', (t) => `Championnat National U19 · groupe ${t.group}`);
+  if (stage === 'Pro' && club.foreign) {
+    const fl = FOREIGN.leagues.find((l) => l.id === club.leagueId);
+    return { name: fl.name, simulated: false, clubs: [...fl.clubs], country: fl.country };
+  }
   if (stage === 'Pro') lg = pick('senior', (t) => `${t.competition.split(', ').pop()}${t.group !== 'Unique' ? ` · groupe ${t.group}` : ''}`);
   if (stage === 'Réserve') {
     // la réserve joue dans la poule seniors où elle est inscrite (adversaires = équipes premières réelles)

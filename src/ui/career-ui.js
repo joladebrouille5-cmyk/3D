@@ -545,7 +545,7 @@ function weekCard(st) {
   const focusList = Object.entries(C.FOCUS).filter(([k]) => k !== 'gardien' || p.role === 'GK');
   return `<section class="card week">
     ${st.window && st.window.week === st.week ? `<div class="window"><h3>${icon('swap', 18)} Mercato d'hiver</h3>
-      <ul class="win-list">${st.window.offers.map((o, i) => { const c = clubById(o.clubId); return `<li style="${clubVars(c)}">${crest(c, 30)}<span><b>${esc(c.name)}</b><small>${esc(o.kind)}${o.contract ? ` · ${C.money(o.contract.salary)}/mois, ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}` : ' · tu gardes ton contrat'} · ${esc(LEVEL_NAMES[clubLevel(c)])}</small></span><button data-win="${i}">Accepter</button></li>`; }).join('')}</ul>
+      <ul class="win-list">${st.window.offers.map((o, i) => { const c = clubById(o.clubId); return `<li style="${clubVars(c)}">${crest(c, 30)}<span><b>${esc(c.name)}</b><small>${esc(o.kind)}${o.contract ? ` · ${C.money(o.contract.salary)}/mois, ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}` : ' · tu gardes ton contrat'} · ${esc(C.divisionName(c))}</small></span><button data-win="${i}">Accepter</button></li>`; }).join('')}</ul>
       <button class="ghost small" id="win-stay">Rester au club</button></div>` : ''}
     ${report}
     <h2>${icon('calendar', 20)} Semaine ${st.week + 1}/${n} · ton programme</h2>
@@ -920,7 +920,7 @@ function renderSeasonEnd() {
     ${honoursBlock(st.seasonHonours)}
     <h2>Pour la saison prochaine (${st.player.age} ans)</h2>
     <ul class="offers">${st.offers.map((o, i) => o.retire ? `<li><span>${esc(o.kind)}</span><button data-offer="${i}">Choisir</button></li>` : `<li style="${clubVars(clubById(o.clubId))}">
-      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(LEVEL_NAMES[clubLevel(clubById(o.clubId))])}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span>
+      ${crest(clubById(o.clubId), 40)}<span class="of-main"><strong>${esc(clubById(o.clubId).name)}</strong> — ${esc(STAGE_LABEL[o.stage])}<br><span class="muted">${esc(o.kind)} · ${esc(C.divisionName(clubById(o.clubId)))}${o.stage === 'U17' || o.stage === 'U19' ? ` · centre ${stars(academyStars(clubById(o.clubId)))}` : ''}</span>
         ${o.contract ? `<span class="of-terms">${esc(C.CONTRACT_LABEL[o.contract.type])} · <b>${C.money(o.contract.salary)}</b>/mois · ${o.contract.years} an${o.contract.years > 1 ? 's' : ''}${o.negotiated ? ' · négocié' : ''}</span>` : o.loan ? '<span class="of-terms">Prêt : ton contrat actuel continue</span>' : o.keep ? '<span class="of-terms">Tu gardes ton contrat actuel</span>' : ''}</span>
       <span class="row">${o.withdrawn ? '<span class="error">Offre retirée</span>' : `${st.player.agent && o.contract && !o.negotiated ? `<button class="ghost" data-neg="${i}">${icon('chat', 16)} Négocier</button>` : ''}<button class="${o.own ? 'primary' : ''}" data-offer="${i}">Accepter</button>`}</span></li>`).join('')}</ul>
     ${G.negMsg ? `<p class="note">${esc(G.negMsg)}</p>` : ''}

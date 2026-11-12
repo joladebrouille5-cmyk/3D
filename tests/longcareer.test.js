@@ -30,12 +30,14 @@ test('après 30 ans, le déclin est progressif (et seulement physique au début)
   assert.ok(st.player.attrs.decisions >= dec0 - 0.005, 'la lecture du jeu tient');
 });
 
-test('une star au-dessus du niveau de la Ligue 1 intéresse les plus grands clubs', () => {
+test('une star au-dessus du niveau de la Ligue 1 intéresse les plus grands clubs (France et étranger)', async () => {
+  const { clubById, teamCA } = await import('../src/career/clubs.js');
   const st = veteran(24);
   st.stage = 'Pro';
   playSeason(st);
   const ids = st.offers.filter((o) => o.clubId).map((o) => o.clubId);
-  assert.ok(ids.some((id) => ['paris-saint-germain', 'olympique-de-marseille', 'as-monaco', 'olympique-lyonnais', 'losc-lille'].includes(id)), `offres : ${ids.join(', ')}`);
+  const psg = teamCA(clubById('paris-saint-germain'), 'Pro');
+  assert.ok(ids.some((id) => teamCA(clubById(id), 'Pro') >= psg - 0.01), `offres : ${ids.join(', ')}`);
 });
 
 test('la retraite est proposée à partir de 33 ans et imposée à 39', () => {

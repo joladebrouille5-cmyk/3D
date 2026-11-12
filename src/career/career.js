@@ -9,17 +9,17 @@
 import { Rng } from '../engine/rng.js';
 import { ATTRS } from '../engine/teams.js';
 import {
-  clubById, academyQuality, leagueFor, teamName, teamStrength, buildTeamSquad, rivalFor,
+  clubById, academyQuality, leagueFor, teamName, teamStrength, buildTeamSquad, rivalFor, PRO_CLUBS, divisionCA, divisionName,
   roleCA, genAttrs, youthCA, SENIOR_CA, clubLevel, teamCA, CLUBS, ROLE_WEIGHTS, STAGE_LABEL,
 } from './clubs.js';
 import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW } from './competitions.js';
-import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL } from './market.js';
+import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL, countryOf, mixByCountry } from './market.js';
 import { tierById, levelTierById } from './potential.js';
 import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
 export { SPECIALS, specialById, drillZone, DRILL_LABEL };
 import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy } from './spending.js';
 export { SERVICES, PURCHASES, monthlyCost, canBuy };
-export { money, CONTRACT_LABEL };
+export { money, CONTRACT_LABEL, divisionName };
 
 export const SAVE_VERSION = 1;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -154,7 +154,7 @@ function weekStart(st) {
   const r = rngOf(st);
   // la semaine qui commence : demande du coach et proposition hors terrain
   const req = coachRequest(st, r);
-  st.weekly = { week: st.week, coachFocus: req.focus, why: req.why, special: pickSpecial(st, r) };
+  st.weekly = { week: st.week, coachFocus: req.focus, why: req.why, special: pickSpecial(st, r, abroad(st) ? clubById(st.clubId).country : null) };
   st.callup = maybeCallup(st, r, currentCA(st));
   // mercato d'hiver : à mi-saison, des clubs se manifestent (prêt ou transfert)
   const len = st.league.rounds.length;
@@ -498,9 +498,14 @@ function weekEffects(st, { focus, intensity, offpitch, drill = null }, r, rep) {
     if (offpitch === 'extra') { p.pa += p.fresh > 0.5 ? 0.0007 : -0.001; p.fresh -= 0.1; p.trust += 0.01; progress(st, focus, 0.25, r); }
     if (offpitch === 'repos') { p.fresh += 0.15; p.morale += 0.04; }
     if (offpitch === 'sortie') { p.morale += 0.07; p.discipline -= 0.03; p.pa -= 0.0015; p.fresh -= 0.03; p.team += 0.015; }
-    if (sp) { const txt = sp.apply(p); if (sp.progress) progress(st, 'match', sp.progress, r); if (r && txt) rep.lines.push(txt); }
+    if (sp) { const txt = sp.apply(p, clubById(st.clubId)?.country); if (sp.progress) progress(st, 'match', sp.progress, r); if (r && txt) rep.lines.push(txt); }
     if (youth && offpitch !== 'ecole' && !(sp?.id === 'soutien')) p.school -= 0.012; // la scolarité s'érode si on la néglige
   });
+  // à l'étranger, tant que la langue n'est pas maîtrisée, l'intégration au vestiaire est plus lente
+  if (abroad(st)) {
+    const lang = p.lang?.[clubById(st.clubId).country] ?? 0;
+    if (lang < 0.6) track(st, 'relations', () => { p.team -= 0.006 * (1 - lang); }, false);
+  }
   // suivre la demande du coach : il le remarque
   if (st.weekly?.coachFocus && focus === st.weekly.coachFocus) {
     track(st, 'staff', () => { p.trust += 0.015; p.morale += 0.005; });
@@ -941,6 +946,38 @@ EVENTS.push(
   },
 );
 
+// Vie à l'étranger : la langue, le mal du pays, la presse locale
+const abroad = (st) => !!clubById(st.clubId)?.foreign && st.stage === 'Pro';
+const LANGUE = { Angleterre: 'l\'anglais', Espagne: 'l\'espagnol' };
+EVENTS.push(
+  {
+    id: 'langue', ctx: true, when: (st) => abroad(st) && (st.player.lang?.[clubById(st.clubId).country] ?? 0) < 0.6,
+    text: (st) => `Dans le vestiaire, tout se dit en ${LANGUE[clubById(st.clubId).country]?.slice(3) ?? 'langue locale'}. Tu comprends un mot sur deux.`,
+    options: [
+      { label: 'Prendre des cours intensifs', apply: (st) => { const c = clubById(st.clubId).country; (st.player.lang ??= {})[c] = Math.min(1, (st.player.lang[c] ?? 0) + 0.35); st.player.team += 0.05; st.player.fresh -= 0.04; return `Tu progresses vite en ${LANGUE[c]?.slice(3) ?? 'langue'}. Les blagues du vestiaire commencent à te faire rire.`; } },
+      { label: 'Rester avec les francophones', apply: (st) => { st.player.morale += 0.03; st.player.team -= 0.03; return 'Tu te sens bien dans ta bulle, un peu à l\'écart du reste du groupe.'; } },
+      { label: 'Laisser le terrain parler', apply: (st) => { st.player.trust += 0.01; st.player.team -= 0.01; return 'Le coach t\'explique les consignes par gestes. Ça passe… à peu près.'; } },
+    ],
+  },
+  {
+    id: 'malpays', ctx: true, when: (st) => abroad(st) && st.player.morale < 0.55,
+    text: () => 'Le mal du pays te prend : la famille, les amis, la France te manquent.',
+    options: [
+      { label: 'Faire venir ta famille quelques jours', apply: (st) => { const cost = Math.min(st.player.money, 3); st.player.money -= cost; st.player.morale += 0.1; return 'Une semaine en famille : tu repars regonflé.'; } },
+      { label: 'Serrer les dents', apply: (st) => { st.player.morale -= 0.03; st.player.discipline += 0.02; return 'Tu tiens bon. Les appels vidéo du soir aident un peu.'; } },
+      { label: 'Demander un retour en France au mercato', apply: (st) => { st.player.wantsLoan = st.season; st.player.morale += 0.02; st.player.trust -= 0.03; return 'Ton entourage fait passer le message : des clubs français pourraient se manifester.'; } },
+    ],
+  },
+  {
+    id: 'presseEtrangere', ctx: false, when: (st) => abroad(st) && (st.seasonStats?.apps ?? 0) >= 4,
+    text: (st) => `La presse ${clubById(st.clubId).country === 'Espagne' ? 'espagnole' : 'anglaise'} s'intéresse au « jeune Français » de ${clubById(st.clubId).name}.`,
+    options: [
+      { label: 'Répondre dans la langue du pays', apply: (st) => { const c = clubById(st.clubId).country; const lv = st.player.lang?.[c] ?? 0; st.player.fans += lv > 0.3 ? 0.06 : 0.02; return lv > 0.3 ? 'Les supporters adorent l\'effort.' : 'Quelques fautes, beaucoup de sourires : l\'effort est salué.'; } },
+      { label: 'Parler en français avec un traducteur', apply: (st) => { st.player.fans += 0.02; return 'Une interview sage, sans faux pas.'; } },
+    ],
+  },
+);
+
 function pickEvent(st, r, ctxOnly = false) {
   const recent = st.recentEvents ?? [];
   const all = EVENTS.filter((e) => (!ctxOnly || e.ctx) && e.when(st));
@@ -1297,7 +1334,7 @@ function buildOffers(st, pos, n) {
   const offers = [];
   const r = rngOf(st);
   const youth = st.stage === 'U17' || st.stage === 'U19';
-  const proThreshold = (c) => SENIOR_CA[clubLevel(c)] - 0.07;
+  const proThreshold = (c) => divisionCA(c) - 0.07;
   const ss = st.seasonStats;
   const avg = ss.ratings.length ? ss.ratings.reduce((x, y) => x + y, 0) / ss.ratings.length : 0;
   const terms = (c, stage, opts) => contractTerms(c, stage, ca, p.age + 0, opts);
@@ -1336,13 +1373,16 @@ function buildOffers(st, pos, n) {
       offers.push({ clubId: club.id, stage: 'Réserve', kind: st.stage === 'Réserve' ? 'Saison de plus en réserve' : 'Contrat stagiaire (réserve)', own: true, contract: terms(club, 'Réserve') });
     }
     const extra = (p.agent ? 3 : 2) + (pos <= 3 ? 1 : 0) + ((p.scouted ?? 0) > 0 ? 1 : 0) + ((p.fans ?? 0) >= 0.7 ? 1 : 0) + (p.leverage === st.season ? 1 : 0);
-    const cands = CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && ca >= proThreshold(c) && ca <= SENIOR_CA[clubLevel(c)] + 0.08);
-    // un joueur au-dessus du niveau de la Ligue 1 : les plus grands clubs du pays se le disputent
-    const top = ca > SENIOR_CA[1] + 0.06
-      ? CLUBS.filter((c) => c.id !== club.id && c.id !== p.loan?.parentId && c.senior && clubLevel(c) === 1 && teamCA(c, 'Pro') >= teamCA(club, 'Pro') - 0.005)
-        .sort((a, b) => teamCA(b, 'Pro') - teamCA(a, 'Pro')).slice(0, 4)
+    // clubs professionnels de France et de l'étranger dont le niveau correspond au tien
+    const pool = PRO_CLUBS().filter((c) => c.id !== club.id && c.id !== p.loan?.parentId);
+    const cands = pool.filter((c) => ca >= proThreshold(c) && ca <= divisionCA(c) + 0.08);
+    // un joueur nettement au-dessus de son club : les plus grands clubs (France et étranger) se le disputent
+    const power = teamCA(club, 'Pro');
+    const top = ca > Math.max(power + 0.04, SENIOR_CA[1] + 0.03)
+      ? pool.filter((c) => teamCA(c, 'Pro') >= power - 0.005 && ca >= divisionCA(c) - 0.02).sort((a, b) => teamCA(b, 'Pro') - teamCA(a, 'Pro')).slice(0, 4)
       : [];
-    const picked = [...top, ...shuffle(cands.filter((c) => !top.includes(c)), r)].slice(0, extra);
+    const here = countryOf(club);
+    const picked = [...top, ...mixByCountry(cands.filter((c) => !top.includes(c)), here, r, extra)].slice(0, extra);
     for (const c of picked) offers.push({ clubId: c.id, stage: 'Pro', kind: contractRuns ? 'Transfert' : 'Offre de contrat', contract: terms(c, 'Pro') });
     if (!offers.length) {
       const amateur = CLUBS.filter((c) => c.senior && clubLevel(c) === 5);

@@ -22,6 +22,8 @@ export const SPECIALS = [
     apply: (p) => { p.fans += 0.03; p.team += 0.02; p.morale += 0.03; p.fresh -= 0.02; return 'Les petits de l\'école de foot ne te lâchent plus. Tu repars avec le sourire.'; } },
   { id: 'soutien', icon: 'ecole', label: 'Soutien scolaire au centre', desc: 'Scolarité en nette hausse.', youth: true,
     apply: (p) => { p.school += 0.08; p.discipline += 0.01; return 'Deux heures de soutien : le contrôle de vendredi ne te fait plus peur.'; } },
+  { id: 'langue', icon: 'chat', label: 'Cours de langue', desc: 'Tu comprends mieux le vestiaire et le coach.', abroad: true,
+    apply: (p, country) => { (p.lang ??= {})[country] = Math.min(1, (p.lang[country] ?? 0) + 0.15); p.team += 0.03; p.trust += 0.01; return 'Deux heures de cours : tu suis enfin les consignes du coach sans traducteur.'; } },
   { id: 'poste', icon: 'target', label: 'Atelier avec un entraîneur de poste', desc: 'Progression des qualités de ton poste.', progress: 0.3,
     apply: () => 'Un spécialiste de ton poste corrige tes appuis et ton orientation.' },
 ];
@@ -46,10 +48,15 @@ export function coachRequest(st, r) {
   return { focus, why };
 }
 
-export function pickSpecial(st, r) {
+export function pickSpecial(st, r, abroadCountry = null) {
   const youth = st.stage === 'U17' || st.stage === 'U19';
   const recent = st.recentSpecials ?? [];
-  const pool = SPECIALS.filter((s) => (!s.youth || youth) && !recent.includes(s.id));
+  // à l'étranger, le cours de langue revient souvent tant que la langue n'est pas maîtrisée
+  if (abroadCountry && (st.player.lang?.[abroadCountry] ?? 0) < 0.8 && !recent.slice(-2).includes('langue') && r.chance(0.5)) {
+    st.recentSpecials = [...recent, 'langue'].slice(-4);
+    return 'langue';
+  }
+  const pool = SPECIALS.filter((s) => (!s.youth || youth) && !s.abroad && !recent.includes(s.id));
   const sp = r.pick(pool.length ? pool : SPECIALS);
   st.recentSpecials = [...recent, sp.id].slice(-4);
   return sp.id;

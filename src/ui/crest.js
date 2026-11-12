@@ -6,6 +6,7 @@ import { CLUB_COLORS, TEST_TEAM_COLORS, CREST_IMAGES } from '../data/club-colors
 import { CREST_FILES } from '../data/crest-manifest.js';
 import { CREST_LOCAL } from '../data/crest-local.js';
 import { CREST_TM } from '../data/crest-tm.js';
+import { FOREIGN } from '../data/foreign.js';
 
 const PAIRS = [
   ['#1d4f9c', '#ffffff'], ['#d6182a', '#ffffff'], ['#0a8a3c', '#ffffff'], ['#111111', '#ffd200'],
@@ -32,6 +33,12 @@ function luminance(hex) {
 // Couleurs des équipes hors catalogue (clubs européens, sélections) : enregistrées au chargement
 const EXTRA_COLORS = {};
 export function registerColors(id, c) { EXTRA_COLORS[id] = c; }
+// clubs étrangers : couleurs du maillot et logo (premières divisions, et anciens pensionnaires)
+const CREST_FOREIGN = {};
+for (const c of FOREIGN.clubs) {
+  EXTRA_COLORS[c.id] = { p: c.colors.p, s: c.colors.s };
+  if (c.crest) CREST_FOREIGN[c.id] = c.crest;
+}
 
 // Couleurs d'un club (réelles si connues, sinon déterministes)
 export function clubColors(id) {
@@ -82,14 +89,14 @@ function patternSvg(pat, p, s, t) {
 // Écusson SVG (chaîne). `size` en pixels CSS.
 export function crestImage(id) {
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  return CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base] ?? null;
+  return CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base] ?? CREST_FOREIGN[base] ?? null;
 }
 
 export function crestSVG(club, size = 40) {
   const id = club.clubId ?? club.id;
   // logo officiel téléchargé (tools/fetch-crests.mjs) ou image fournie, sinon écusson généré
   const base = String(id).replace(/-(U17|U19|Pro|Réserve)$/, '');
-  const img = CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base];
+  const img = CREST_IMAGES[base] ?? CREST_TM[base] ?? CREST_LOCAL[base] ?? CREST_FILES[base] ?? CREST_FOREIGN[base];
   if (img) return `<img class="crest-img" src="${img}" width="${size}" height="${size}" alt="" loading="lazy" decoding="async">`;
   const c = clubColors(id);
   const txt = initials(club.name ?? id);
