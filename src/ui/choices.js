@@ -3,7 +3,7 @@
 // gestes concrets selon la situation (une-deux, renversement, centre en retrait, frappe piquée…).
 // Les indications de risque sont des estimations, jamais des garanties.
 
-import { holderOptions, pressureOn } from '../engine/decisions.js';
+import { holderOptions, pressureOn, laneRisk } from '../engine/decisions.js';
 
 const dist = (a, b, c, d) => Math.hypot(a - c, b - d);
 // le risque chiffré est désormais affiché à part (pourcentage de réussite simulé) : plus de mention dans le texte
@@ -178,6 +178,36 @@ export function defendChoices(m, u, h, recent = []) {
   return { title, sub: situation(m, u), list: pick(cands, recent, DEF_ORDER, 4, Math.floor(m.t)), type: 'defend', vs: h.id };
 }
 
+// Meilleur point de démarquage : atteignable en deux secondes, pas hors-jeu, loin des défenseurs,
+// et surtout joignable par une passe au sol du porteur (risque d'interception le plus bas).
+function openSpot(m, u, h) {
+  const team = m.teams[u.team];
+  const opps = m.onPitch(1 - u.team);
+  const rels = opps.map((o) => m.relX(team, o.x)).sort((a, b) => b - a);
+  const offLine = Math.max(rels[1] ?? 0, m.relX(team, h.x), 0.5);
+  const hRel = m.relX(team, h.x);
+  let best = null;
+  for (const r of [5, 9, 13]) {
+    for (let k = 0; k < 8; k++) {
+      const a = (k * Math.PI) / 4;
+      const x = u.x + Math.cos(a) * r, y = u.y + Math.sin(a) * r;
+      if (x < 2 || x > 103 || y < 2 || y > 66) continue;
+      const rel = m.relX(team, x);
+      if (rel > offLine - 0.005 || rel < hRel - 0.1) continue;
+      const dh = dist(h.x, h.y, x, y);
+      if (dh < 6 || dh > 32) continue;
+      let dmin = Infinity;
+      for (const o of opps) dmin = Math.min(dmin, dist(o.x, o.y, x, y));
+      if (dmin < 3.5) continue;
+      const risk = laneRisk(m, h, x, y);
+      // ouverture de la ligne de passe d'abord, puis espace autour du point, puis progression vers le but
+      const score = (1 - risk) * 1.0 + Math.min(dmin, 9) / 9 * 0.35 + (rel - hRel) * 0.9 - r * 0.012;
+      if (!best || score > best.score) best = { x, y, risk, dmin, score };
+    }
+  }
+  return best;
+}
+
 // ------------------------------------------------------------------ sans ballon, en attaque
 export function supportChoices(m, u, h, recent = []) {
   const team = m.teams[u.team];
@@ -208,21 +238,18 @@ export function supportChoices(m, u, h, recent = []) {
     add({ key: 'rebound', cat: 'hold', intent: 'spot', spot: { x: gx - dir * 20, y: 34 }, icon: 'pin', label: 'Rester à l\'entrée de la surface', hint: 'pour la frappe ou le second ballon', cls: 'low', score: 0.022 });
   } else {
     if (uRel >= hRel - 0.05) {
-      add({ key: 'run', cat: 'forward', intent: 'run', icon: 'run', label: 'Appel en profondeur', hint: 'attaquer l\'espace · attention au hors-jeu', cls: 'mid', score: 0.03 });
+      // l'appel en profondeur vaut surtout quand il y a de l'espace dans le dos de la défense
+      const oppRels = m.onPitch(1 - u.team).map((o) => m.relX(team, o.x)).sort((a, b) => b - a);
+      const behind = (1 - Math.max(oppRels[1] ?? 0.5, 0.5)) * 105;
+      add({ key: 'run', cat: 'forward', intent: 'run', icon: 'run', label: 'Appel en profondeur', hint: behind > 22 ? `${Math.round(behind)} m d'espace dans le dos de la défense` : 'attaquer l\'espace · attention au hors-jeu', cls: 'mid', score: behind > 22 ? 0.031 : 0.022 });
       add({ key: 'diag', cat: 'special', intent: 'diag', icon: 'cross', label: 'Appel croisé', hint: 'en diagonale, dans le dos du latéral', cls: 'mid', score: 0.028 });
     }
     if (Math.abs(h.y - 34) > 14 && Math.sign(u.y - 34) === Math.sign(h.y - 34) && uRel <= hRel + 0.02) add({ key: 'overlap', cat: 'special', intent: 'overlap', icon: 'run', label: `Dédoubler ${first(h)}`, hint: 'passer par l\'extérieur', cls: 'mid', score: 0.031 });
     if (uRel > hRel + 0.08) add({ key: 'drop', cat: 'safe', intent: 'drop', icon: 'call', label: 'Décrocher entre les lignes', hint: 'venir chercher le ballon dos au but', cls: 'low', score: 0.026 });
     add({ key: 'call', cat: 'safe', intent: 'call', icon: 'call', label: `Demander le ballon à ${short(h)}`, hint: 'proposer une solution courte', cls: 'low', score: 0.025 });
-    // se démarquer : le point libre le plus éloigné des défenseurs, devant le porteur
-    let free = null, fd = 0;
-    for (const [fx, fy] of [[0.72, 20], [0.72, 48], [0.8, 34], [0.62, 26], [0.62, 42], [0.86, 26], [0.86, 42]]) {
-      const x = m.absX(team, fx), y = fy;
-      let dmin = Infinity;
-      for (const o of m.onPitch(1 - u.team)) dmin = Math.min(dmin, dist(o.x, o.y, x, y));
-      if (dmin > fd && m.relX(team, x) > hRel - 0.05) { fd = dmin; free = { x, y }; }
-    }
-    if (free && fd > 5) add({ key: 'space', cat: 'special', intent: 'spot', spot: free, icon: 'target', label: 'Se démarquer dans l\'espace libre', hint: `aucun adversaire à moins de ${Math.round(fd)} m`, cls: 'low', score: 0.027 + Math.min(0.006, fd / 2000) });
+    // se rendre disponible : le point atteignable où la ligne de passe depuis le porteur est la plus ouverte
+    const open = openSpot(m, u, h);
+    if (open) add({ key: 'space', cat: 'special', intent: 'spot', spot: { x: open.x, y: open.y }, icon: 'target', label: open.risk < 0.3 ? 'Te rendre disponible, ligne de passe ouverte' : 'Se démarquer dans l\'espace libre', hint: `adversaire le plus proche à ${Math.round(open.dmin)} m`, cls: 'low', score: 0.027 + 0.008 * (1 - open.risk) });
     // l'intervalle entre le central et le latéral adverses, de ton côté
     const side = u.y < 34 ? -1 : 1;
     const backs = m.onPitch(1 - u.team).filter((o) => o.role !== 'GK').sort((a, b) => m.relX(team, b.x) - m.relX(team, a.x)).slice(0, 4)

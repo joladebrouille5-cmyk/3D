@@ -258,12 +258,17 @@ export class Match {
         else p.userIntent = { kind: 'press', until: this.t + 3, foul: true };
         break;
       case 'run': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; break;
-      case 'diag': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.userIntent = { kind: 'diag', until: this.t + 3.5, own: true }; break;
+      case 'diag': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.callUntil = this.t + 3.5; p.userIntent = { kind: 'diag', until: this.t + 3.5, own: true }; break;
       case 'call': p.callUntil = this.t + 3; break;
-      case 'overlap': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.userIntent = { kind, until, own: true }; break;
+      case 'overlap': p.runUntil = this.t + 3.5; p.userRun = this.t + 3.5; p.callUntil = this.t + 3.5; p.userIntent = { kind, until, own: true }; break;
       case 'drop': p.callUntil = this.t + 3.5; p.userIntent = { kind, until, own: true }; break;
-      case 'spot': p.userIntent = { kind: 'spot', until: this.t + 5, x: extra.x, y: extra.y, own: true }; break;
+      // se déplacer vers un point en demandant le ballon : le porteur peut servir dans la course
+      case 'spot': p.callUntil = this.t + 4; p.userIntent = { kind: 'spot', until: this.t + 5, x: extra.x, y: extra.y, own: true }; break;
       default: p.userIntent = null;
+    }
+    // un appel se voit et s'entend : le partenaire qui porte le ballon lève la tête plus tôt
+    if (h && h.team === p.team && h.id !== p.id && !this.isControlled(h) && ['run', 'diag', 'call', 'overlap', 'drop', 'spot'].includes(kind)) {
+      h.nextDecision = Math.min(h.nextDecision, this.t + 0.45);
     }
   }
 
@@ -277,6 +282,8 @@ export class Match {
       const h = b.owner != null ? this.players[b.owner] : null;
       const team = this.teams[p.team];
       if (it.own) {
+        // la passe est pour toi (ou tu es le mieux placé sur ce ballon) : tu vas au ballon, le déplacement s'arrête
+        if (b.owner == null && ((b.pass && b.pass.to === p.id) || this.t < (p.chaseUntil ?? 0))) { p.userIntent = null; continue; }
         // placements quand ton équipe a le ballon (ou qu'un centre est en l'air)
         const crossing = b.owner == null && b.pass && b.pass.team === p.team;
         if (!crossing && (!h || h.team !== p.team || h.id === p.id)) { p.userIntent = null; continue; }

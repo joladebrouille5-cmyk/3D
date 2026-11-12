@@ -59,6 +59,10 @@ function interceptRisk(m, p, tx, ty, opts) {
   return 1 - keep;
 }
 
+// Risque d'interception d'une passe au sol du joueur `p` vers le point (x, y) : sert à proposer
+// des déplacements « dans une ligne de passe ouverte ».
+export function laneRisk(m, p, x, y) { return interceptRisk(m, p, x, y, { lofted: false }); }
+
 function nearestOppDist(m, p, x, y) {
   let best = Infinity;
   for (const o of m.onPitch(1 - p.team)) best = Math.min(best, dist(o.x, o.y, x, y));
@@ -107,11 +111,22 @@ export function holderOptions(m, p, restartType = null) {
     if (restartType === 'kickoff' && qRel > 0.5) continue;
     const lofted = d > 32 || (restartType === 'goalkick' && d > 28);
     if (d > 60) continue;
-    const qPress = clamp((4.5 - nearestOppDist(m, q, q.x, q.y)) / 4, 0, 1);
-    let risk = interceptRisk(m, p, q.x, q.y, { lofted }) + qPress * 0.18 + (lofted ? 0.2 + d / 300 : 0);
+    // ton joueur a annoncé son déplacement : la passe est donnée dans sa course, là où il sera
+    let ax = q.x + q.vx * 0.3, ay = q.y + q.vy * 0.3, led = false;
+    if (q.isUser && q.userIntent?.own && !lofted && !restartType) {
+      const ddx = q.tx - q.x, ddy = q.ty - q.y, dd = Math.hypot(ddx, ddy);
+      if (dd > 1.5) {
+        const tFlight = d / Math.max(8, Math.sqrt(30 + 6.4 * d) * 0.8) + 0.25;
+        const travel = Math.min(dd, m.maxSpeed(q) * 0.85 * tFlight);
+        ax = clamp(q.x + (ddx / dd) * travel, 1, PITCH.length - 1); ay = clamp(q.y + (ddy / dd) * travel, 1, PITCH.width - 1);
+        led = true;
+      }
+    }
+    const qPress = clamp((4.5 - nearestOppDist(m, q, led ? ax : q.x, led ? ay : q.y)) / 4, 0, 1);
+    let risk = interceptRisk(m, p, led ? ax : q.x, led ? ay : q.y, { lofted }) + qPress * 0.18 + (lofted ? 0.2 + d / 300 : 0);
     risk += (1 - p.attrs.passing) * (d / 60) * 0.25;
     risk = clamp(risk, 0.02, 0.97);
-    let gain = threat(m, team, q.x, q.y) + RETAIN;
+    let gain = threat(m, team, led ? ax : q.x, led ? ay : q.y) + RETAIN;
     if (isGK) gain -= 0.012;
     // un partenaire demande le ballon : signal, pas ordre (ton joueur, qui annonce clairement son appel, est mieux entendu)
     if (m.t < (q.callUntil ?? 0)) gain += q.isUser ? 0.045 : 0.03;
@@ -121,7 +136,7 @@ export function holderOptions(m, p, restartType = null) {
     if (lofted) gain -= 0.014 * (1 - tv.direct) + 0.004;
     const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
     const u = (1 - risk * riskW) * gain - risk * riskW * lossCostAt(mx, my) - here;
-    opts.push({ kind: 'pass', to: q.id, tx: q.x + q.vx * 0.3, ty: q.y + q.vy * 0.3, lofted, u, risk, forward: qRel - rel });
+    opts.push({ kind: 'pass', to: q.id, tx: ax, ty: ay, lofted, u, risk, forward: qRel - rel });
 
     // passe dans la course (attaquants, ailiers, latéraux qui montent)
     if (!restartType || restartType === 'freekick') {
@@ -137,7 +152,8 @@ export function holderOptions(m, p, restartType = null) {
           const d2 = dist(p.x, p.y, tx, ty);
           const loftedT = d2 > 34;
           // le receveur doit arriver avant les adversaires
-          const tRecv = dist(q.x, q.y, tx, ty) / (m.maxSpeed(q) * 0.9) + 0.2;
+          // appel annoncé par ton joueur : départ calé sur le passeur, il a déjà de l'élan
+          const tRecv = Math.max(0.2, dist(q.x, q.y, tx, ty) / (m.maxSpeed(q) * 0.9) + 0.2 - (userRun ? 0.3 : 0));
           let tOppBest = Infinity;
           for (const o of m.onPitch(1 - p.team)) tOppBest = Math.min(tOppBest, dist(o.x, o.y, tx, ty) / (m.maxSpeed(o) * 0.9) + 0.35);
           let riskT = clamp(interceptRisk(m, p, tx, ty, { lofted: loftedT }) * 0.8 + sigmoid((tRecv - tOppBest) * 2.2) * 0.75 + (loftedT ? 0.1 : 0), 0.05, 0.97);
