@@ -163,6 +163,7 @@ function draw() {
   const P = S.prev, k = m.players.length * 2;
   // carrière : ton équipe attaque toujours vers la droite de l'écran (affichage seulement)
   S.renderer.mirror = !!S.career && m.teams[S.career.followTeam].dir < 0;
+  S.renderer.setInset(S.choice?.inset?.r ?? 0, S.choice?.inset?.b ?? 0);
   const players = m.players.map((p, i) => ({ ...p, x: P && Number.isFinite(P[i * 2]) ? P[i * 2] + (p.x - P[i * 2]) * alpha : p.x, y: P && Number.isFinite(P[i * 2 + 1]) ? P[i * 2 + 1] + (p.y - P[i * 2 + 1]) * alpha : p.y }));
   const ball = P ? { x: P[k] + (m.ball.x - P[k]) * alpha, y: P[k + 1] + (m.ball.y - P[k + 1]) * alpha, z: P[k + 2] + (m.ball.z - P[k + 2]) * alpha } : m.ball;
   if (Math.hypot(ball.x - m.ball.x, ball.y - m.ball.y) > 15) { ball.x = m.ball.x; ball.y = m.ball.y; } // replacement arbitral
@@ -173,10 +174,9 @@ function draw() {
   document.getElementById('pitch').classList.toggle('ff', ff && m.phase !== 'fulltime');
   if (ff) S.renderer.follow(52.5, 34, 1);
   else if (u && u.onPitch && S.career) {
-    const z = S.ctl.zoom;
-    // choix ouvert sur écran bas (téléphone) : le panneau occupe la droite, on décale la vue
-    const shift = S.choice && innerHeight <= 520 ? 14 / z * (S.renderer.mirror ? -1 : 1) : 0;
-    S.renderer.follow(u.x * 0.65 + ball.x * 0.35 + shift, u.y * 0.65 + ball.y * 0.35, z);
+    // choix ouvert : la caméra cadre ton joueur et le ballon dans la partie non couverte par le panneau
+    const z = S.choice ? Math.max(S.ctl.zoom, 1.7) : S.ctl.zoom;
+    S.renderer.follow(u.x * 0.6 + ball.x * 0.4, u.y * 0.6 + ball.y * 0.4, z, S.choice ? 0.2 : 0.12);
     if (S.choice && S.choice.targets) aim = S.choice.targets;
   } else S.renderer.follow(52.5, 34, 1);
   S.renderer.draw({ teams, players, ball, ownerId: m.ball.owner, selectedId: S.selectedId, userTeam: userTeamIdx(), aim });
@@ -369,10 +369,19 @@ function openChoice(ch, u) {
     <div class="ch-list">${ch.list.map((c, i) => `<button class="ch-opt ${c.cls || ''}" data-i="${i}"><span class="ch-n">${i + 1}</span><span class="ch-ic">${icon(c.icon, 22)}${c.opt?.to != null ? `<span class="ch-mate">${face(m.players[c.opt.to], 22)}</span>` : ''}</span><span class="ch-t"><b>${esc(c.label)}</b><small>${esc(c.hint || '')}</small></span><span class="ch-risk" aria-hidden="true"><i></i><i></i><i></i></span></button>`).join('')}</div>
     <div class="ch-foot"><button id="ch-auto" class="ch-skip">${icon('auto', 16)} Laisser l'instinct décider</button></div>`;
   box.hidden = false;
+  S.choice.inset = panelInset(box);
   sound.chime();
   box.querySelectorAll('.ch-opt').forEach((btn) => btn.addEventListener('click', () => pickChoice(Number(btn.dataset.i))));
   box.querySelector('#ch-auto').addEventListener('click', () => pickChoice(-1));
   refreshUI(true); // l'horloge et le score affichés correspondent à l'instant du choix
+}
+
+// part du terrain couverte par le panneau des choix (à droite sur téléphone, en bas sinon)
+function panelInset(box) {
+  const cv = document.getElementById('pitch').getBoundingClientRect(), r = box.getBoundingClientRect();
+  if (!cv.width || !r.width) return { r: 0, b: 0 };
+  const right = r.height > cv.height * 0.6 && r.left > cv.left + cv.width * 0.35;
+  return right ? { r: Math.max(0, cv.right - r.left + 8), b: 0 } : { r: 0, b: Math.max(0, cv.bottom - r.top + 8) };
 }
 
 function pickChoice(i) {
@@ -1122,7 +1131,7 @@ function bind() {
   soundIco();
   $('#btn-sound').addEventListener('click', (e) => { e.currentTarget.blur(); sound.toggle(); soundIco(); });
   window.addEventListener('keydown', (e) => { if ((e.key === 'm' || e.key === 'M') && !e.target.closest?.('input, select, textarea') && S.m) { sound.toggle(); soundIco(); } });
-  window.addEventListener('resize', () => S.renderer.resize());
+  window.addEventListener('resize', () => { S.renderer.resize(); if (S.choice) S.choice.inset = panelInset($('#choices')); });
   new ResizeObserver(() => S.renderer.resize()).observe($('#center'));
   window.addEventListener('keydown', onKeyDown);
   $('#btn-ctl').addEventListener('click', (e) => { e.currentTarget.blur(); setManual(!S.ctl.manual); });

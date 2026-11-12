@@ -37,6 +37,7 @@ export class PitchRenderer {
     this.ctx = canvas.getContext('2d');
     this.mirror = false; // affichage seulement : le sens réel de l'attaque est toujours indiqué
     this.cam = { x: L / 2, y: W / 2, zoom: 1 };
+    this.inset = { r: 0, b: 0 };
     this.heading = new Map(); // orientation lissée par joueur (dérivée des positions affichées)
     this.trail = [];
     this.particles = [];
@@ -101,15 +102,24 @@ export class PitchRenderer {
   #applyCam() {
     const z = Math.max(1, this.cam.zoom);
     this.scale = this.base * z;
-    const halfW = this.canvas.width / 2 / this.scale, halfH = this.canvas.height / 2 / this.scale;
+    // zone réellement visible : un panneau (choix en match) peut couvrir la droite ou le bas
+    const vw = Math.max(10, this.canvas.width - this.inset.r), vh = Math.max(10, this.canvas.height - this.inset.b);
+    const halfW = vw / 2 / this.scale, halfH = vh / 2 / this.scale;
     const cx = halfW >= L / 2 + MARGIN ? L / 2 : Math.min(L + MARGIN - halfW, Math.max(-MARGIN + halfW, this.cam.x));
     const cy = halfH >= W / 2 + MARGIN ? W / 2 : Math.min(W + MARGIN - halfH, Math.max(-MARGIN + halfH, this.cam.y));
-    this.ox = this.canvas.width / 2 - cx * this.scale;
-    this.oy = this.canvas.height / 2 - cy * this.scale;
+    this.ox = vw / 2 - cx * this.scale;
+    this.oy = vh / 2 - cy * this.scale;
   }
+
+  // part de l'écran couverte (pixels CSS) : la caméra cadre ce qui reste visible
+  setInset(r = 0, b = 0) { this.insetTarget = { r: r * (this.dpr || 1), b: b * (this.dpr || 1) }; }
 
   follow(wx, wy, zoom, smooth = 0.12) {
     const tx = this.mirror ? L - wx : wx, ty = this.mirror ? W - wy : wy;
+    const it = this.insetTarget ?? { r: 0, b: 0 };
+    this.inset.r += (it.r - this.inset.r) * 0.2; this.inset.b += (it.b - this.inset.b) * 0.2;
+    if (Math.abs(it.r - this.inset.r) < 0.5) this.inset.r = it.r;
+    if (Math.abs(it.b - this.inset.b) < 0.5) this.inset.b = it.b;
     this.cam.zoom += (zoom - this.cam.zoom) * 0.15;
     if (zoom <= 1.01 && Math.abs(this.cam.zoom - 1) < 0.01) { this.cam.zoom = 1; this.cam.x = L / 2; this.cam.y = W / 2; }
     else { this.cam.x += (tx - this.cam.x) * smooth; this.cam.y += (ty - this.cam.y) * smooth; }
