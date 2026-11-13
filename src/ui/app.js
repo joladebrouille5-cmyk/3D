@@ -220,7 +220,12 @@ function present3d(want, teams, players, ball, ownerId, cam) {
     if (S.in3d) { S.in3d = false; c3.hidden = true; }
     return false;
   }
-  if (!S.in3d) { S.in3d = true; c3.hidden = false; S.r3d.resize(); S.r3d.reset(); }
+  if (!S.in3d) {
+    S.in3d = true; c3.hidden = false; S.r3d.resize(); S.r3d.reset();
+    // conditions du match : la météo du jour ; nuit ou jour selon le match (la plupart en soirée)
+    let h = 2166136261; for (const ch of String(S.m?.seed ?? '')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+    S.r3d.setConditions?.({ weather: S.career?.weather ?? null, night: ((h >>> 0) % 100) < 62 });
+  }
   const r = S.r3d;
   r.mirror = S.renderer.mirror;
   r.follow(cam[0], cam[1], cam[2], cam[3]);

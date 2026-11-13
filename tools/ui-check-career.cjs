@@ -18,7 +18,15 @@ const SHOTS = process.argv[3] || null;
     if (await page.waitForSelector('.drill-backdrop', { timeout: 800 }).catch(() => null)) {
       drills++;
       if (drills === 1) await shot('c3b-drill');
-      await page.click('#dr-track');
+      // le mini-jeu varie selon le thème et la semaine : on touche la zone de jeu (ou une touche proposée)
+      // jusqu'au verdict ; « Passer » en dernier recours
+      for (let k = 0; k < 40 && await page.$('.drill-backdrop'); k++) {
+        const keys = await page.$$('.dm-key:not([disabled]), .dd-key:not([disabled])');
+        if (keys.length) await keys[0].click().catch(() => {});
+        else await page.click('#dr-stage', { force: true }).catch(() => {});
+        await page.waitForTimeout(250);
+        if (k === 30) await page.click('#dr-skip').catch(() => {});
+      }
       await page.waitForSelector('.drill-backdrop', { state: 'detached', timeout: 5000 });
     }
   };

@@ -281,9 +281,12 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
   marché : trois semaines sérieuses de suite (sa demande d'entraînement, intensité normale ou intense, pas de
   sortie) et tu débutes le match suivant. Une semaine manquée met fin au défi ; une bonne note ensuite relance
   sa confiance.
-- **Atelier** : à la validation, un geste à réussir (arrêter le curseur dans la zone). La zone est d'autant
-  plus large que l'attribut travaillé est bon, le curseur d'autant plus rapide que l'intensité est haute.
-  Parfait : séance ×1,25 ; réussi : ×1,08 ; raté : ×0,9. On peut passer ou désactiver l'atelier.
+- **Atelier** : à la validation, un mini-jeu d'une dizaine de secondes, deux par thème en alternance :
+  curseur à arrêter dans la zone (étroite, placée au hasard, de plus en plus rapide) ; jongles (technique),
+  réaction au sifflet (physique), combinaison à mémoriser (tactique), tir au but avec mire mobile (finition),
+  lecture du dribble après une feinte (défense), plongeon (gardien). Un bon attribut rend le geste plus
+  accessible, une forte intensité plus rapide. Parfait : séance ×1,25 ; réussi : ×1,08 ; raté : ×0,9. On peut
+  passer ou désactiver l'atelier (`src/ui/drills.js`).
 
 ## Match : suite de l'action, finitions, passes en profondeur
 
@@ -299,23 +302,29 @@ Le bouton portefeuille du tableau de bord (montant de tes économies) ouvre « T
 ## Vue 3D
 
 Les boutons **2D / 3D** de la barre du match choisissent la vue (le choix est retenu d'un match à l'autre).
-En 3D, tout le match se regarde en caméra de télévision : le direct, la suite de l'action après un choix et les
-ralentis (WebGL, Three.js 0.160 embarqué dans `assets/vendor/`, licence MIT : rien n'est téléchargé). Les moments
-de choix restent en 2D, plus lisibles pour les flèches et les cibles numérotées. Sur un téléphone trop lent, la
-définition de la 3D baisse d'elle-même.
+En 3D, tout le match se regarde comme une retransmission : le direct, la suite de l'action après un choix et les
+ralentis. Les moments de choix restent en 2D (flèches et cibles numérotées). WebGL, Three.js 0.160 et ses modules
+de post-traitement embarqués dans `assets/vendor/` (licence MIT) : rien n'est téléchargé.
 
-- Stade de nuit : quatre tribunes garnies aux couleurs des deux équipes, toit, mâts d'éclairage et halos,
-  panneaux et bandeaux lumineux défilants, flashs d'appareils photo (plus nombreux sur un but).
-- Pelouse tondue en bandes, lignes nettes, buts avec filets, drapeaux de corner.
-- Joueurs articulés (bassin, buste, bras, avant-bras, cuisses, tibias, pieds) animés selon leur vitesse réelle :
-  foulée, bras opposés, frappe, gardien en position, célébration ; peau, cheveux, chaussures et taille variés ;
-  numéro dans le dos ; quatre ombres croisées par joueur.
-- Caméra principale en tribune qui pivote et zoome comme une réalisation télé ; plan serré pour les ralentis.
-- Rendu par lots (une vingtaine d'appels de dessin pour 22 joueurs) pour tenir sur téléphone.
+- **Lumière** : matériaux physiques (PBR) et éclairage d'environnement ; **ombres portées en temps réel** ; nuit
+  sous les projecteurs (halo, étoiles) ou jour au soleil, selon le match ; ciel couvert, **pluie** (pelouse qui
+  brille) et **neige** selon la météo du jour.
+- **Pelouse** : bandes de tonte qui s'éclaircissent ou s'assombrissent selon l'angle de la caméra, grain et relief
+  de l'herbe, usure devant les buts ; lignes peintes, drapeaux de corner qui flottent ; buts avec filets en mailles.
+- **Joueurs** : silhouettes anatomiques (torse, short à deux jambes, membres galbés), maillots texturés aux motifs
+  du club (rayures, cerceaux, moitiés, bande), tissu en relief, numéro dans le dos, visages, coiffures variées.
+  Animations : course et sprint, déplacement de côté ou en reculant face au ballon, frappe, **plongeon du gardien**
+  sur une frappe, **détente pour une tête**, célébrations.
+- **Stade** : tribunes à deux étages garnies d'une foule aux couleurs des équipes (qui saute sur un but), balcons
+  et bandeaux lumineux, toit sur poutres d'acier, rampes et mâts de projecteurs, panneaux LED, bancs de touche.
+- **Image** : halo des lumières (bloom), étalonnage et vignette façon caméra de télévision, anticrénelage ;
+  caméra principale sur la passerelle de la tribune, téléobjectif pour les plans serrés, léger bougé.
+- **Qualité adaptative** : trois paliers (complet, ombres moyennes sans post-traitement, minimal) ; si l'image
+  passe sous ~26 images/s, la vue descend d'un palier, mémorisé pour les matchs suivants.
 
-Limite assumée : ce n'est pas du photoréalisme (type jeu console). Il faudrait des modèles scannés et des
-animations capturées sur de vrais joueurs, des dizaines de mégaoctets de données et un moteur dédié.
-La recette `npm run ui-check-3d` vérifie la bascule 2D/3D et l'absence d'erreur.
+Limite assumée : ce n'est pas le photoréalisme d'un jeu console (EA FC). Il faudrait des joueurs scannés, des
+animations capturées sur de vrais footballeurs, des centaines de mégaoctets de données et la puissance d'une
+console. La recette `npm run ui-check-3d` vérifie la bascule 2D/3D et l'absence d'erreur.
 
 ## Championnats étrangers : sept pays, onze championnats
 
