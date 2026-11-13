@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Generation Football — match 2D</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="tb-left">
+        <span id="comp-name" class="muted"></span>
+        <span id="role-label" class="muted"></span>
+      </div>
+      <div class="tb-score" aria-live="polite">
+        <span id="team0-name" class="team-tag"></span>
+        <span id="score">0 – 0</span>
+        <span id="team1-name" class="team-tag"></span>
+        <span id="clock"><span id="clock-t">00:00</span><span class="lbl" id="clock-x"></span></span>
+        <span id="mode-badge" class="badge">DIRECT</span>
+      </div>
+      <div class="tb-right">
+        <button id="btn-left" class="compact-only" title="Onze, banc et remplacements"><span class="ico">👥</span></button>
+        <button id="btn-right" class="compact-only" title="Mon match, consignes, analyse"><span class="ico">📋</span></button>
+        <button id="btn-ctl" hidden title="Piloter ton joueur ou le confier à l'IA">Manuel</button>
+        <button id="btn-zoom" hidden title="Changer le zoom de la caméra">Zoom</button>
+        <button id="btn-play" title="Pause / reprendre (Espace)">⏸ Pause</button>
+        <div class="speed" role="group" aria-label="Vitesse">
+          <button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
+        </div>
+        <button id="btn-replay" title="Revoir la dernière action (F8)"><span class="ico">⟲</span><span class="lbl"> Replay</span></button>
+        <button id="btn-live" title="Revenir au direct (F9)" hidden>Direct</button>
+        <button id="btn-quick" title="Simuler la fin du match sans rendu"><span class="ico">⏭</span><span class="lbl"> Résultat rapide</span></button>
+        <div class="view-toggle" id="btn-view" role="group" aria-label="Vue du match"><button data-view="2d" title="Vue 2D : le terrain vu du dessus">2D</button><button data-view="3d" title="Vue 3D : caméra de télévision">3D</button></div>
+        <button id="btn-sound" title="Son (M)"></button>
+        <button id="btn-comm" title="Commentaire audio"></button>
+        <button id="btn-help" title="Aide (F1)">Aide</button>
+      </div>
+    </header>
+
+    <aside id="left" class="panel" tabindex="-1">
+      <h2>Onze <small id="left-team"></small></h2>
+      <ul id="xi" class="plist"></ul>
+      <h2>Banc <small id="subs-info"></small></h2>
+      <ul id="bench" class="plist"></ul>
+      <div id="sub-draft" class="draft-box" hidden></div>
+      <ul id="sub-requests" class="status-list"></ul>
+    </aside>
+
+    <main id="center">
+      <canvas id="pitch" aria-label="Terrain 2D vu du dessus"></canvas>
+      <canvas id="pitch3d" hidden aria-label="Vue 3D du match"></canvas>
+      <div id="choices" hidden role="dialog" aria-label="Choix du joueur"></div>
+      <div id="pad-hint" hidden></div>
+      <div id="goal-banner" hidden></div>
+      <div id="replay-banner" hidden>REPLAY — lecture seule <span id="replay-time"></span></div>
+      <div id="toast" role="status" hidden></div>
+    </main>
+
+    <aside id="right" class="panel" tabindex="-1">
+      <nav class="tabs" role="tablist">
+        <button data-tab="consignes" class="active" role="tab"><span id="tab1-label">Consignes</span> <kbd>3</kbd></button>
+        <button data-tab="analyse" role="tab">Analyse <kbd>4</kbd></button>
+        <button data-tab="staff" role="tab">Staff <kbd>5</kbd></button>
+      </nav>
+      <section id="tab-consignes" class="tab-body"></section>
+      <section id="tab-analyse" class="tab-body" hidden></section>
+      <section id="tab-staff" class="tab-body" hidden></section>
+      <section id="player-card" class="card" hidden></section>
+    </aside>
+
+    <footer id="feed-wrap">
+      <ol id="feed"></ol>
+    </footer>
+  </div>
+
+  <div id="screen" class="screen" hidden></div>
+  <div id="modal-root"></div>
+  <script type="module" src="src/ui/main.js"></script>
+</body>
+</html>

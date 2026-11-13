@@ -1,0 +1,42 @@
+# Logos des clubs depuis Transfermarkt (usage personnel). Lancé quand la liste d'identifiants change.
+name: Logos Transfermarkt
+
+on:
+  push:
+    paths:
+      - tools/tm-ids.json
+      - tools/fetch-tm-crests.mjs
+      - .github/workflows/tm-crests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tm-crests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  crests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Installer sharp
+        run: npm install --no-save --no-package-lock sharp@0.33.5
+      - name: Télécharger les logos
+        timeout-minutes: 12
+        run: node tools/fetch-tm-crests.mjs
+      - name: Commiter les logos
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/crests-tm src/data/crest-tm.js
+          if git diff --cached --quiet; then echo "Aucun changement"; exit 0; fi
+          git commit -m "Logos des clubs (Transfermarkt, usage personnel)"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

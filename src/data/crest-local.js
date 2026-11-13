@@ -1,0 +1,30 @@
+// Logos officiels des clubs passés par la Ligue 1 (source : github.com/luukhopman/football-logos).
+// Usage personnel. Les autres clubs : src/data/crest-manifest.js (Wikimedia, tools/fetch-crests.mjs).
+export const CREST_LOCAL = {
+"aj-auxerre": "assets/crests-l1/aj-auxerre.png",
+"as-monaco": "assets/crests-l1/as-monaco.png",
+"angers-sco": "assets/crests-l1/angers-sco.png",
+"estac-troyes": "assets/crests-l1/estac-troyes.png",
+"fc-lorient": "assets/crests-l1/fc-lorient.png",
+"toulouse-fc": "assets/crests-l1/toulouse-fc.png",
+"losc-lille": "assets/crests-l1/losc-lille.png",
+"le-havre-ac": "assets/crests-l1/le-havre-ac.png",
+"le-mans-fc": "assets/crests-l1/le-mans-fc.png",
+"ogc-nice": "assets/crests-l1/ogc-nice.png",
+"olympique-lyonnais": "assets/crests-l1/olympique-lyonnais.png",
+"olympique-de-marseille": "assets/crests-l1/olympique-de-marseille.png",
+"paris-fc": "assets/crests-l1/paris-fc.png",
+"paris-saint-germain": "assets/crests-l1/paris-saint-germain.png",
+"rc-lens": "assets/crests-l1/rc-lens.png",
+"rc-strasbourg-alsace": "assets/crests-l1/rc-strasbourg-alsace.png",
+"stade-brestois": "assets/crests-l1/stade-brestois.png",
+"stade-rennais": "assets/crests-l1/stade-rennais.png",
+"ac-ajaccio": "assets/crests-l1/ac-ajaccio.png",
+"as-saint-etienne": "assets/crests-l1/as-saint-etienne.png",
+"clermont-foot": "assets/crests-l1/clermont-foot.png",
+"fc-metz": "assets/crests-l1/fc-metz.png",
+"fc-nantes": "assets/crests-l1/fc-nantes.png",
+"fc-girondins-de-bordeaux": "assets/crests-l1/fc-girondins-de-bordeaux.png",
+"montpellier-hsc": "assets/crests-l1/montpellier-hsc.png",
+"stade-de-reims": "assets/crests-l1/stade-de-reims.png"
+};

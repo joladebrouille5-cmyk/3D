@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Essai de la vue 3D</title>
+<style>html,body{margin:0;height:100%;background:#000}canvas{width:100vw;height:100vh;display:block}</style>
+<canvas id="c"></canvas>
+<script type="module">
+// Page d'essai de la vue 3D : un match simulé est avancé puis affiché.
+// Paramètres : ?t=secondes&zoom=2.3&mirror=1&night=0&weather=pluie&still=1
+import { Pitch3D } from '../src/ui/render3d.js';
+import { Match } from '../src/engine/match.js';
+const q = new URLSearchParams(location.search);
+const m = new Match({ home: 'littoral', away: 'plateau', seed: q.get('seed') || 'vue3d', userTeam: null, aiTeams: [0, 1] });
+const until = Number(q.get('t') || 40);
+while (m.t < until && m.phase !== 'fulltime') m.step();
+const r = new Pitch3D(document.getElementById('c'));
+r.mirror = q.get('mirror') === '1';
+r.setConditions({ night: q.get('night') !== '0', weather: q.get('weather') || null });
+if (q.get('q')) { r.quality = Number(q.get('q')); }
+window.__m = m; window.__r = r;
+let frames = 0;
+function frame() {
+  for (let i = 0; i < (q.get('still') ? 0 : 1); i++) m.step();
+  const b = m.ball;
+  if (q.get('zoom') === '1') r.follow(52.5, 34, 1); else r.follow(b.x, b.y, Number(q.get('zoom') || 2.3), 0.1);
+  if (q.get('joy') && frames === 30) r.celebrate(m.teams[0].colors);
+  r.draw({ teams: m.teams, players: m.players.map((p, i) => ({ ...p, isUser: i === 9 })), ball: b, ownerId: b.owner });
+  frames++; window.__frames = frames;
+  requestAnimationFrame(frame);
+}
+addEventListener('resize', () => r.resize());
+frame();
+</script>
