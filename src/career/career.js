@@ -16,7 +16,7 @@ import {
 import { buildCups, extrasForWeek, drawOpponent, resolveCupRound, maybeCallup, WINTER_WINDOW, isYouthCup, summerTournament, tournamentMatch, resolveTournamentMatch, nationality, NATIONALITIES } from './competitions.js';
 import { salaryFor, contractType, contractTerms, winterOffers, seasonLoanOffers, negotiate, money, CONTRACT_LABEL, countryOf, mixByCountry } from './market.js';
 import { tierById, levelTierById } from './potential.js';
-import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone } from './weekly.js';
+import { coachRequest, pickSpecial, specialById, SPECIALS, DRILL_MUL, DRILL_LABEL, drillZone, drillFor } from './weekly.js';
 import { langLevel } from './countries.js';
 import { pickEvent, eventById, abroad, clubCountry } from './events.js';
 import { emptyWorld, applyWorld, resetWorld, advanceWorld } from './world.js';
@@ -27,7 +27,7 @@ import { derbyOf, weatherFor, WEATHER } from './ambiance.js';
 export { WEATHER, derbyOf };
 export { TRAITS, traitById };
 export { objectiveProgress };
-export { SPECIALS, specialById, drillZone, DRILL_LABEL };
+export { SPECIALS, specialById, drillZone, drillFor, DRILL_LABEL };
 import { SERVICES, PURCHASES, serviceEffects, monthlyCost, canBuy, ageingMul, passiveIncome, servicesFor, purchasesFor, boughtState, LEGACY } from './spending.js';
 export { SERVICES, PURCHASES, monthlyCost, canBuy, passiveIncome, servicesFor, purchasesFor, boughtState };
 export { money, CONTRACT_LABEL, divisionName, nationality, NATIONALITIES };

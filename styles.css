@@ -1115,3 +1115,36 @@ details.moves p { margin: 6px 0; }
 /* entraîneur : choix du style et de la priorité */
 .coach .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .coach .seg button.active { background: var(--flood); color: var(--ink); border-color: var(--flood); }
+
+/* ateliers : nouveaux mini-jeux */
+.dr-stage { margin: 12px 0 8px; touch-action: manipulation; user-select: none; }
+.dr-stage .dr-track { margin: 0; }
+.dr-juggle { position: relative; height: 150px; border-radius: 14px; background: linear-gradient(180deg, #13213a, #1b3a2a); border: 1px solid var(--line-2); overflow: hidden; cursor: pointer; }
+.dj-zone { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(78, 224, 138, 0.28); border-top: 2px solid var(--ok); }
+.dj-ball { position: absolute; left: 50%; width: 26px; height: 26px; margin-left: -13px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #d8dde6 60%, #8d96a8); box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+.dj-count { position: absolute; top: 8px; right: 12px; font: 800 1.2em var(--f-display); color: var(--chalk); }
+.dr-light { height: 120px; border-radius: 14px; display: grid; place-items: center; font: 900 2.4em var(--f-display); cursor: pointer; border: 1px solid var(--line-2); transition: background 0.05s; }
+.dr-light.wait { background: #4a1418; color: #ffb3b3; }
+.dr-light.go { background: #1d7a43; color: #eafff1; box-shadow: 0 0 30px rgba(78, 224, 138, 0.6); }
+.dr-memo { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.dm-show { height: 110px; border-radius: 14px; display: grid; place-items: center; font: 900 3.4em var(--f-display); background: #13213a; border: 1px solid var(--line-2); color: var(--flood); }
+.dm-show.on { background: #1b2e52; }
+.dm-pad { display: grid; grid-template-columns: repeat(2, 56px); gap: 6px; }
+.dm-key { height: 52px; font-size: 1.6em; padding: 0; }
+.dm-progress { grid-column: 1 / -1; letter-spacing: 4px; color: var(--flood); min-height: 1.2em; }
+.dr-goal { position: relative; height: 140px; border-radius: 6px; border: 4px solid #f2f2ee; border-bottom: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 14px), repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 14px), #13213a; overflow: hidden; cursor: crosshair; }
+.dg-target { position: absolute; background: rgba(255, 214, 90, 0.3); border: 2px dashed var(--flood); border-radius: 6px; }
+.dg-keeper { position: absolute; left: 50%; bottom: 0; width: 38px; height: 70px; margin-left: -19px; border-radius: 18px 18px 4px 4px; background: linear-gradient(180deg, #e8590c, #a33d07); opacity: 0.85; }
+.dg-aim { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 8px #fff; }
+.dr-duel { display: grid; gap: 8px; }
+.dd-cue { height: 84px; border-radius: 14px; display: grid; place-items: center; font: 900 2em var(--f-display); background: #13213a; border: 1px solid var(--line-2); color: var(--muted); }
+.dd-cue.feint { color: #ffb3b3; }
+.dd-cue.real { color: var(--flood); font-size: 3em; background: #1b2e52; }
+.dd-pad { display: flex; gap: 8px; }
+.dd-key { flex: 1; height: 50px; font-weight: 800; }
+.dd-score { min-height: 1.2em; font-weight: 800; letter-spacing: 3px; }
+@media (max-height: 520px) {
+  .dr-stage { margin: 6px 0 4px; }
+  .dr-juggle, .dr-goal { height: 112px; } .dr-light { height: 90px; } .dm-show { height: 90px; } .dd-cue { height: 64px; }
+  .drill > p.muted { margin: 2px 0; font-size: 0.9em; }
+}

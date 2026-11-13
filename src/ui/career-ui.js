@@ -14,6 +14,7 @@ import { startHomeScene, stopHomeScene } from './home-scene.js';
 import { sound } from './sound.js';
 import { WHEELS, slicesOf, drawFrom, tierById, LEVEL_TIERS } from '../career/potential.js';
 import { objectivesBlock, renderCoach, renderMoney, renderPalmares, renderRetired, renderSeasonEnd, showRoleChange } from './career-end.js';
+import { runDrill } from './drills.js';
 const LEVEL_COLORS = Object.fromEntries(LEVEL_TIERS.map((t) => [t.id, t.color]));
 export const crest = (c, size = 28) => `<span class="crest-wrap">${crestSVG(c, size)}</span>`;
 
@@ -783,8 +784,9 @@ function bindHub(el) {
   pickIn('[data-off]', 'off', 'offpitch');
   el.querySelector('#w-go')?.addEventListener('click', () => {
     const finish = (drill) => { C.submitWeek(st, { ...G.choices, drill }); persist(); renderHub(); };
-    const z = st.player.injuryWeeks ? null : C.drillZone(st.player, G.choices.focus, G.choices.intensity);
-    if (z && drillsOn()) runDrill(z, finish); else finish(null);
+    // mini-jeu de la semaine : deux par thème, ils alternent d'une semaine à l'autre
+    const z = st.player.injuryWeeks ? null : C.drillFor(st.player, G.choices.focus, G.choices.intensity, st.season * 53 + st.week);
+    if (z && drillsOn()) runDrill(z, finish, { onDisable: () => setDrills(false) }); else finish(null);
   });
   el.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => { C.acceptWinterOffer(st, Number(b.dataset.win)); persist(); renderHub(); }));
   el.querySelector('#win-stay')?.addEventListener('click', () => { C.declineWinter(st); persist(); renderHub(); });
@@ -795,56 +797,10 @@ function bindHub(el) {
 }
 
 // ------------------------------------------------------------------ atelier de la semaine
-// Un geste à réussir : un curseur va et vient, tu l'arrêtes dans la zone (or au centre = parfait).
+// Un geste à réussir (src/ui/drills.js) : curseur, jongles, réaction, mémoire, penalty, lecture, plongeon.
 const DRILL_KEY = 'generation-football.drills';
 function drillsOn() { try { return localStorage.getItem(DRILL_KEY) !== 'off'; } catch { return true; } }
 function setDrills(on) { try { localStorage.setItem(DRILL_KEY, on ? 'on' : 'off'); } catch { /* stockage indisponible */ } }
-function runDrill(z, done) {
-  const box = document.createElement('div');
-  box.className = 'drill-backdrop';
-  const zl = 0.5 - z.width / 2, pl = 0.5 - z.perfect / 2;
-  box.innerHTML = `<div class="drill" role="dialog" aria-label="Atelier">
-    <p class="dr-eyebrow">${icon('whistle', 16)} Atelier de la semaine</p>
-    <h2>${esc(z.title)}</h2>
-    <p class="muted">${esc(z.task)} Zone d'autant plus large que ton attribut est bon.</p>
-    <div class="dr-track" id="dr-track"><i class="dr-zone" style="left:${zl * 100}%;width:${z.width * 100}%"></i><i class="dr-perfect" style="left:${pl * 100}%;width:${z.perfect * 100}%"></i><b class="dr-cursor" id="dr-cursor"></b></div>
-    <p class="dr-result" id="dr-result" aria-live="polite">Touche l'écran (ou Espace) au bon moment.</p>
-    <div class="actions"><label class="inline small"><input type="checkbox" id="dr-off"> Ne plus proposer d'atelier</label><button class="ghost small" id="dr-skip">Passer</button></div>
-  </div>`;
-  document.body.append(box);
-  const cur = box.querySelector('#dr-cursor');
-  let x = 0, dir = 1, last = null, stopped = false;
-  const step = (now) => {
-    if (stopped) return;
-    const dt = Math.min(0.05, (now - (last ?? now)) / 1000); last = now;
-    x += dir * dt * 0.95 * z.speed;
-    if (x > 1) { x = 1; dir = -1; } else if (x < 0) { x = 0; dir = 1; }
-    cur.style.left = `${x * 100}%`;
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-  const close = (res) => {
-    stopped = true;
-    if (box.querySelector('#dr-off').checked) setDrills(false);
-    document.removeEventListener('keydown', onKey);
-    setTimeout(() => { box.remove(); done(res); }, res ? 900 : 0);
-  };
-  const hit = () => {
-    if (stopped) return;
-    const d = Math.abs(x - 0.5);
-    const res = d <= z.perfect / 2 ? 'parfait' : d <= z.width / 2 ? 'bien' : 'rate';
-    box.querySelector('#dr-result').textContent = res === 'parfait' ? 'Parfait ! Séance nettement plus profitable.' : res === 'bien' ? 'Réussi : bonne séance.' : 'Raté : séance un peu moins profitable.';
-    box.querySelector('.drill').classList.add(`res-${res}`);
-    if (res === 'parfait') sound.chime();
-    close(res);
-  };
-  const onKey = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); hit(); } };
-  document.addEventListener('keydown', onKey);
-  box.querySelector('#dr-track').addEventListener('pointerdown', hit);
-  box.querySelector('.drill h2').addEventListener('pointerdown', hit);
-  box.querySelector('#dr-skip').addEventListener('click', () => close(null));
-}
-
 let flashTimer;
 export function flash(text) {
   let t = document.getElementById('screen-flash');

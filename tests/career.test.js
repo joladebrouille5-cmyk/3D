@@ -258,3 +258,19 @@ test('gestes signature et changement de poste', async () => {
   assert.throws(() => C.changeRole(st, 'ST'), /Un seul changement/);
   assert.throws(() => { st.player.roleChange = null; C.changeRole(st, 'GK'); }, /gardien/);
 });
+
+test('ateliers : curseur plus exigeant, deux mini-jeux par thème qui alternent', async () => {
+  const W = await import('../src/career/weekly.js');
+  const p = { attrs: { firstTouch: 0.5, accel: 0.5, vision: 0.5, shooting: 0.5, tackling: 0.5, gk: 0.5 } };
+  const z = W.drillZone(p, 'technique', 'normale');
+  assert.ok(z.width <= 0.14 && z.perfect <= 0.037, `zone ${z.width}, parfait ${z.perfect}`);
+  assert.ok(z.speed >= 1.3 && z.accel > 1, 'plus rapide, et il accélère');
+  const kinds = new Set();
+  for (const f of Object.keys(W.DRILLS)) for (const seed of [10, 11]) kinds.add(W.drillFor(p, f, 'normale', seed).kind);
+  assert.deepEqual([...kinds].sort(), ['curseur', 'jongles', 'lecture', 'memoire', 'penalty', 'plongeon', 'reaction']);
+  // un meilleur attribut rend le geste plus accessible ; l'intensité le rend plus rapide
+  const pro = { attrs: Object.fromEntries(Object.keys(p.attrs).map((k) => [k, 0.9])) };
+  assert.ok(W.drillFor(pro, 'defense', 'normale', 11).windowMs > W.drillFor(p, 'defense', 'normale', 11).windowMs);
+  assert.ok(W.drillFor(p, 'defense', 'intense', 11).windowMs < W.drillFor(p, 'defense', 'normale', 11).windowMs);
+  assert.equal(W.drillFor(p, 'recuperation', 'normale', 1), null);
+});

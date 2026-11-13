@@ -63,21 +63,51 @@ export function pickSpecial(st, r, abroadCountry = null) {
   return sp.id;
 }
 
-// Atelier : un geste à réussir, lié au thème. Plus l'attribut concerné est bon, plus la zone est large ;
-// plus l'intensité est haute, plus le curseur va vite.
+// Atelier : un geste à réussir, lié au thème. Deux mini-jeux par thème, qui alternent d'une semaine à l'autre :
+// le curseur à arrêter dans la zone, et un geste propre au thème (jongles, réaction, mémoire, penalty,
+// lecture du dribble, plongeon). Plus l'attribut concerné est bon, plus c'est accessible ; plus l'intensité
+// est haute, plus c'est rapide.
 export const DRILLS = {
-  technique: { title: 'Contrôle orienté', task: 'Arrête le curseur quand le ballon arrive dans ta zone.', attr: 'firstTouch' },
-  physique: { title: 'Départ arrêté', task: 'Arrête le curseur dans la zone verte : c\'est le coup de sifflet, ni avant ni après.', attr: 'accel' },
-  tactique: { title: 'Ligne de passe', task: 'Arrête le curseur quand la ligne de passe s\'ouvre.', attr: 'vision' },
-  finition: { title: 'Lucarne', task: 'Arrête le curseur dans la lucarne.', attr: 'shooting' },
-  defense: { title: 'Timing du tacle', task: 'Arrête le curseur dans la zone : c\'est le moment où l\'attaquant pousse son ballon.', attr: 'tackling' },
-  gardien: { title: 'Parade', task: 'Arrête le curseur dans la zone : c\'est le moment de plonger.', attr: 'gk' },
+  technique: { title: 'Contrôle orienté', task: 'Arrête le curseur quand le ballon arrive dans ta zone.', attr: 'firstTouch',
+    alt: { kind: 'jongles', title: 'Jongles', task: 'Touche quand le ballon passe dans la zone : quatre jongles de suite, de plus en plus vite.' } },
+  physique: { title: 'Départ arrêté', task: 'Arrête le curseur dans la zone verte : c\'est le coup de sifflet, ni avant ni après.', attr: 'accel',
+    alt: { kind: 'reaction', title: 'Réaction au sifflet', task: 'Attends le signal vert, puis touche le plus vite possible. Trop tôt : faux départ.' } },
+  tactique: { title: 'Ligne de passe', task: 'Arrête le curseur quand la ligne de passe s\'ouvre.', attr: 'vision',
+    alt: { kind: 'memoire', title: 'Combinaison', task: 'Retiens l\'enchaînement de passes montré par le coach, puis refais-le dans l\'ordre.' } },
+  finition: { title: 'Lucarne', task: 'Arrête le curseur dans la lucarne.', attr: 'shooting',
+    alt: { kind: 'penalty', title: 'Tir au but', task: 'La mire balaie le but : déclenche quand elle est dans la cible.' } },
+  defense: { title: 'Timing du tacle', task: 'Arrête le curseur dans la zone : c\'est le moment où l\'attaquant pousse son ballon.', attr: 'tackling',
+    alt: { kind: 'lecture', title: 'Lire le dribble', task: 'L\'attaquant feinte puis part d\'un côté : touche le bon côté avant qu\'il ne passe. Trois duels.' } },
+  gardien: { title: 'Parade', task: 'Arrête le curseur dans la zone : c\'est le moment de plonger.', attr: 'gk',
+    alt: { kind: 'plongeon', title: 'Plongeon', task: 'Le tireur frappe : plonge du bon côté (gauche, centre, droite). Trois tirs.' } },
 };
 export const DRILL_MUL = { parfait: 1.25, bien: 1.08, rate: 0.9 };
 export const DRILL_LABEL = { parfait: 'Parfait', bien: 'Réussi', rate: 'Raté' };
-export function drillZone(p, focus, intensity) {
+const pace = (intensity) => (intensity === 'intense' ? 1.3 : intensity === 'légère' ? 0.8 : 1);
+
+// Curseur : zone plus étroite qu'avant et placée au hasard ; le curseur accélère à chaque aller-retour
+export function drillZone(p, focus, intensity, u = 0.5) {
   const d = DRILLS[focus];
   if (!d) return null;
   const a = p.attrs[d.attr] ?? 0.5;
-  return { ...d, width: clamp(0.12 + 0.22 * a, 0.12, 0.32), perfect: clamp(0.035 + 0.05 * a, 0.035, 0.08), speed: intensity === 'intense' ? 1.35 : intensity === 'légère' ? 0.75 : 1 };
+  const width = clamp(0.07 + 0.13 * a, 0.07, 0.2), perfect = clamp(0.022 + 0.028 * a, 0.022, 0.05);
+  return { kind: 'curseur', title: d.title, task: d.task, width, perfect, center: clamp(0.22 + 0.56 * u, width / 2 + 0.02, 1 - width / 2 - 0.02), speed: 1.3 * pace(intensity), accel: 1.08 };
+}
+
+// Mini-jeu de la semaine : `seed` décide lequel des deux (il alterne d'une semaine à l'autre)
+export function drillFor(p, focus, intensity, seed = 0) {
+  const d = DRILLS[focus];
+  if (!d) return null;
+  const a = p.attrs[d.attr] ?? 0.5, sp = pace(intensity);
+  const u = ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1;
+  if (seed % 2 === 0) return drillZone(p, focus, intensity, u);
+  const base = { kind: d.alt.kind, title: d.alt.title, task: d.alt.task };
+  switch (d.alt.kind) {
+    case 'jongles': return { ...base, count: 4, width: clamp(0.09 + 0.12 * a, 0.09, 0.2), speed: 1.15 * sp, accel: 1.14 };
+    case 'reaction': return { ...base, perfectMs: Math.round(230 + 80 * a), goodMs: Math.round(330 + 110 * a) };
+    case 'memoire': return { ...base, length: a >= 0.72 ? 5 : 4, showMs: Math.round(700 / sp), fastMs: 4500 };
+    case 'penalty': return { ...base, target: clamp(0.14 + 0.1 * a, 0.14, 0.24), speed: 0.85 * sp };
+    case 'lecture': case 'plongeon': return { ...base, rounds: 3, windowMs: Math.round((520 + 260 * a) / sp), sides: d.alt.kind === 'plongeon' ? 3 : 2 };
+    default: return drillZone(p, focus, intensity, u);
+  }
 }
